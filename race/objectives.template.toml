@@ -1,7 +1,7 @@
 # Copy to race/teams/<team>/objectives.toml on day 1 and fill in every field.
 # One [[objective]] per common objective (same id as race/objectives.common.toml), plus at most
 # five objectives of your own (id starting with "T"). After the user locks the file
-# ($SCIATHON_HOME/tools/race_progress.py lock), any change voids the progress score.
+# ($FRONTIER_HOME/tools/race_progress.py lock), any change voids the progress score.
 #
 # command: run from the repository root on a clean checkout of your branch; reads committed
 #   result files, finishes in < 10 min on 4 cores, prints on its last line {"value": <number>}.

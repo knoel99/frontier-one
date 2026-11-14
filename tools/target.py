@@ -1,10 +1,10 @@
 """Where the race tools find the repository the teams work on (the target), and its tools.
 
-The sciathon repository is the control plane of a race: configuration, prompts, launcher, host,
+The frontier-one repository is the control plane of a race: configuration, prompts, launcher, host,
 broker and judge. The teams work in a checkout of another repository, the target (today
 knoel99/milady-2027). The target is, in order:
 
-1. the environment variable SCIATHON_TARGET (a path to a checkout);
+1. the environment variable FRONTIER_TARGET (a path to a checkout);
 2. ../milady-2027 next to this repository.
 
 The target provides agents/providers.toml, agents/roles/ and the tools a team uses inside its
@@ -23,12 +23,12 @@ import shutil
 import sys
 from pathlib import Path
 
-HOME = Path(__file__).resolve().parent.parent   # this repository (sciathon)
+HOME = Path(__file__).resolve().parent.parent   # this repository (frontier-one)
 RACE = HOME / "race"
 
 
 def target() -> Path:
-    env = os.environ.get("SCIATHON_TARGET")
+    env = os.environ.get("FRONTIER_TARGET")
     path = Path(env).expanduser() if env else HOME.parent / "milady-2027"
     return path.resolve()
 
@@ -36,7 +36,7 @@ def target() -> Path:
 def use_target_tools() -> Path:
     t = target()
     if not (t / "agents" / "providers.toml").exists():
-        sys.exit(f"no target checkout at {t}: set SCIATHON_TARGET to a checkout of milady-2027")
+        sys.exit(f"no target checkout at {t}: set FRONTIER_TARGET to a checkout of milady-2027")
     tools = str(t / "tools")
     if tools not in sys.path:
         sys.path.insert(0, tools)

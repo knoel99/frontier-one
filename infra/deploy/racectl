@@ -9,7 +9,7 @@
 set -euo pipefail
 cmd="${1:-status}"; T="${2:-}"
 need() { [ -n "$T" ] || { echo "usage: racectl $cmd <team>"; exit 1; }; id "race-$T" >/dev/null 2>&1 || { echo "no team $T"; exit 1; }; }
-SCI=/opt/race/sciathon   # race tools, installed by race-host.sh
+SCI=/opt/race/frontier-one   # race tools, installed by race-host.sh
 as() { sudo -iu "race-$T" bash -lc "set -a; . /etc/race/$T.env; set +a; cd ~/milady; . ~/venv/bin/activate; export PATH=\$HOME/.npm-global/bin:\$HOME/.local/bin:\$PATH; $1"; }
 case "$cmd" in
   status)

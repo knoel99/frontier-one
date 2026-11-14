@@ -8,7 +8,7 @@ set -u
 T="$1"
 cd "$HOME/milady" || exit 1
 . "$HOME/venv/bin/activate"
-export SCIATHON_TARGET="$HOME/milady" SCIATHON_HOME="${SCIATHON_HOME:-/opt/race/sciathon}"
+export FRONTIER_TARGET="$HOME/milady" FRONTIER_HOME="${FRONTIER_HOME:-/opt/race/frontier-one}"
 export PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
 LOG="$HOME/logs/race.log"; STATE="$HOME/.race-iteration"
 i=$(cat "$STATE" 2>/dev/null || echo 0); fails=0
@@ -24,7 +24,7 @@ while :; do
   [ -f research/GOAL-MET ] && { log "goal met (research/GOAL-MET): stopping"; break; }
   i=$((i + 1)); echo "$i" > "$STATE"; T0=$(date +%s)
   log "iteration $i started"
-  python3 "$SCIATHON_HOME/tools/race_launch.py" run-main --team "$T" --prompt-file race/TEAM-PROMPT.md --iteration "$i" \
+  python3 "$FRONTIER_HOME/tools/race_launch.py" run-main --team "$T" --prompt-file race/TEAM-PROMPT.md --iteration "$i" \
     >> "$LOG" 2>&1; rc=$?
   dt=$(( $(date +%s) - T0 ))
   if [ "$rc" -ne 0 ] && [ "$dt" -lt 300 ]; then fails=$((fails + 1)); else fails=0; fi

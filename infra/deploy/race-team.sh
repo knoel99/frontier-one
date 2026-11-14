@@ -5,7 +5,7 @@
 # status, logs and a git bundle of its branch over plain HTTP under a random path,
 # http://IP:8000/__TOKEN__/, and the user's launcher collects the bundle and pushes race/<team>.
 #
-# The team works in /opt/milady (the target, __REPO__ at __TAG__); the race tools run from /opt/sciathon
+# The team works in /opt/milady (the target, __REPO__ at __TAG__); the race tools run from /opt/frontier-one
 # (__CONTROL__ at __CONTROL_REF__), which also installs race/ (the brief) into the checkout.
 #
 # Placeholders: __TOKEN__, __TEAM__, __REPO__, __TAG__, __CONTROL__, __CONTROL_REF__, __DEADLINE__ (epoch seconds),
@@ -27,10 +27,10 @@ apt-get update -q && apt-get install -y -q git python3-venv python3-pip curl nod
   || { status "FAILED apt"; exit 1; }
 cd /opt && git clone -q "__REPO__" milady && cd milady && git checkout -q "__TAG__" \
   && git checkout -q -b "race/__TEAM__" || { status "FAILED clone"; exit 1; }
-git clone -q "__CONTROL__" /opt/sciathon && git -C /opt/sciathon checkout -q "__CONTROL_REF__" \
+git clone -q "__CONTROL__" /opt/frontier-one && git -C /opt/frontier-one checkout -q "__CONTROL_REF__" \
   || { status "FAILED clone of the race tools"; exit 1; }
-export SCIATHON_TARGET=/opt/milady SCIATHON_HOME=/opt/sciathon
-python3 /opt/sciathon/tools/race_launch.py install-brief || { status "FAILED brief"; exit 1; }
+export FRONTIER_TARGET=/opt/milady FRONTIER_HOME=/opt/frontier-one
+python3 /opt/frontier-one/tools/race_launch.py install-brief || { status "FAILED brief"; exit 1; }
 git config user.name "race-__TEAM__" && git config user.email "race-__TEAM__@localhost"
 python3 -m venv /opt/venv && . /opt/venv/bin/activate
 pip install -q -r infra/env/requirements.txt && pip install -q --no-deps -e . || { status "FAILED pip"; exit 1; }
@@ -46,7 +46,7 @@ python3 tools/check_calls.py preflight --provider "$MILADY_PROVIDER" > "$OUT/pre
 
 # 2. Autonomy exam: the harness alone must call every role with the prescribed model and effort.
 SINCE=$(date -u +%Y%m%dT%H%M%S)
-python3 /opt/sciathon/tools/race_launch.py run-main --team "__TEAM__" --prompt-file research/preflight-exam.md \
+python3 /opt/frontier-one/tools/race_launch.py run-main --team "__TEAM__" --prompt-file research/preflight-exam.md \
   > "$OUT/exam-run.log" 2>&1
 python3 tools/check_calls.py exam --provider "$MILADY_PROVIDER" --since "$SINCE" > "$OUT/exam.txt" 2>&1 \
   && status "exam passed" || status "exam FAILED (see exam.txt)"
@@ -59,7 +59,7 @@ i=0; fails=0
 while [ "$(date +%s)" -lt "__DEADLINE__" ] && [ "$fails" -lt 3 ]; do
   i=$((i + 1)); T0=$(date +%s)
   status "iteration $i started"
-  python3 /opt/sciathon/tools/race_launch.py run-main --team "__TEAM__" --prompt-file race/BRIEF.md --iteration "$i" \
+  python3 /opt/frontier-one/tools/race_launch.py run-main --team "__TEAM__" --prompt-file race/BRIEF.md --iteration "$i" \
     >> "$OUT/race.log" 2>&1; rc=$?
   dt=$(( $(date +%s) - T0 ))
   if [ "$rc" -ne 0 ] && [ "$dt" -lt 300 ]; then fails=$((fails + 1)); else fails=0; fi

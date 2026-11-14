@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Prepare one Scaleway VM (Ubuntu 24.04) for several race teams: one Linux user, one clone of the
 # repository, one branch race/<team>, one Python environment, one harness and one systemd service
-# per team. Run as root, from a clone of sciathon on the VM; idempotent (rerun after a change). The teams
-# work in clones of the target (REPO, milady-2027); the race tools are copied to /opt/race/sciathon.
+# per team. Run as root, from a clone of frontier-one on the VM; idempotent (rerun after a change). The teams
+# work in clones of the target (REPO, milady-2027); the race tools are copied to /opt/race/frontier-one.
 #
 #   sudo TEAMS="openai google mistral" bash infra/deploy/race-host.sh   # default: every team but claude, xai
 #
@@ -23,9 +23,9 @@ REPO="${REPO:-https://github.com/knoel99/milady-2027.git}"
 REF="${REF:-main}"
 # The target checkout the race tools read (agents/providers.toml, agents/roles/, tools/), next to the
 # teams' own clones: tools/target.py.
-export SCIATHON_TARGET="${SCIATHON_TARGET:-/opt/race/milady}"
-if [ ! -d "$SCIATHON_TARGET/.git" ]; then install -d -m 755 "$(dirname "$SCIATHON_TARGET")"; git clone -q "$REPO" "$SCIATHON_TARGET"; fi
-git -C "$SCIATHON_TARGET" fetch -q origin && git -C "$SCIATHON_TARGET" checkout -q --detach "origin/$REF"
+export FRONTIER_TARGET="${FRONTIER_TARGET:-/opt/race/milady}"
+if [ ! -d "$FRONTIER_TARGET/.git" ]; then install -d -m 755 "$(dirname "$FRONTIER_TARGET")"; git clone -q "$REPO" "$FRONTIER_TARGET"; fi
+git -C "$FRONTIER_TARGET" fetch -q origin && git -C "$FRONTIER_TARGET" checkout -q --detach "origin/$REF"
 SECRETS=/etc/race/secrets.env
 [ -f "$SECRETS" ] || { echo "missing $SECRETS (see the header of this script)"; exit 1; }
 chmod 600 "$SECRETS"
@@ -65,8 +65,8 @@ mount -o remount,hidepid=invisible /proc || true
 
 install -d -m 755 /opt/race
 install -m 755 "$SRC/infra/deploy/race-team-loop.sh" /opt/race/race-team-loop.sh
-rm -rf /opt/race/sciathon && install -d -m 755 /opt/race/sciathon
-cp -r "$SRC/race" "$SRC/tools" "$SRC/infra" /opt/race/sciathon/ && chmod -R a+rX /opt/race/sciathon
+rm -rf /opt/race/frontier-one && install -d -m 755 /opt/race/frontier-one
+cp -r "$SRC/race" "$SRC/tools" "$SRC/infra" /opt/race/frontier-one/ && chmod -R a+rX /opt/race/frontier-one
 install -m 755 "$SRC/infra/deploy/racectl" /usr/local/bin/racectl
 cat > /etc/systemd/system/race@.service <<EOF
 [Unit]
@@ -115,7 +115,7 @@ git config credential.helper store
   && chmod 600 ~/.git-credentials
 # One prefix of pods and one objectives file per team (tools/runpod_job.py reads the prefix).
 mkdir -p "race/teams/$T"
-SCIATHON_TARGET="$HOME/milady" python3 /opt/race/sciathon/tools/race_launch.py install-brief
+FRONTIER_TARGET="$HOME/milady" python3 /opt/race/frontier-one/tools/race_launch.py install-brief
 [ -d ~/venv ] || uv venv -q ~/venv
 . ~/venv/bin/activate
 uv pip install -q -r infra/env/requirements.txt && uv pip install -q --no-deps -e .

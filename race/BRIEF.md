@@ -12,7 +12,7 @@ You start from this repository at the tag `race-start`. Everything in it (theory
 
 - You work on your own branch `race/<team>` on your own machine. You cannot see the other teams.
 - `MILADY_PROVIDER` names your provider's section of `agents/providers.toml`. Call the roles (`encadrant`, `physicien`, `biblio`, `jury-externe`) only through `tools/call_model.py` or `tools/run_role.py`, as `AGENTS.md` says; every call is logged and audited.
-- **Budget.** Your provider API key is capped by the user in your provider's console (see `race/config.toml`); the cap is final and also covers role calls. Computations larger than your machine go through the compute broker (`$SCIATHON_HOME/tools/compute_broker.py submit`), which enforces your CPU quota and returns cached results when the exact same run was already computed.
+- **Budget.** Your provider API key is capped by the user in your provider's console (see `race/config.toml`); the cap is final and also covers role calls. Computations larger than your machine go through the compute broker (`$FRONTIER_HOME/tools/compute_broker.py submit`), which enforces your CPU quota and returns cached results when the exact same run was already computed.
 - **Time.** The race ends at the deadline in `race/config.toml`. Commit your work at least once per hour: only committed work is collected and judged.
 
 ## Day 1: quantify your objectives
@@ -23,7 +23,7 @@ Before any computation, write `race/teams/<team>/objectives.toml` from `race/obj
 2. Add at most five objectives of your own, each tied to a sentence of the offer.
 3. Measure each objective on the starting repository (`baseline`), with its command.
 
-Commit the file within the first 24 hours, then carry on. The judge locks the version committed at that point (`$SCIATHON_HOME/tools/race_progress.py lock`) and the user may reject an objective that does not measure what it claims; after the lock, any change to the file voids your progress score. The progress of each objective is measured every day by the judge, by running your command on your branch from a clean checkout.
+Commit the file within the first 24 hours, then carry on. The judge locks the version committed at that point (`$FRONTIER_HOME/tools/race_progress.py lock`) and the user may reject an objective that does not measure what it claims; after the lock, any change to the file voids your progress score. The progress of each objective is measured every day by the judge, by running your command on your branch from a clean checkout.
 
 ## Rules
 
@@ -32,7 +32,7 @@ Commit the file within the first 24 hours, then carry on. The judge locks the ve
 3. A measurement command reads committed result files and prints, on its last line, a JSON object `{"value": <number>}` (optionally `"seeds": <n>`). It must finish in less than 10 minutes on 4 CPU cores and must not train a model.
 4. Write a journal entry in `research/journal.md` at least once per day: what you tried, what failed, what you will do next.
 5. Do not open the published site of the project (knoel99.github.io) nor the reports, results or branches of the other teams.
-6. Do not modify `race/`, `tools/race_*.py`, `tools/check_calls.py`, `tools/call_model.py`, `tools/run_role.py`, `$SCIATHON_HOME/tools/compute_broker.py` or `agents/`: the judge runs its own copies from `main`.
+6. Do not modify `race/`, `tools/race_*.py`, `tools/check_calls.py`, `tools/call_model.py`, `tools/run_role.py`, `$FRONTIER_HOME/tools/compute_broker.py` or `agents/`: the judge runs its own copies from `main`.
 7. When your budget is spent or the deadline is reached, write `research/race-report.md` (one page: what is measured, what is published, what is conjectured, your remaining work), commit and stop.
 
 ## How you are judged

@@ -6,11 +6,11 @@ On the user's machine (holds the provider keys, the Scaleway key and GitHub acce
     python3 tools/race_launch.py user-data --team T --broker-url URL --broker-token TOK > ud.sh
     python3 tools/race_launch.py launch --team T --broker-url URL --state DIR
     python3 tools/race_launch.py collect --team T --state DIR [--push]
-On the team VM (called by infra/deploy/race-team.sh), from a clone of sciathon:
-    python3 tools/race_launch.py install-brief                 # race/ of sciathon into the target checkout
+On the team VM (called by infra/deploy/race-team.sh), from a clone of frontier-one:
+    python3 tools/race_launch.py install-brief                 # race/ of frontier-one into the target checkout
     python3 tools/race_launch.py run-main --team T --prompt-file race/BRIEF.md --iteration 3
 
-The target checkout (the repository the team works in) is SCIATHON_TARGET, or ../milady-2027
+The target checkout (the repository the team works in) is FRONTIER_TARGET, or ../milady-2027
 (tools/target.py); a relative --prompt-file is read from this repository first, then from the target.
 
 The team's provider key is read from the variable named in race/config.toml [teams] and written
@@ -76,7 +76,7 @@ def user_data(team: str, broker_url: str, broker_token: str, token: str) -> str:
     if not key:
         sys.exit(f"{key_var} is not set: export the capped key of {team} first")
     env = {"MILADY_PROVIDER": team, key_var: key, "BROKER_URL": broker_url, "BROKER_TOKEN": broker_token,
-           "SCIATHON_TARGET": "/opt/milady", "SCIATHON_HOME": "/opt/sciathon",
+           "FRONTIER_TARGET": "/opt/milady", "FRONTIER_HOME": "/opt/frontier-one",
            "PATH": "/root/.local/bin:/usr/local/bin:/usr/bin:/bin",
            "IS_SANDBOX": "1"}  # the VM is a throwaway sandbox; some harnesses check it before skipping prompts
     env_text = "".join(f"{k}={shlex.quote(v)}\n" for k, v in env.items())  # sourced by bash: no expansion

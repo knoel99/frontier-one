@@ -22,5 +22,5 @@ jobs:
         run: python -m ruff check tools tests
       - name: Tests
         env:
-          SCIATHON_TARGET: ${{ github.workspace }}/target
+          FRONTIER_TARGET: ${{ github.workspace }}/target
         run: python -m pytest -q tests

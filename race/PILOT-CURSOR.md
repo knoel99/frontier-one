@@ -1,18 +1,18 @@
 # Pilot: one team on Cursor, Grok Bot orchestrating Cloud Agents
 
-The second pilot runs the race brief with Cursor only (Cursor Ultra: Grok and Composer models). Grok Bot is the orchestrator: it launches Cursor Cloud Agents on this repository with `$SCIATHON_HOME/tools/cursor_agents.py`, follows them, sends the next task and keeps the time. The Cloud Agents do the research. Where this file and [`BRIEF.md`](BRIEF.md) differ, this file wins; [`PILOT.md`](PILOT.md) applies for everything this file does not change (results, storage, monitoring, stop rules).
+The second pilot runs the race brief with Cursor only (Cursor Ultra: Grok and Composer models). Grok Bot is the orchestrator: it launches Cursor Cloud Agents on this repository with `$FRONTIER_HOME/tools/cursor_agents.py`, follows them, sends the next task and keeps the time. The Cloud Agents do the research. Where this file and [`BRIEF.md`](BRIEF.md) differ, this file wins; [`PILOT.md`](PILOT.md) applies for everything this file does not change (results, storage, monitoring, stop rules).
 
 ## Setting
 
 | | Cursor pilot |
 |---|---|
 | Orchestrator | Grok Bot (Cursor desktop or phone app), on its persistent cloud computer: a clone of this repository and `CURSOR_API_KEY` in its environment. Grok Bot chooses its own model (no picker) |
-| Workers | Cursor Cloud Agents launched through the Cloud Agents API by `$SCIATHON_HOME/tools/cursor_agents.py`, on branches `cursor/...` of `knoel99/milady-2027`. Main session: `grok-4.7`, effort `high`, Fast (`race/config.toml` `[main_session]`, `agents/providers.toml` `[cursor]`) |
-| Roles | Cursor sub-agents `.cursor/agents/*.md`, generated from `agents/roles/`: `encadrant` grok-4.7 medium, `physicien` grok-4.7 high, `biblio` grok-4.7 medium, `jury-externe` grok-4.7 xhigh, all Fast. A role can also run as its own Cloud Agent: `$SCIATHON_HOME/tools/cursor_agents.py launch --role <role>` |
+| Workers | Cursor Cloud Agents launched through the Cloud Agents API by `$FRONTIER_HOME/tools/cursor_agents.py`, on branches `cursor/...` of `knoel99/milady-2027`. Main session: `grok-4.7`, effort `high`, Fast (`race/config.toml` `[main_session]`, `agents/providers.toml` `[cursor]`) |
+| Roles | Cursor sub-agents `.cursor/agents/*.md`, generated from `agents/roles/`: `encadrant` grok-4.7 medium, `physicien` grok-4.7 high, `biblio` grok-4.7 medium, `jury-externe` grok-4.7 xhigh, all Fast. A role can also run as its own Cloud Agent: `$FRONTIER_HOME/tools/cursor_agents.py launch --role <role>` |
 | Speed | Fast everywhere (`[cursor] fast = true`): about 2x the price, the plan ends on 2026-11-13 and its credit is meant to be used |
 | GPU | `tools/runpod_job.py`, with `RUNPOD_API_KEY` as a Cloud Agent secret; this team's share `MILADY_GPU_BUDGET_USD` (Cloud Agent secret: set it, e.g. 40; without it the 140 USD of `[gpu]` `budget_usd` applies). The guard of `[gpu]` `credit_usd` keeps every pilot together under the 150 USD prepaid credit |
 | Dates | no deadline, only the budget; `MILADY_START` (ISO 8601) as a Cloud Agent secret: the start of the pilot, for `tools/review_due.py` |
-| Monitoring | `$SCIATHON_HOME/tools/cursor_agents.py report` (agents, models, parameters applied, run status, usage returned by the API) on Grok Bot's side; `research/journal.md`, `research/reviews.jsonl`, `research/compute-ledger.jsonl` on the branch |
+| Monitoring | `$FRONTIER_HOME/tools/cursor_agents.py report` (agents, models, parameters applied, run status, usage returned by the API) on Grok Bot's side; `research/journal.md`, `research/reviews.jsonl`, `research/compute-ledger.jsonl` on the branch |
 
 ## Organisation
 
@@ -27,4 +27,4 @@ The same as the Claude pilot, `race/DELIVERABLES.md`, under `site/teams/cursor/`
 
 ## Stop rules
 
-The stop rules of `PILOT.md` apply. In addition: a run whose `report` row shows a model parameter not applied (`dropped`) is not conforming; fix `agents/providers.toml` `[cursor]` after `$SCIATHON_HOME/tools/cursor_agents.py models`, rerun `tools/sync_agents.py`, and relaunch.
+The stop rules of `PILOT.md` apply. In addition: a run whose `report` row shows a model parameter not applied (`dropped`) is not conforming; fix `agents/providers.toml` `[cursor]` after `$FRONTIER_HOME/tools/cursor_agents.py models`, rerun `tools/sync_agents.py`, and relaunch.

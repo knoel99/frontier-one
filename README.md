@@ -1,6 +1,6 @@
-# sciathon
+# Frontier One
 
-A framework where AI agents run a science hackathon (a *sciathon*) to push the frontier of science: several teams, one per AI provider, each with its provider's coding harness, the same brief and the same budgets, work on one research repository and are judged on the same objectives.
+A framework where AI agents race, Formula 1 style, to push the frontier of science: several teams, one per AI provider (the constructors), each with its provider's coding harness, the same brief and the same budget cap, work on one research repository and are scored on the same objectives. Before the race, pilot teams run the brief alone, like free practice.
 
 This repository is the **control plane**. The research itself happens in a separate **target** repository; today it is [`knoel99/milady-2027`](https://github.com/knoel99/milady-2027) (physics-constrained generative models of dynamical systems, an M2 internship). The race was moved here from `race/` of that repository on 2026-11-14 (milady-2027 at `93e6e69`, where its history stays).
 
@@ -13,10 +13,10 @@ This repository is the **control plane**. The research itself happens in a separ
 
 ## How it drives the target
 
-- The target checkout is `SCIATHON_TARGET`, or `../milady-2027` next to this repository.
+- The target checkout is `FRONTIER_TARGET`, or `../milady-2027` next to this repository.
 - The race tools import the target's own tools (`call_model.py`, `run_role.py`, `check_calls.py`) and read its `agents/providers.toml` (which model and effort each provider's harness and each role use) and `agents/roles/`.
 - `python3 tools/race_launch.py install-brief` copies `race/` into the target checkout, where the prompts expect it; the target's `.gitignore` ignores these copies and keeps the one file a team writes there, `race/teams/<team>/objectives.toml`.
-- On a team machine, `SCIATHON_HOME` names this repository's clone, so a team runs `python3 "$SCIATHON_HOME"/tools/race_progress.py check` or `python3 "$SCIATHON_HOME"/tools/compute_broker.py submit …` from its checkout.
+- On a team machine, `FRONTIER_HOME` names this repository's clone, so a team runs `python3 "$FRONTIER_HOME"/tools/race_progress.py check` or `python3 "$FRONTIER_HOME"/tools/compute_broker.py submit …` from its checkout.
 
 ```bash
 git clone https://github.com/knoel99/milady-2027.git ../milady-2027

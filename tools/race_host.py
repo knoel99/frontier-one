@@ -69,7 +69,7 @@ def parse_secrets(text: str) -> dict[str, str]:
 def env_file(team: str, secrets: dict[str, str]) -> str:
     key_var = config()["teams"][team]
     env = {"MILADY_PROVIDER": team, "MILADY_JOB_PREFIX": f"milady-{team}-job-",
-           "SCIATHON_HOME": "/opt/race/sciathon", "SCIATHON_TARGET": f"/home/race-{team}/milady",
+           "FRONTIER_HOME": "/opt/race/frontier-one", "FRONTIER_TARGET": f"/home/race-{team}/milady",
            "PATH": f"/home/race-{team}/.npm-global/bin:/home/race-{team}/.local/bin:/usr/local/bin:/usr/bin:/bin"}
     for k in (key_var, *SHARED, "CLAUDE_CODE_OAUTH_TOKEN" if team == "claude" else ""):
         if k and secrets.get(k):
