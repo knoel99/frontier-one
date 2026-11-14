@@ -1,6 +1,6 @@
 # Test plan: is Frontier usable, and does every feature work?
 
-Status: plan, not run yet (2026-11-14). Method: pstack's verification approach. Every feature has a way a user reaches
+Status: run on 2026-11-14; results in [TEST-RESULTS.md](TEST-RESULTS.md). Method: pstack's verification approach. Every feature has a way a user reaches
 it, a way an agent drives it, and an **observable state that proves it works**. Each step ends with a check of the
 real artifact; "the build passed" is not evidence. Each feature gets a verdict, **PASS**, **ISSUES** or **BLOCKED**,
 with its evidence. A fresh agent then re-checks the verdicts against the evidence. A green run is ready for a
