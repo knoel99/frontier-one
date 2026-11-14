@@ -8,7 +8,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-PROXY_PLACEHOLDER = "proxy-injected"
+from .credentials import PLACEHOLDER as PROXY_PLACEHOLDER  # noqa: F401 - used by importers
+from .credentials import auth_header
 
 
 def request(method: str, url: str, headers: dict | None = None, body=None, timeout: float = 120) -> tuple[int, str]:
@@ -51,7 +52,7 @@ def scw_raw(method: str, path: str, body=None, query: dict | None = None, conten
     url = "https://api.scaleway.com" + (path if path.startswith("/") else "/" + path)
     if query:
         url += "?" + urllib.parse.urlencode({k: v for k, v in query.items() if v not in (None, "")}, doseq=True)
-    headers = {"X-Auth-Token": os.environ.get("SCW_SECRET_KEY") or PROXY_PLACEHOLDER}
+    headers = auth_header("scaleway")
     if content_type:
         headers["Content-Type"] = content_type
     return request(method, url, headers, body)
@@ -72,10 +73,9 @@ def scw(method: str, path: str, body=None, query: dict | None = None, content_ty
 
 def mcp_call(tool: str, arguments: dict | None = None, timeout: float = 180) -> tuple[bool, str]:
     """Call a Runpod MCP tool. Returns (ok, text)."""
-    key = os.environ.get("RUNPOD_API_KEY") or PROXY_PLACEHOLDER
     payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": tool, "arguments": arguments or {}}}
     code, text = request("POST", os.environ.get("RUNPOD_MCP_URL", "https://mcp.runpod.io/"),
-                         {"Authorization": f"Bearer {key}", "Accept": "application/json, text/event-stream"}, payload, timeout)
+                         {**auth_header("runpod"), "Accept": "application/json, text/event-stream"}, payload, timeout)
     if code != 200:
         return False, f"HTTP {code} {text[:1500]}"
     if "\ndata:" in text or text.startswith(("event:", "data:")):  # server-sent events: last data line

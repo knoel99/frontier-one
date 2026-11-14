@@ -229,7 +229,7 @@ def test_a_sibling_directory_with_the_same_prefix_is_outside_the_workspace(tmp_p
 
 def test_renamed_key_variables_reach_every_reader(tmp_path, monkeypatch):
     for v in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "SCW_SECRET_KEY", "SCW_DEFAULT_PROJECT_ID"):
-        monkeypatch.setenv(v, "")  # recorded, so that what export_env writes is undone after the test
+        monkeypatch.setenv(v, "")  # recorded, so that what credentials.load writes is undone after the test
         monkeypatch.delenv(v)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-personal")  # an ambient default: the mission's own name wins
     monkeypatch.setenv("MY_OPENAI", "sk-mine")
@@ -238,13 +238,13 @@ def test_renamed_key_variables_reach_every_reader(tmp_path, monkeypatch):
     monkeypatch.setenv("MY_PROJECT", "proj-1")
     f = _mission(tmp_path)
     f.write_text(f.read_text().replace('provider = "openai"', 'provider = "openai"\nkey_env = "MY_OPENAI"')
-                 .replace("budget_eur = 3", 'budget_eur = 3\nkey_env = "MY_SCW"\nproject_id_env = "MY_PROJECT"')
-                 .replace("NO_SUCH_TOKEN_FOR_TESTS", "MY_HF"))
+                 .replace("budget_eur = 3", 'budget_eur = 3\nkey_env = "MY_SCW"')
+                 .replace("NO_SUCH_TOKEN_FOR_TESTS", "MY_HF") + '[secrets]\nSCW_DEFAULT_PROJECT_ID = "env:MY_PROJECT"\n')
     info = mission.prepare(f, ping=False, offers=False)
-    monkeypatch.delenv("MY_PROJECT")  # inside a sandbox only the settings carry it
-    mission.export_env(info["settings"])
     assert os.environ["OPENAI_API_KEY"] == "sk-mine" and os.environ["SCW_SECRET_KEY"] == "scw-mine"
     assert hf._token() == "hf-mine" and info["settings"]["allow_publish"]
+    monkeypatch.delenv("SCW_DEFAULT_PROJECT_ID")  # inside a sandbox only the settings carry it
+    mission.apply_settings(info["settings"])
     assert os.environ["SCW_DEFAULT_PROJECT_ID"] == "proj-1"
 
 

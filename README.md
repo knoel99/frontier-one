@@ -36,7 +36,7 @@ How a race runs, step by step (one team; every box links to its code at commit `
 Render each with `node <archify>/bin/archify.mjs finalize <workflow|architecture|sequence> docs/diagrams/<name>.archify.json docs/diagrams/<name>.html --repo-root . --quality showcase`.
 
 ```bash
-cp config/mission.example.toml my-mission.toml          # fill in: harness, keys (env names), budgets, subject
+cp config/mission.example.toml my-mission.toml          # fill in: harness, budgets, subject, [secrets] sources
 python3 -m frontier mission start my-mission.toml --prepare-only   # write the workspace, check the key
 python3 -m frontier mission start my-mission.toml       # launch the harness headless until delivery
 python3 -m frontier mission status my-mission.toml      # spend, commitments, time left
@@ -77,12 +77,23 @@ can define any other sub-agent with `spawn_agent(instructions=…)`.
 The mission's state lives outside the AI's workspace (`~/.frontier/missions/<name>/`) and is written by the
 framework only.
 
+## Keys, from anywhere
+
+No key is typed by hand and none is written down. What each key opens is declared in `config/providers.toml` (a
+model provider's `key_env` and `base_url`; a service's `env`, `hosts`, `header` and non-secret `settings` under
+`[services.*]`), so a new provider or cloud is a config entry. Where each value comes from is declared by the mission's
+`[secrets]`: `env:NAME`, `file:PATH` (Docker, Kubernetes or systemd secrets), `cmd:COMMAND` (any secret manager's CLI)
+or `proxy` (an outer proxy injects it, as in a Claude Code cloud session). The launcher resolves them once, on the host,
+under their standard names (`frontier/credentials.py`); `mission.json` records only where each came from. Checked live
+on 2026-11-14 with every key left to the session's proxy: key checks, `spawn_agent` and gateway-metered calls on
+openai, google, deepseek and zhipu (12 calls, all priced exactly, ledgers intact, no key on disk).
+
 ## Sandbox and network lists (NVIDIA OpenShell)
 
 With `[sandbox] kind = "openshell"` in the mission file, each team's harness runs in an
 [OpenShell](https://docs.nvidia.com/openshell/) sandbox (`frontier/sandbox.py`, written from the 0.1.8 docs):
 
-- **Keys never enter the sandbox.** Each key (LLM provider, Scaleway, Runpod, Hugging Face) becomes an OpenShell provider
+- **Keys never enter the sandbox.** Each key the mission uses becomes an OpenShell provider
   backed by a profile of ours; inside, its variable holds a placeholder that OpenShell's proxy replaces with the real key
   only on the way to that service's hosts, in that service's header.
 - **Network denied by default.** Allowed: the providers' hosts, package registries, Hugging Face storage, and the

@@ -59,12 +59,12 @@ def _fill(x, values: dict):
 
 
 def build_session(info: dict, h: dict, prompt: str, gateway: str | None) -> tuple[list[str], dict]:
-    m, cfg = info["mission"], load_config()
+    cfg = load_config()
     s = info["settings"]
     provider = s["provider"]
     spec = llm.resolve(cfg, provider, s["tier"], s["reasoning"])
     effort = spec.effort_value if h.get("effort") == "provider" else s["reasoning"]
-    key_env = m.get("llm", {}).get("key_env") or cfg["providers"][provider]["key_env"]
+    key_env = cfg["providers"][provider]["key_env"]  # resolved to its standard name by credentials.load
     values = {"prompt": prompt, "model": spec.model, "effort": effort, "max_turns": 500, "workspace": info["workspace"],
               "state": info["state"], "key": os.environ.get(key_env) or llm.PROXY_PLACEHOLDER, "frontier": ROOT,
               "provider_model": f"{provider}/{spec.model}", "gateway": gateway or ""}
@@ -283,7 +283,7 @@ def session(state_dir: str, n: int) -> int:
     s = json.loads((state / "mission.json").read_text())
     s["workspace"] = os.getcwd()
     (state / "mission.json").write_text(json.dumps(s, indent=1) + "\n")
-    mission.export_env(s)
+    mission.apply_settings(s)
     info = {"mission": s.get("conf", {}), "settings": s, "state": state, "workspace": pathlib.Path(os.getcwd())}
     h = harness_conf(s["harness"], s["provider"])
     run = Run(load_config(), workspace=info["workspace"], allow_spend=True, run_id=state.name, log_dir=state, settings=s)
