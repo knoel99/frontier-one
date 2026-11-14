@@ -82,6 +82,63 @@ def _harness_actions(log: pathlib.Path, limit: int = 60) -> list[dict]:
     return out[-limit:]
 
 
+def subagents(events: list[dict], llm: list[dict], logs: list[pathlib.Path]) -> list[dict]:
+    """History of the sub-agents of a mission, like a session tracker: model, effort, duration, calls, tokens, cost.
+
+    Frontier sub-agents (spawn_agent) come from agent_start / model_call / agent_end events and the LLM ledger;
+    the harness's native sub-agents (Claude Code's Agent/Task tool) from its stream-json output, their cost being
+    part of the harness's own traffic."""
+    rows: dict[str, dict] = {}
+    for e in events:
+        k, a = e.get("event"), e.get("agent")
+        if k == "agent_start" and a and not a.startswith("harness"):
+            rows[a] = {"kind": "spawn_agent" if e.get("depth") else "main (API agent)", "agent": a, "parent": e.get("parent"), "depth": e.get("depth"),
+                       "model": f"{e.get('provider')}/{e.get('model')}", "effort": e.get("reasoning"),
+                       "effort_value": e.get("effort_value"), "start": e.get("t"), "end": None, "status": "running",
+                       "task": _short(e.get("task", ""), 300), "calls": 0, "tool_calls": 0, "input": 0, "cached": 0,
+                       "output": 0, "reasoning": 0, "usd": 0.0, "answer": ""}
+        elif k == "model_call" and a in rows:
+            rows[a]["calls"] += 1
+            rows[a]["tool_calls"] += len(e.get("tool_calls") or [])
+        elif k == "agent_end" and a in rows:
+            rows[a].update(end=e.get("t"), status="done", answer=_short(e.get("answer", ""), 300))
+    for e in llm:
+        r = rows.get(e.get("gen_ai.agent.name"))
+        if r:
+            r["input"] += e["gen_ai.usage.input_tokens"]
+            r["cached"] += e["gen_ai.usage.cache_read.input_tokens"]
+            r["output"] += e["gen_ai.usage.output_tokens"]
+            r["reasoning"] += e["gen_ai.usage.reasoning.output_tokens"]
+            r["usd"] = round(r["usd"] + e["frontier.cost.usd"], 6)
+            if e.get("frontier.mode"):
+                r["model"] = r["model"].split("+")[0] + "+" + e["frontier.mode"]
+    for r in rows.values():
+        s, f = parse_time(r["start"]), parse_time(r["end"])
+        r["seconds"] = round(((f or now()) - s).total_seconds()) if s else None
+    out = list(rows.values())
+    for log in logs:  # native sub-agents of the harness
+        try:
+            lines = log.read_text(errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            if '"tool_use"' not in line:
+                continue
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            for c in (e.get("message") or {}).get("content", []) if e.get("type") == "assistant" else []:
+                if c.get("type") == "tool_use" and c.get("name") in ("Agent", "Task"):
+                    inp = c.get("input") or {}
+                    out.append({"kind": "native", "agent": inp.get("subagent_type") or "agent", "parent": "harness",
+                                "model": inp.get("model") or "harness model", "effort": "", "start": None, "end": None,
+                                "status": "native", "task": _short(inp.get("description") or inp.get("prompt", ""), 300),
+                                "calls": None, "tool_calls": None, "input": None, "cached": None, "output": None,
+                                "reasoning": None, "usd": None, "seconds": None, "answer": "", "session": log.stem})
+    return out
+
+
 def team_state(d: pathlib.Path) -> dict:
     settings = json.loads((d / "mission.json").read_text())
     b = Budget(d)
@@ -126,14 +183,17 @@ def team_state(d: pathlib.Path) -> dict:
     return {"name": settings.get("name", d.name), "harness": settings.get("harness"), "provider": settings.get("provider"),
             "tier": settings.get("tier"), "reasoning": settings.get("reasoning"), "status": st, "tokens": tokens,
             "series": series, "alive": alive, "jobs": jobs[-10:], "running": running, "delivered": delivered,
-            "actions": actions[-120:]}
+            "actions": actions[-120:], "subagents": subagents(events, llm, sessions)}
 
 
 def snapshot(root: pathlib.Path) -> dict:
     teams = [team_state(p.parent) for p in sorted(root.glob("*/mission.json"))]
     feed = sorted(({**a, "team": t["name"]} for t in teams for a in t["actions"] if a["t"]),
                   key=lambda a: a["t"])[-FEED:]
-    return {"time": now().isoformat(timespec="seconds"), "root": str(root), "teams": teams, "feed": feed[::-1]}
+    history = sorted(({**r, "team": t["name"]} for t in teams for r in t["subagents"]),
+                     key=lambda r: r.get("start") or "", reverse=True)
+    return {"time": now().isoformat(timespec="seconds"), "root": str(root), "teams": teams, "feed": feed[::-1],
+            "subagents": history}
 
 
 PAGE = (pathlib.Path(__file__).with_name("dashboard.html")).read_text()

@@ -386,3 +386,23 @@ def test_dashboard_snapshot(tmp_path, cfg):
     assert any(a["kind"] == "harness shell" and "pytest" in a["text"] for a in t["actions"])
     assert t["jobs"] and "python train.py" in t["jobs"][0]["text"]
     assert snap["feed"][0]["team"] == "t"
+
+
+def test_dashboard_subagent_history(tmp_path, cfg):
+    from frontier import dashboard
+
+    events = [{"t": "2026-11-14T10:00:00+00:00", "event": "agent_start", "agent": "sub-1", "parent": "main-1", "depth": 1,
+               "provider": "zhipu", "model": "glm-5.3-flash", "reasoning": "low", "task": "compute"},
+              {"t": "2026-11-14T10:00:03+00:00", "event": "model_call", "agent": "sub-1", "tool_calls": ["shell"]},
+              {"t": "2026-11-14T10:00:05+00:00", "event": "agent_end", "agent": "sub-1", "answer": "391"}]
+    llm = [{"gen_ai.agent.name": "sub-1", "gen_ai.usage.input_tokens": 900, "gen_ai.usage.cache_read.input_tokens": 100,
+            "gen_ai.usage.output_tokens": 10, "gen_ai.usage.reasoning.output_tokens": 2, "frontier.cost.usd": 0.0002,
+            "frontier.mode": ""}]
+    log = tmp_path / "01.log"
+    log.write_text(json.dumps({"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "name": "Agent", "input": {"subagent_type": "reviewer", "description": "check E1"}}]}}) + "\n")
+    rows = dashboard.subagents(events, llm, [log])
+    sub = rows[0]
+    assert sub["kind"] == "spawn_agent" and sub["seconds"] == 5 and sub["calls"] == 1 and sub["tool_calls"] == 1
+    assert sub["input"] == 900 and sub["cached"] == 100 and sub["usd"] == 0.0002 and sub["status"] == "done"
+    assert rows[1]["kind"] == "native" and rows[1]["agent"] == "reviewer" and rows[1]["usd"] is None

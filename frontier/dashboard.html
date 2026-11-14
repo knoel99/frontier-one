@@ -18,6 +18,10 @@ svg{width:100%;height:60px}.ok{color:var(--acc)}.ko{color:var(--bad)}
 </style></head><body><main>
 <h1>Race dashboard</h1><div class="mute" id="meta"></div>
 <div class="grid" id="teams"></div>
+<div class="card" style="margin-bottom:12px"><h2>Sub-agents (latest first)</h2>
+<div class="mute" id="subsum"></div><div style="overflow:auto"><table><thead><tr><th>start</th><th>team</th><th>agent</th>
+<th>model</th><th>effort</th><th>time</th><th>calls</th><th>tools</th><th>in (cached)</th><th>out (reasoning)</th><th>USD</th>
+<th>status</th><th>task</th></tr></thead><tbody id="subs"></tbody></table></div></div>
 <div class="card"><h2>All actions (latest first)</h2><table class="feed"><tbody id="feed"></tbody></table></div>
 </main><script>
 const fmt=(x,d=4)=>x==null?'–':Number(x).toFixed(d), esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -45,6 +49,15 @@ function team(t){const s=t.status,l=s.llm,c=s.cloud,tk=t.tokens;
 async function load(){const d=window.__STATE__||await (await fetch('api/state')).json();
  document.getElementById('meta').textContent=`${d.teams.length} team(s) · ${d.root} · updated ${d.time}`;
  document.getElementById('teams').innerHTML=d.teams.map(team).join('');
- document.getElementById('feed').innerHTML=d.feed.map(a=>`<tr><td>${esc(a.t.slice(11,19))}</td><td><b>${esc(a.team)}</b></td><td><span class="tag">${esc(a.kind)}</span></td><td>${esc(a.text)}</td></tr>`).join('');}
+ document.getElementById('feed').innerHTML=d.feed.map(a=>`<tr><td>${esc(a.t.slice(11,19))}</td><td><b>${esc(a.team)}</b></td><td><span class="tag">${esc(a.kind)}</span></td><td>${esc(a.text)}</td></tr>`).join('');subs(d);}
+function dur(s){if(s==null)return '–';return s<90?s+' s':s<5400?Math.round(s/60)+' min':(s/3600).toFixed(1)+' h'}
+function subs(d){const rows=d.subagents||[];const tot=rows.reduce((a,r)=>a+(r.usd||0),0);
+ document.getElementById('subsum').textContent=`${rows.filter(r=>r.kind==='spawn_agent').length} spawn_agent run(s), ${fmt(tot)} USD; `+
+  `${rows.filter(r=>r.kind==='native').length} native harness sub-agent(s) (their cost is in the harness's traffic)`;
+ document.getElementById('subs').innerHTML=rows.map(r=>`<tr title="${esc(r.answer||'')}"><td>${esc((r.start||'').slice(11,19))}</td><td>${esc(r.team)}</td>`+
+  `<td>${esc(r.agent)}${r.parent&&r.parent!=='harness'?`<div class="mute">← ${esc(r.parent)}</div>`:''}</td><td>${esc(r.model)}</td><td>${esc(r.effort||'')}</td>`+
+  `<td>${dur(r.seconds)}</td><td>${r.calls??'–'}</td><td>${r.tool_calls??'–'}</td><td>${r.input??'–'}${r.cached?` (${r.cached})`:''}</td>`+
+  `<td>${r.output??'–'}${r.reasoning?` (${r.reasoning})`:''}</td><td>${r.usd==null?'–':fmt(r.usd)}</td>`+
+  `<td><span class="tag ${r.status==='done'?'ok':''}">${esc(r.status)}</span></td><td>${esc(r.task)}</td></tr>`).join('');}
 load();if(!window.__STATE__)setInterval(load,5000);
 </script></body></html>
