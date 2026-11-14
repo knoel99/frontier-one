@@ -169,7 +169,9 @@ def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict]
         f"{h.title} on `{_main_model(cfg, m)}` (provider `{m.get('llm', {}).get('provider')}`, tier "
         f"`{m['harness'].get('tier', 'frontier')}`, reasoning `{m['harness'].get('reasoning', 'high')}`); its LLM calls "
         "are charged to the LLM budget like those of the sub-agents. Its own tools (shell, files, web, native "
-        "sub-agents, skills) are yours as well." + (f" Note: {h.notes}." if h.notes else ""), "",
+        "sub-agents, skills) are yours as well. The speed modes of its provider (under Models below) apply to its "
+        "own calls too when it sends the mode's request field; the metering gateway bills the tier each response says "
+        "was served." + (f" Note: {h.notes}." if h.notes else ""), "",
         "## Frontier tools", "",
         "Served by the `frontier` MCP server of this workspace. Without MCP, the same tools run from the shell: "
         f"`{_paths(m, ctx.run.log_dir)[0]}/bin/frontier call <tool> '<json>' --state {_paths(m, ctx.run.log_dir)[1]}` "
