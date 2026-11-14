@@ -126,9 +126,27 @@ def worst_case(cfg: dict, provider: str, path: str, body: bytes) -> float:
         obj = {}
     out = (obj.get("max_output_tokens") or obj.get("max_completion_tokens") or obj.get("max_tokens")
            or (obj.get("generationConfig") or {}).get("maxOutputTokens") or DEFAULT_MAX_OUT)
-    modes = cfg.get("providers", {}).get(provider, {}).get("modes", {}).values()
-    px = max([1.0, *(float(m.get("price_x", 1.0)) for m in modes)])
-    return worst_case_usd(provider, model_of(body, path, None), len(body), int(out), px)
+    model = model_of(body, path, None)
+    return worst_case_usd(provider, model, len(body), int(out), requested_price_x(cfg, provider, obj, model))
+
+
+def requested_price_x(cfg: dict, provider: str, req: dict, model: str) -> float:
+    """Price multiplier of the speed mode the request asks for (its body fields, for a model the mode covers)."""
+    px = 1.0
+    for m in cfg.get("providers", {}).get(provider, {}).get("modes", {}).values():
+        asked = all(req.get(k) == v for k, v in m.get("body", {}).items())
+        if asked and (not m.get("models") or model in m["models"]):
+            px = max(px, float(m.get("price_x", 1.0)))
+    return px
+
+
+GENERATION = ("/chat/completions", "/responses", "/responses/compact", "/messages", "/interactions",
+              ":generateContent", ":streamGenerateContent")
+
+
+def is_generation(method: str, rest: str) -> bool:
+    """A billed model call (not a batch, a cancel, a token count or a read)."""
+    return method == "POST" and rest.split("?", 1)[0].rstrip("/").endswith(GENERATION)
 
 
 def model_of(req_body: bytes, path: str, resp_obj: dict | None) -> str:
@@ -194,10 +212,7 @@ class Handler(BaseHTTPRequestHandler):
         rest = "/" + (parts[1] if len(parts) > 1 else "")
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
-        is_llm_call = self.command == "POST" and any(k in rest for k in ("/chat/completions", "/responses", "/messages",
-                                                                           ":generateContent", ":streamGenerateContent",
-                                                                           "/interactions")) \
-            and "count_tokens" not in rest and "input_tokens" not in rest
+        is_llm_call = is_generation(self.command, rest)
         rid, worst = None, 0.0
         if is_llm_call:
             worst = worst_case(self.server.cfg, provider, rest, body)

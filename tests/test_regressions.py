@@ -67,12 +67,24 @@ def test_gateway_charges_the_worst_case_when_usage_is_unknown(tmp_path):
     assert e["frontier.price_exact"] is False and b.reserved() == 0
 
 
-def test_gateway_reserves_at_the_dearest_mode(cfg):
-    dearest = max(float(m.get("price_x", 1)) for m in cfg["providers"]["openai"].get("modes", {}).values())
-    assert dearest > 1
-    body = json.dumps({"model": "gpt-6-astra", "input": "x", "max_output_tokens": 1000}).encode()
-    standard = budget.worst_case_usd("openai", "gpt-6-astra", len(body), 1000)
-    assert gateway.worst_case(cfg, "openai", "/v1/responses", body) == pytest.approx(standard * dearest)
+def test_gateway_reserves_at_the_requested_mode(cfg):
+    def worst(**req):
+        body = json.dumps({"input": "x", "max_output_tokens": 1000, **req}).encode()
+        return gateway.worst_case(cfg, "openai", "/v1/responses", body) / budget.worst_case_usd(
+            "openai", req["model"], len(body), 1000)
+
+    assert worst(model="gpt-6-astra", service_tier="ultrafast") == pytest.approx(6.0)
+    assert worst(model="gpt-6-astra") == pytest.approx(1.0)
+    assert worst(model="gpt-6-luna", service_tier="ultrafast") == pytest.approx(1.0)  # a mode the model lacks
+
+
+def test_only_generation_calls_are_metered():
+    assert gateway.is_generation("POST", "/v1/responses") and gateway.is_generation("POST", "/v1/messages")
+    assert gateway.is_generation("POST", "/v1beta/models/g:streamGenerateContent?alt=sse")
+    for path in ("/v1/responses/r1/cancel", "/v1/messages/batches", "/v1/messages/count_tokens",
+                 "/v1/responses/input_tokens"):
+        assert not gateway.is_generation("POST", path), path
+    assert not gateway.is_generation("GET", "/v1/responses")
 
 
 # ---------------------------------------------------------------- launcher
