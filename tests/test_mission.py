@@ -86,7 +86,7 @@ def test_watchdog_deletes_overdue_resources(tmp_path, cfg, monkeypatch):
     run.resources = [{"provider": "runpod", "id": "p1", "usd_per_hour": 1.0, "max_hours": 2, "created": old, "state": "alive"},
                      {"provider": "runpod", "id": "p2", "usd_per_hour": 1.0, "max_hours": 9, "created": old, "state": "alive"}]
     deleted = []
-    monkeypatch.setattr(infra, "mcp_json", lambda tool, args=None: deleted.append(args["id"]) or {})
+    monkeypatch.setattr(infra, "mcp_json", lambda tool, args=None: (tool == "delete-pod" and deleted.append(args["id"])) or {})
     out = infra.enforce(run)
     assert deleted == ["p1"] and out[0]["reason"] == "max_hours reached"
     assert [r["id"] for r in run.alive()] == ["p2"]

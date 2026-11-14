@@ -297,3 +297,27 @@ def test_mcp_calls_run_concurrently(tmp_path, monkeypatch):
     release.set()
     t.join(5)
     assert '"id": 1' in out.getvalue()
+
+
+# ---------------------------------------------------------------- runner activity
+
+
+def test_runner_activity_is_kept_and_shown(tmp_path, cfg, monkeypatch):
+    from frontier import dashboard
+
+    state = tmp_path / "missions" / "t"
+    r = agent_mod.Run(cfg, workspace=tmp_path / "ws", log_dir=state, allow_spend=True)
+    (state / "mission.json").write_text(json.dumps({"name": "t"}))
+    answers = {"exec-pod": {"exitCode": 0, "durationMs": 12, "stdout": "pytest: 61 passed\n", "stderr": "warn\n"},
+               "stream-pod-logs": {"logs": ["boot ok", "job done"]}, "delete-pod": {}}
+    monkeypatch.setattr(infra, "mcp_json", lambda tool, args=None: answers[tool])
+    r.record({"provider": "runpod", "kind": "pod", "id": "p1", "type": "1x X", "usd_per_hour": 0.5, "max_hours": 1})
+    ctx = agent_mod.Ctx(r, None)
+    infra.rp_exec(ctx, "p1", "python -m pytest -q")
+    infra.rp_delete_pod(ctx, "p1")
+    log = (state / "runners" / "p1.log").read_text()
+    for part in ("exec (exit 0, 12 ms): python -m pytest -q", "pytest: 61 passed", "--- stderr", "warn",
+                 "logs before deletion", "job done", "deleted (deleted)"):
+        assert part in log, part
+    (runner,) = dashboard.snapshot(tmp_path / "missions")["teams"][0]["runners"]
+    assert runner["state"] == "deleted" and runner["commands"] == 1 and "job done" in runner["log_tail"]

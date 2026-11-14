@@ -139,6 +139,8 @@ def scw_create_instance(ctx, name: str, commercial_type: str, max_hours: float, 
                         "type": commercial_type, "eur_per_hour": offer.get("eur_per_hour"), "max_hours": max_hours,
                         "volumes": [v["id"] for v in (s.get("volumes") or {}).values()],
                         "ips": [ip["id"] for ip in s.get("public_ips") or []]})
+        runner_log(ctx.run, s["id"], f"created: {commercial_type} in {zone}, {offer.get('eur_per_hour')} EUR/h, "
+                   f"max {max_hours} h" + (", with a cloud-init script (not recorded: it may hold secrets)" if cloud_init else ""))
     if cloud_init:
         scw("PATCH", f"/instance/v1/zones/{zone}/servers/{s['id']}/user_data/cloud-init", cloud_init, content_type="text/plain")
     scw("POST", f"/instance/v1/zones/{zone}/servers/{s['id']}/action", {"action": "poweron"})
@@ -188,6 +190,7 @@ def _delete_scw_instance(run, server_id: str, zone: str) -> dict:
             if time.time() - t0 >= wait:  # still billing: kept alive in the ledger, retried by cleanup and the watchdog
                 run.mark(server_id, "deleting")
                 done["server"] = f"still there after {wait} s: deletion asked, not confirmed"
+                runner_log(run, server_id, "deletion not confirmed yet", json.dumps(done))
                 return done
             time.sleep(POLL_S)
         done["server"] = "deleted"
@@ -211,8 +214,10 @@ def _delete_scw_instance(run, server_id: str, zone: str) -> dict:
             scw("DELETE", f"/instance/v1/zones/{zone}/ips/{ip}")
             done["ips_deleted"].append(ip)
     if done.get("volumes_left"):  # a volume left behind keeps billing: the resource stays alive, to be retried
+        runner_log(run, server_id, "deletion incomplete", json.dumps(done))
         return done
     run.mark(server_id, "deleted")
+    runner_log(run, server_id, "deleted", json.dumps(done))
     return done
 
 
@@ -280,6 +285,8 @@ def rp_create_pod(ctx, name: str, gpu_type_id: str, max_hours: float,
         usd = offer["usd_per_gpu_hour"] * gpu_count if offer else None
         ctx.run.record({"provider": "runpod", "kind": "pod", "id": pod_id, "name": name, "type": f"{gpu_count}x {gpu_type_id}",
                         "usd_per_hour": usd, "max_hours": max_hours})
+        runner_log(ctx.run, pod_id, f"created: {gpu_count}x {gpu_type_id}, image {image}, {usd} USD/h, max {max_hours} h",
+                   f"command: {command}" if command else "")
     return _j({"id": pod_id, "usd_per_hour_gpu_only": usd, "pod": pod,
                "note": "run commands with rp_exec once it is RUNNING; delete with rp_delete_pod"})
 
@@ -292,17 +299,42 @@ def rp_list_pods(ctx) -> str:
     return _j(mcp_json("list-pods", {}))
 
 
+def runner_log(run, resource_id: str, title: str, text: str = "") -> None:
+    """Append to the activity log of one runner (state/runners/<id>.log): what was run on it and what it answered,
+    in full, so that a runner's work can be recovered after it is deleted."""
+    d = run.log_dir / "runners"
+    d.mkdir(parents=True, exist_ok=True)
+    with open(d / f"{resource_id}.log", "a") as f:
+        f.write(f"=== {now().isoformat(timespec='seconds')} {title}\n" + (text.rstrip("\n") + "\n" if text else ""))
+
+
 def rp_exec(ctx, pod_id: str, command: str, timeout_s: int = 20) -> str:
     """Run a shell command inside a running pod (no SSH needed); waits at most 25 s per call."""
     body = {"command": ["sh", "-c", command], "timeoutSeconds": max(1, min(25, timeout_s))}
-    return _j(mcp_json("exec-pod", {"id": pod_id, "body": body}))
+    try:
+        r = mcp_json("exec-pod", {"id": pod_id, "body": body})
+    except APIError as e:
+        runner_log(ctx.run, pod_id, f"exec failed: {command}", str(e))
+        raise
+    out = r if isinstance(r, dict) else {}
+    runner_log(ctx.run, pod_id, f"exec (exit {out.get('exitCode')}, {out.get('durationMs')} ms"
+               + (", still running" if out.get("timedOut") else "") + f"): {command}",
+               (out.get("stdout") or "") + ("\n--- stderr\n" + out["stderr"] if out.get("stderr") else ""))
+    return _j(r)
 
 
 def rp_logs(ctx, pod_id: str, tail: int = 200) -> str:
-    return _j(mcp_json("stream-pod-logs", {"podId": pod_id, "tail": tail, "maxWaitMs": 2000}))
+    r = _j(mcp_json("stream-pod-logs", {"podId": pod_id, "tail": tail, "maxWaitMs": 2000}))
+    runner_log(ctx.run, pod_id, f"logs (last {tail} lines)", r)
+    return r
 
 
 def _delete_rp_pod(run, pod_id: str) -> dict:
+    try:  # the container's own logs, kept before they are gone with it
+        runner_log(run, pod_id, "logs before deletion",
+                   _j(mcp_json("stream-pod-logs", {"podId": pod_id, "tail": 500, "maxWaitMs": 2000})))
+    except APIError:
+        pass
     try:
         mcp_json("delete-pod", {"id": pod_id})
         state = "deleted"
@@ -311,6 +343,7 @@ def _delete_rp_pod(run, pod_id: str) -> dict:
         if state.startswith("error"):
             return {"id": pod_id, "state": state}
     run.mark(pod_id, "deleted")
+    runner_log(run, pod_id, f"deleted ({state})")
     return {"id": pod_id, "state": state}
 
 
