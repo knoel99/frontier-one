@@ -1,31 +1,62 @@
-# Frontier One
+# Frontier
 
-A framework where AI agents race, Formula 1 style, to push the frontier of science: several teams, one per AI provider (the constructors), each with its provider's coding harness, the same brief and the same budget cap, work on one research repository and are scored on the same objectives. Before the race, pilot teams run the brief alone, like free practice.
+A provider-agnostic agent framework for the hackathon: an agent is a loop over a model **API** (no vendor
+harness), it has a fixed toolbox, and it can start **sub-agents** that also run on an API, each with the model and
+the reasoning level the parent chooses for the sub-task. The previous race framework is kept, untouched, in
+[`old/`](old/).
 
-This repository is the **control plane**. The research itself happens in a separate **target** repository; today it is [`knoel99/milady-2027`](https://github.com/knoel99/milady-2027) (physics-constrained generative models of dynamical systems, an M2 internship). The race was moved here from `race/` of that repository on 2026-11-14 (milady-2027 at `93e6e69`, where its history stays).
+```bash
+python3 -m frontier plan                     # model and reasoning value of every provider × tier × level
+python3 -m frontier ping [--provider p]      # tiny tool-calling request per model: checks ids, effort values, tools
+python3 -m frontier run --provider openai --tier frontier --reasoning high --workspace ../milady-2027 "task…"
+python3 -m frontier run --role cloud-ops --allow-spend --task-file task.md
+python3 -m frontier docs search create gpu instance      # the API docs the agents read
+python3 -m pytest && python3 -m ruff check .              # offline tests, lint
+```
+
+Python ≥ 3.11, standard library only (PyYAML only to refresh the docs).
+
+## Layout
 
 | Path | What it holds |
 |---|---|
-| `race/` | the brief, goal and prompts of the teams, the deliverables, the common objectives, the pilots, the host and isolation runbooks, the diagrams, and `config.toml` (teams and provider keys, budgets, machines, model tier and effort of every team's main session, deadline) |
-| `tools/` | `race_launch.py` (plan, launch, collect, run one team iteration), `race_host.py` (one VM shared by several teams), `race_progress.py` (lock and measure the objectives: the judge), `race_snapshot.py` (a team's clean starting repository), `compute_broker.py` (per-team CPU quota and run cache), `cursor_agents.py` (the Cursor pilot), `target.py` (where the target is) |
-| `infra/deploy/` | the shell side: team VM user data, shared host, team loop, broker job VM, `racectl` |
-| `tests/` | the tests of the tools above, run against a checkout of the target |
+| `config/providers.toml` | the only provider-specific part: per provider its API style, base URL, key variable, model per **tier** (`frontier`, `standard`, `light`) and value of its reasoning parameter per **level** (`none`, `low`, `medium`, `high`, `max`); limits of a run |
+| `frontier/llm.py` | one `chat()` over four wire formats: `openai-chat` (Mistral, DeepSeek, xAI, Moonshot, Qwen, GLM, …), `openai-responses` (OpenAI), `gemini`, `anthropic`; tool calls normalised; reasoning state replayed between turns |
+| `frontier/agent.py` | the agent loop, the run (token budget, sub-agent count and depth shared by the tree, JSONL log) and the `spawn_agent` tool |
+| `frontier/tools.py` | the toolbox: `shell`, `read_file`, `write_file`, `edit_file`, `http_request`, `api_docs`, `scaleway`, `runpod`, `runpod_mcp`, `spawn_agent` |
+| `frontier/apidocs.py` | offline search over `apidocs/` |
+| `apidocs/` | official API docs: 13 Scaleway OpenAPI specs (Instance, Block, Marketplace, Billing, IAM, VPC, IPAM, Secret Manager, Registry, Serverless Jobs, Inference, Generative APIs, File Storage), Runpod REST v1 OpenAPI, the 125 Runpod MCP tools with their schemas, doc pages, and a hand-written `GUIDE.md` per provider (auth, flows, pitfalls); refreshed by `tools/fetch_api_docs.py` (sources and dates in `apidocs/SOURCES.json`) |
+| `prompts/` | system prompt of every agent and the model-choice rules for sub-agents |
+| `roles/` | optional presets for `spawn_agent` / `--role`: `worker`, `reviewer`, `cloud-ops`, `scout` (tier, reasoning, tools, instructions) |
+| `runs/<id>/` | git-ignored: `events.jsonl` (every model call with model, effort and tokens, every tool call), `answer.md`, `summary.json` |
 
-## How it drives the target
+## How an agent chooses a sub-agent
 
-- The target checkout is `FRONTIER_TARGET`, or `../milady-2027` next to this repository.
-- The race tools import the target's own tools (`call_model.py`, `run_role.py`, `check_calls.py`) and read its `agents/providers.toml` (which model and effort each provider's harness and each role use) and `agents/roles/`.
-- `python3 tools/race_launch.py install-brief` copies `race/` into the target checkout, where the prompts expect it; the target's `.gitignore` ignores these copies and keeps the one file a team writes there, `race/teams/<team>/objectives.toml`.
-- On a team machine, `FRONTIER_HOME` names this repository's clone, so a team runs `python3 "$FRONTIER_HOME"/tools/race_progress.py check` or `python3 "$FRONTIER_HOME"/tools/compute_broker.py submit …` from its checkout.
+`spawn_agent(task, tier, reasoning, provider?, role?, tools?, max_turns?)`. The system prompt gives the rule
+(mechanical → `light`/`low`, ordinary work → `standard`/`medium`, design or hard debugging → `frontier`/`high`,
+decisive check → `frontier`/`high|max`); the parent may pick another provider for an independent check. A sub-agent
+gets a fresh context, only a subset of its parent's tools, and cannot spawn beyond `limits.max_depth`. Several
+`spawn_agent` calls in one turn run in parallel. All agents of a run share `max_tokens_per_run` and `max_agents`.
 
-```bash
-git clone https://github.com/knoel99/milady-2027.git ../milady-2027
-python3 tools/race_launch.py plan                   # harness, models and efforts of every team and role
-python3 -m pytest tests                             # needs the target checkout
-```
+## Cloud tools and spending
 
-The runbook of the full race is [`race/README.md`](race/README.md); a single team on a Claude Code cloud session is [`race/PILOT.md`](race/PILOT.md); several teams on one VM is [`race/HOST.md`](race/HOST.md).
+`api_docs` (list / search / show) returns an operation with its parameters and its request and response schemas
+resolved, so agents never look for documentation on the web. `scaleway` and `runpod` call the REST APIs with
+authentication; `runpod_mcp` calls the Runpod MCP server. Every call that creates, changes or deletes a resource
+is refused unless the run is started with `--allow-spend`.
 
-## Still in the target
+## Keys
 
-Each team's work stays where it is published: `research/teams/<team>/` and `site/teams/<team>/` of milady-2027, with the tools a team uses inside its checkout (`runpod_job.py`, `usage_report.py`, `review_due.py`, `check_deliverables.py`, `teams_index.py`). Moving more of the provider-specific configuration here (for instance the harness entries of `agents/providers.toml`) is the next step.
+Each provider reads its key from `key_env` (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `SCW_SECRET_KEY`,
+`RUNPOD_API_KEY`, …). In a Claude Code cloud session whose network proxy injects the credentials, no variable is
+needed: the framework sends the placeholder `proxy-injected` and the proxy replaces it.
+
+## Checked on 2026-11-14 (`ping`, from a Claude Code cloud session)
+
+Tool calls with a reasoning value work for every tier of openai, google, xai, mistral, deepseek, moonshot, alibaba
+and zhipu. anthropic is configured but not checked (no key in that session). End-to-end: a `gpt-6.1-sol`/medium
+agent priced the cheapest ≥ 24 GB GPU on Scaleway itself (bundled docs → Instance and Product Catalog APIs) and
+delegated the Runpod side to a `glm-5.3-flash`/low sub-agent (docs → `runpod_mcp`), 127 k tokens in total.
+Known facts the guides record: OpenAI needs the Responses API for tools with reasoning; Mistral Medium 3.5 and
+Small accept only `none`/`high`; Scaleway `hourly_price` is 0 and GPU prices are per minute in the Product Catalog;
+`rest.runpod.io` needs `RUNPOD_API_KEY` while `mcp.runpod.io` is proxy-authenticated.

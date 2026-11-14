@@ -1,0 +1,357 @@
+"""Provider-agnostic chat client with tool calling, standard library only.
+
+Internal message format (OpenAI-like, provider-neutral):
+  {"role": "system" | "user", "content": str}
+  {"role": "assistant", "content": str, "tool_calls": [{"id", "name", "arguments": dict}], "_raw": <provider data>}
+  {"role": "tool", "tool_call_id": str, "name": str, "content": str}
+
+Each style ("openai-chat", "openai-responses", "gemini", "anthropic") converts it to its wire format and back. `_raw` keeps what a
+provider needs replayed on the next turn (reasoning_content, Gemini thought signatures, Anthropic thinking blocks).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import time
+import urllib.error
+import urllib.request
+import uuid
+from dataclasses import dataclass, field
+
+PROXY_PLACEHOLDER = "proxy-injected"
+LEVELS = ["none", "low", "medium", "high", "max"]
+TIERS = ["frontier", "standard", "light"]
+
+
+class LLMError(RuntimeError):
+    pass
+
+
+@dataclass
+class Reply:
+    content: str
+    tool_calls: list[dict]
+    usage: dict  # {"input": int, "output": int, "reasoning": int}
+    raw_message: dict  # internal assistant message, ready to append to the history
+    stop: str = ""
+
+
+@dataclass
+class ModelSpec:
+    provider: str
+    style: str
+    base_url: str
+    key_env: str
+    model: str
+    tier: str
+    reasoning: str  # abstract level
+    effort_value: object  # provider value, or None when the level is "none" and unmapped
+    effort_field: str
+    extra: dict = field(default_factory=dict)
+    max_tokens_field: str = "max_tokens"
+
+    def label(self) -> str:
+        return f"{self.provider}/{self.model}@{self.reasoning}"
+
+
+def resolve(cfg: dict, provider: str, tier: str, reasoning: str) -> ModelSpec:
+    """Turn (provider, abstract tier, abstract level) into a concrete model and parameter value."""
+    provs = cfg["providers"]
+    if provider not in provs:
+        raise LLMError(f"unknown provider {provider!r}; known: {', '.join(provs)}")
+    if tier not in TIERS:
+        raise LLMError(f"tier must be one of {TIERS}")
+    if reasoning not in LEVELS:
+        raise LLMError(f"reasoning must be one of {LEVELS}")
+    p = provs[provider]
+    tiers = p["tiers"]
+    order = TIERS[TIERS.index(tier):] + list(reversed(TIERS[: TIERS.index(tier)]))
+    used_tier = next(t for t in order if t in tiers)
+    rmap = p.get("reasoning", {})
+    rmap = {**rmap, **p.get("model_reasoning", {}).get(tiers[used_tier], {})}
+    value = None
+    for lvl in reversed(LEVELS[: LEVELS.index(reasoning) + 1]):
+        if lvl in rmap:
+            value = rmap[lvl]
+            break
+    if value is None:  # nothing at or below: take the lowest available (and turn thinking off for "none")
+        value = next((rmap[lvl] for lvl in LEVELS if lvl in rmap), None)
+    return ModelSpec(
+        provider=provider,
+        style=p["style"],
+        base_url=p["base_url"].rstrip("/"),
+        key_env=p["key_env"],
+        model=tiers[used_tier],
+        tier=used_tier,
+        reasoning=reasoning,
+        effort_value=value,
+        effort_field=p.get("effort_field", ""),
+        extra=p.get("extra", {}),
+        max_tokens_field=p.get("max_tokens_field", "max_tokens"),
+    )
+
+
+
+def _set_path(body: dict, dotted: str, value) -> None:
+    keys = dotted.split(".")
+    d = body
+    for k in keys[:-1]:
+        d = d.setdefault(k, {})
+    d[keys[-1]] = value
+
+
+def _merge(dst: dict, src: dict) -> dict:
+    for k, v in src.items():
+        if isinstance(v, dict) and isinstance(dst.get(k), dict):
+            _merge(dst[k], v)
+        else:
+            dst[k] = v
+    return dst
+
+
+def _key(spec: ModelSpec) -> str:
+    return os.environ.get(spec.key_env) or PROXY_PLACEHOLDER
+
+
+def _post(url: str, headers: dict, body: dict, timeout: float = 600, retries: int = 4) -> dict:
+    data = json.dumps(body).encode()
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **headers})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            text = e.read().decode(errors="replace")[:2000]
+            if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries:
+                time.sleep(min(60, 2 ** (attempt + 1)))
+                continue
+            raise LLMError(f"HTTP {e.code} from {url}: {text}") from None
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            if attempt < retries:
+                time.sleep(min(60, 2 ** (attempt + 1)))
+                continue
+            raise LLMError(f"network error on {url}: {e}") from None
+    raise LLMError("unreachable")
+
+
+# ---------------------------------------------------------------- OpenAI Chat Completions (and compatibles)
+
+
+def _openai_messages(messages: list[dict]) -> list[dict]:
+    out = []
+    for m in messages:
+        if m["role"] == "assistant":
+            w = {"role": "assistant", "content": m.get("content") or ""}
+            if m.get("tool_calls"):
+                w["tool_calls"] = [
+                    {"id": c["id"], "type": "function",
+                     "function": {"name": c["name"], "arguments": json.dumps(c["arguments"])}}
+                    for c in m["tool_calls"]
+                ]
+            raw = m.get("_raw") or {}
+            if raw.get("reasoning_content"):  # DeepSeek, Kimi, GLM, Qwen want it back during a tool loop
+                w["reasoning_content"] = raw["reasoning_content"]
+            out.append(w)
+        elif m["role"] == "tool":
+            out.append({"role": "tool", "tool_call_id": m["tool_call_id"], "content": m["content"]})
+        else:
+            out.append({"role": m["role"], "content": m["content"]})
+    return out
+
+
+def _chat_openai(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
+    body = {"model": spec.model, "messages": _openai_messages(messages)}
+    if tools:
+        body["tools"] = [{"type": "function", "function": t} for t in tools]
+    body[spec.max_tokens_field] = max_tokens
+    _merge(body, json.loads(json.dumps(spec.extra)))
+    if spec.reasoning == "none" and "thinking" in body:
+        body["thinking"] = {"type": "disabled"}
+    elif spec.effort_value is not None and spec.effort_field:
+        _set_path(body, spec.effort_field, spec.effort_value)
+    r = _post(f"{spec.base_url}/chat/completions", {"Authorization": f"Bearer {_key(spec)}"}, body)
+    ch = (r.get("choices") or [{}])[0]
+    msg = ch.get("message") or {}
+    calls = []
+    for c in msg.get("tool_calls") or []:
+        fn = c.get("function", {})
+        try:
+            args = json.loads(fn.get("arguments") or "{}")
+        except json.JSONDecodeError:
+            args = {"_unparsed": fn.get("arguments")}
+        calls.append({"id": c.get("id") or uuid.uuid4().hex[:12], "name": fn.get("name"), "arguments": args})
+    u = r.get("usage") or {}
+    det = u.get("completion_tokens_details") or {}
+    usage = {"input": u.get("prompt_tokens", 0), "output": u.get("completion_tokens", 0),
+             "reasoning": det.get("reasoning_tokens", 0)}
+    content = msg.get("content") or ""
+    if isinstance(content, list):  # Mistral can return typed chunks (thinking + text)
+        content = "".join(x.get("text", "") for x in content if isinstance(x, dict) and x.get("type") == "text")
+    raw = {"reasoning_content": msg.get("reasoning_content")} if msg.get("reasoning_content") else {}
+    am = {"role": "assistant", "content": content, "tool_calls": calls, "_raw": raw}
+    return Reply(content, calls, usage, am, ch.get("finish_reason", ""))
+
+
+# ---------------------------------------------------------------- OpenAI Responses API
+
+
+def _responses_input(messages: list[dict]) -> tuple[str, list[dict]]:
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+    items: list[dict] = []
+    for m in messages:
+        if m["role"] == "user":
+            items.append({"role": "user", "content": m["content"]})
+        elif m["role"] == "assistant":
+            raw = (m.get("_raw") or {}).get("output")
+            if raw is not None:  # replay reasoning, message and function_call items as returned
+                items.extend(raw)
+            else:
+                if m.get("content"):
+                    items.append({"role": "assistant", "content": m["content"]})
+                items.extend({"type": "function_call", "call_id": c["id"], "name": c["name"],
+                              "arguments": json.dumps(c["arguments"])} for c in m.get("tool_calls") or [])
+        elif m["role"] == "tool":
+            items.append({"type": "function_call_output", "call_id": m["tool_call_id"], "output": m["content"]})
+    return system, items
+
+
+def _chat_responses(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
+    system, items = _responses_input(messages)
+    body = {"model": spec.model, "input": items, "max_output_tokens": max_tokens, "store": False,
+            "include": ["reasoning.encrypted_content"]}
+    if system:
+        body["instructions"] = system
+    if tools:
+        body["tools"] = [{"type": "function", "name": t["name"], "description": t["description"],
+                          "parameters": t["parameters"]} for t in tools]
+    _merge(body, json.loads(json.dumps(spec.extra)))
+    if spec.effort_value is not None and spec.effort_field:
+        _set_path(body, spec.effort_field, spec.effort_value)
+    r = _post(f"{spec.base_url}/responses", {"Authorization": f"Bearer {_key(spec)}"}, body)
+    output = r.get("output") or []
+    text, calls = "", []
+    for it in output:
+        if it.get("type") == "message":
+            text += "".join(c.get("text", "") for c in it.get("content", []) if c.get("type") == "output_text")
+        elif it.get("type") == "function_call":
+            try:
+                args = json.loads(it.get("arguments") or "{}")
+            except json.JSONDecodeError:
+                args = {"_unparsed": it.get("arguments")}
+            calls.append({"id": it["call_id"], "name": it["name"], "arguments": args})
+    u = r.get("usage") or {}
+    usage = {"input": u.get("input_tokens", 0), "output": u.get("output_tokens", 0),
+             "reasoning": (u.get("output_tokens_details") or {}).get("reasoning_tokens", 0)}
+    replay = [{k: v for k, v in it.items() if k not in ("status",)} for it in output]
+    am = {"role": "assistant", "content": text, "tool_calls": calls, "_raw": {"output": replay}}
+    return Reply(text, calls, usage, am, r.get("status", ""))
+
+
+# ---------------------------------------------------------------- Gemini generateContent
+
+
+def _gemini_schema(s):
+    """Gemini accepts an OpenAPI subset: drop keys it refuses."""
+    if isinstance(s, dict):
+        return {k: _gemini_schema(v) for k, v in s.items() if k not in ("additionalProperties", "$schema", "default")}
+    if isinstance(s, list):
+        return [_gemini_schema(x) for x in s]
+    return s
+
+
+def _chat_gemini(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+    contents = []
+    for m in messages:
+        if m["role"] == "user":
+            contents.append({"role": "user", "parts": [{"text": m["content"]}]})
+        elif m["role"] == "assistant":
+            parts = (m.get("_raw") or {}).get("parts")
+            if not parts:
+                parts = ([{"text": m["content"]}] if m.get("content") else []) + [
+                    {"functionCall": {"name": c["name"], "args": c["arguments"]}} for c in m.get("tool_calls") or []
+                ]
+            contents.append({"role": "model", "parts": parts})
+        elif m["role"] == "tool":
+            part = {"functionResponse": {"name": m["name"], "response": {"result": m["content"]}}}
+            if contents and contents[-1]["role"] == "user" and "functionResponse" in contents[-1]["parts"][0]:
+                contents[-1]["parts"].append(part)
+            else:
+                contents.append({"role": "user", "parts": [part]})
+    body = {"contents": contents, "generationConfig": {"maxOutputTokens": max_tokens}}
+    if system:
+        body["systemInstruction"] = {"parts": [{"text": system}]}
+    if tools:
+        body["tools"] = [{"functionDeclarations": [
+            {"name": t["name"], "description": t["description"], "parameters": _gemini_schema(t["parameters"])}
+            for t in tools]}]
+    _merge(body, json.loads(json.dumps(spec.extra)))
+    if spec.effort_value is not None and spec.effort_field:
+        _set_path(body, spec.effort_field, spec.effort_value)
+    url = f"{spec.base_url}/models/{spec.model}:generateContent"
+    r = _post(url, {"x-goog-api-key": _key(spec)}, body)
+    cand = (r.get("candidates") or [{}])[0]
+    parts = (cand.get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts if "text" in p and not p.get("thought"))
+    calls = [{"id": uuid.uuid4().hex[:12], "name": p["functionCall"]["name"], "arguments": p["functionCall"].get("args", {})}
+             for p in parts if "functionCall" in p]
+    u = r.get("usageMetadata") or {}
+    usage = {"input": u.get("promptTokenCount", 0),
+             "output": u.get("candidatesTokenCount", 0) + u.get("thoughtsTokenCount", 0),
+             "reasoning": u.get("thoughtsTokenCount", 0)}
+    am = {"role": "assistant", "content": text, "tool_calls": calls, "_raw": {"parts": parts}}
+    return Reply(text, calls, usage, am, cand.get("finishReason", ""))
+
+
+# ---------------------------------------------------------------- Anthropic Messages
+
+
+def _chat_anthropic(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+    out: list[dict] = []
+    for m in messages:
+        if m["role"] == "user":
+            out.append({"role": "user", "content": m["content"]})
+        elif m["role"] == "assistant":
+            blocks = (m.get("_raw") or {}).get("content")
+            if not blocks:
+                blocks = ([{"type": "text", "text": m["content"]}] if m.get("content") else []) + [
+                    {"type": "tool_use", "id": c["id"], "name": c["name"], "input": c["arguments"]}
+                    for c in m.get("tool_calls") or []]
+            out.append({"role": "assistant", "content": blocks})
+        elif m["role"] == "tool":
+            block = {"type": "tool_result", "tool_use_id": m["tool_call_id"], "content": m["content"]}
+            if out and out[-1]["role"] == "user" and isinstance(out[-1]["content"], list):
+                out[-1]["content"].append(block)
+            else:
+                out.append({"role": "user", "content": [block]})
+    body = {"model": spec.model, "max_tokens": max_tokens, "messages": out}
+    if system:
+        body["system"] = system
+    if tools:
+        body["tools"] = [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]} for t in tools]
+    if spec.reasoning != "none":
+        _merge(body, json.loads(json.dumps(spec.extra)))
+        if spec.effort_value is not None and spec.effort_field:
+            _set_path(body, spec.effort_field, spec.effort_value)
+    headers = {"x-api-key": _key(spec), "anthropic-version": "2023-06-01"}
+    r = _post(f"{spec.base_url}/messages", headers, body)
+    blocks = r.get("content") or []
+    text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+    calls = [{"id": b["id"], "name": b["name"], "arguments": b.get("input", {})} for b in blocks if b.get("type") == "tool_use"]
+    u = r.get("usage") or {}
+    usage = {"input": u.get("input_tokens", 0) + u.get("cache_read_input_tokens", 0), "output": u.get("output_tokens", 0),
+             "reasoning": 0}
+    am = {"role": "assistant", "content": text, "tool_calls": calls, "_raw": {"content": blocks}}
+    return Reply(text, calls, usage, am, r.get("stop_reason", ""))
+
+
+STYLES = {"openai-chat": _chat_openai, "openai-responses": _chat_responses, "gemini": _chat_gemini, "anthropic": _chat_anthropic}
+
+
+def chat(spec: ModelSpec, messages: list[dict], tools: list[dict] | None = None, max_tokens: int = 16000) -> Reply:
+    """One model call. `tools` are JSON-schema function specs: {"name", "description", "parameters"}."""
+    if spec.style not in STYLES:
+        raise LLMError(f"unknown style {spec.style!r}")
+    return STYLES[spec.style](spec, messages, tools or [], max_tokens)

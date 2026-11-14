@@ -1,0 +1,142 @@
+{
+ "runpod/mcp-tools.json": {
+  "bytes": 174578,
+  "fetched": "2026-11-14",
+  "url": "https://mcp.runpod.io/"
+ },
+ "runpod/pages/pods__choose-a-pod.md": {
+  "bytes": 6764,
+  "fetched": "2026-11-14",
+  "url": "https://docs.runpod.io/pods/choose-a-pod.md"
+ },
+ "runpod/pages/pods__manage-pods.md": {
+  "bytes": 11864,
+  "fetched": "2026-11-14",
+  "url": "https://docs.runpod.io/pods/manage-pods.md"
+ },
+ "runpod/pages/pods__overview.md": {
+  "bytes": 7267,
+  "fetched": "2026-11-14",
+  "url": "https://docs.runpod.io/pods/overview.md"
+ },
+ "runpod/pages/pods__pricing.md": {
+  "bytes": 5382,
+  "fetched": "2026-11-14",
+  "url": "https://docs.runpod.io/pods/pricing.md"
+ },
+ "runpod/pages/serverless__endpoints__endpoint-configurations.md": {
+  "bytes": 12439,
+  "fetched": "2026-11-14",
+  "url": "https://docs.runpod.io/serverless/endpoints/endpoint-configurations.md"
+ },
+ "runpod/pages/serverless__endpoints__job-states.md": {
+  "bytes": 5558,
+  "fetched": "2026-11-14",
+  "url": "https://docs.runpod.io/serverless/endpoints/job-states.md"
+ },
+ "runpod/pages/serverless__endpoints__operation-reference.md": {
+  "bytes": 24306,
+  "fetched": "2026-11-14",
+  "url": "https://docs.runpod.io/serverless/endpoints/operation-reference.md"
+ },
+ "runpod/pages/serverless__endpoints__send-requests.md": {
+  "bytes": 15471,
+  "fetched": "2026-11-14",
+  "url": "https://docs.runpod.io/serverless/endpoints/send-requests.md"
+ },
+ "runpod/pages/serverless__pricing.md": {
+  "bytes": 5553,
+  "fetched": "2026-11-14",
+  "url": "https://docs.runpod.io/serverless/pricing.md"
+ },
+ "runpod/rest-v1.json": {
+  "bytes": 92717,
+  "fetched": "2026-11-14",
+  "url": "https://rest.runpod.io/v1/openapi.json"
+ },
+ "scaleway/billing.json": {
+  "bytes": 40874,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/developers/api/billing/v2beta1/schema.yml"
+ },
+ "scaleway/block.json": {
+  "bytes": 47026,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/developers/api/block/v1/schema.yml"
+ },
+ "scaleway/file-storage.json": {
+  "bytes": 34298,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/developers/api/file-storage/v1alpha1/schema.yml"
+ },
+ "scaleway/generative-apis.json": {
+  "bytes": 66102,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/developers/api/generative-apis/v1/schema.yml"
+ },
+ "scaleway/iam.json": {
+  "bytes": 153536,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/developers/api/iam/v1alpha1/schema.yml"
+ },
+ "scaleway/inference.json": {
+  "bytes": 48581,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/developers/api/inference/v1/schema.yml"
+ },
+ "scaleway/instance.json": {
+  "bytes": 201816,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/developers/api/instance/v1/schema.yml"
+ },
+ "scaleway/ipam.json": {
+  "bytes": 30197,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/developers/api/ipam/v1/schema.yml"
+ },
+ "scaleway/marketplace.json": {
+  "bytes": 21928,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/developers/api/marketplace/v2/schema.yml"
+ },
+ "scaleway/pages/gpu__how-to__create-manage-gpu-instance.md": {
+  "bytes": 6022,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/docs/gpu/how-to/create-manage-gpu-instance.md"
+ },
+ "scaleway/pages/gpu__reference-content__choosing-gpu-instance-type.md": {
+  "bytes": 36829,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/docs/gpu/reference-content/choosing-gpu-instance-type.md"
+ },
+ "scaleway/pages/instances__how-to__use-cloud-init.md": {
+  "bytes": 16940,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/docs/instances/how-to/use-cloud-init.md"
+ },
+ "scaleway/pages/object-storage__api-cli__using-api-call-list.md": {
+  "bytes": 44640,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/docs/object-storage/api-cli/using-api-call-list.md"
+ },
+ "scaleway/registry.json": {
+  "bytes": 32207,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/developers/api/registry/v1/schema.yml"
+ },
+ "scaleway/secret-manager.json": {
+  "bytes": 49892,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/developers/api/secret-manager/v1beta1/schema.yml"
+ },
+ "scaleway/serverless-jobs.json": {
+  "bytes": 33243,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/developers/api/serverless-jobs/v1alpha1/schema.yml"
+ },
+ "scaleway/vpc.json": {
+  "bytes": 89968,
+  "fetched": "2026-11-14",
+  "url": "https://www.scaleway.com/en/developers/api/vpc/v2/schema.yml"
+ }
+}
