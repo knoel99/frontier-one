@@ -9,6 +9,7 @@ import pathlib
 import subprocess
 import threading
 import time
+import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -321,3 +322,23 @@ def test_runner_activity_is_kept_and_shown(tmp_path, cfg, monkeypatch):
         assert part in log, part
     (runner,) = dashboard.snapshot(tmp_path / "missions")["teams"][0]["runners"]
     assert runner["state"] == "deleted" and runner["commands"] == 1 and "job done" in runner["log_tail"]
+
+
+# ---------------------------------------------------------------- LLM cap seen by the launcher
+
+
+def test_launcher_stops_when_the_gateway_refused_the_last_session(tmp_path, cfg):
+    state = tmp_path / "state"
+    r = agent_mod.Run(cfg, workspace=tmp_path / "ws", log_dir=state)
+    r.budget.set_caps(llm_usd=0.000001)  # nothing spent, but no call fits in what is left
+    r.log(event="session_start", n=1)
+    gw = gateway.Gateway(("127.0.0.1", 0), r.budget, {"openai": ("http://127.0.0.1:9", "openai")}, cfg=cfg)
+    threading.Thread(target=gw.serve_forever, daemon=True).start()
+    req = urllib.request.Request(f"http://127.0.0.1:{gw.server_address[1]}/openai/v1/responses",
+                                 data=json.dumps({"model": "gpt-6-luna", "input": "hi"}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(req, timeout=10)
+    gw.shutdown()
+    assert e.value.code == 402
+    assert "LLM budget" in launcher._stop_reason(r)  # no session restarted only to be refused again

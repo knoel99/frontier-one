@@ -32,6 +32,7 @@ sys.path.insert(0, str(ROOT))
 from frontier import budget, credentials, gateway, hf, infra, launcher, mission  # noqa: E402
 from frontier.agent import Ctx, Run  # noqa: E402
 from frontier.config import load_config  # noqa: E402
+from frontier.http import scw_raw  # noqa: E402
 from frontier.mcp import Server  # noqa: E402
 
 PROVIDERS = ["openai", "google", "deepseek", "zhipu"]  # two closed-model, two open-weight
@@ -259,16 +260,16 @@ def f13(st: pathlib.Path):
     if err:
         return verdict("F13", "Scaleway runner", False, f"create refused: {out[:300]}")
     sid = json.loads(out)["id"]
-    CREATED.append(("scaleway", sid))
+    CREATED.append(("scaleway", f"{st}|{sid}"))
     result = ""
     for _ in range(40):
-        code, text = infra.scw_raw("GET", f"/instance/v1/zones/nl-ams-1/servers/{sid}/user_data/result")
+        code, text = scw_raw("GET", f"/instance/v1/zones/nl-ams-1/servers/{sid}/user_data/result")
         if code == 200 and text.strip():
             result = text.strip()
             break
         time.sleep(15)
     dele = json.loads(srv.call("scw_delete_instance", {"server_id": sid, "zone": "nl-ams-1"})[0])
-    code, _ = infra.scw_raw("GET", f"/instance/v1/zones/nl-ams-1/servers/{sid}")
+    code, _ = scw_raw("GET", f"/instance/v1/zones/nl-ams-1/servers/{sid}")
     verdict("F13", "Scaleway runner", result == "42" and dele.get("server") == "deleted" and code == 404,
             f"VM {sid} (DEV1-S, nl-ams-1): result {result!r} read from its metadata; deleted with volumes "
             f"{dele.get('volumes_deleted')}; GET server {code}")
@@ -306,6 +307,7 @@ def f6(root: pathlib.Path):
     st = root / "missions" / "cap"
     b = budget.Budget(st)
     b.set_caps(llm_usd=0.000001)
+    Run(load_config(), workspace=root, log_dir=st).log(event="session_start", n=1)  # as the launcher does first
     gw = gateway.serve(str(st))
     req = urllib.request.Request(f"http://127.0.0.1:{gw.server_address[1]}/openai/v1/responses",
                                  data=json.dumps({"model": "gpt-6-luna", "input": "hi", "max_output_tokens": 16}).encode(),
@@ -384,9 +386,13 @@ def cleanup() -> None:
                 if not _rp_gone(rid):
                     infra.mcp_json("delete-pod", {"id": rid})
                 print(f"cleanup runpod {rid}: gone={_rp_gone(rid)}")
-            elif kind == "scaleway":
-                code, _ = infra.scw_raw("GET", f"/instance/v1/zones/nl-ams-1/servers/{rid}")
-                print(f"cleanup scaleway {rid}: GET {code}")
+            elif kind == "scaleway":  # deleted with its volumes and IPs if a failed check left it alive
+                st, sid = rid.split("|")
+                code, _ = scw_raw("GET", f"/instance/v1/zones/nl-ams-1/servers/{sid}")
+                if code == 200:
+                    infra._delete_scw_instance(Run(load_config(), workspace=ROOT, log_dir=pathlib.Path(st)), sid, "nl-ams-1")
+                    code, _ = scw_raw("GET", f"/instance/v1/zones/nl-ams-1/servers/{sid}")
+                print(f"cleanup scaleway {sid}: GET {code}")
             elif kind == "hf":
                 hf._api().delete_repo(rid, repo_type="dataset")
                 try:
