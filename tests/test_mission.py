@@ -367,3 +367,22 @@ def test_generic_usage_report():
     assert usd is None and u == {"input": 120, "output": 80, "reasoning": 50, "cached": 100}
     qwen = json.dumps({"type": "result", "usage": {"prompt_tokens": 7, "completion_tokens": 3}, "stats": {}})
     assert launcher.usage_from_report({"usage": "json-usage"}, qwen)[1]["input"] == 7
+
+
+def test_dashboard_snapshot(tmp_path, cfg):
+    from frontier import dashboard
+
+    info = mission.prepare(_mission(tmp_path), ping=False, offers=False)
+    run = Run(cfg, workspace=info["workspace"], run_id="x", log_dir=info["state"], settings=info["settings"])
+    run.budget.charge_llm("gateway", "harness", "openai", "gpt-6-luna", {"input": 1000, "output": 10})
+    run.log(event="session_start", n=1)
+    run.log(event="mcp_call", tool="rp_exec", arguments='{"command": "python train.py"}', output="ok")
+    (info["state"] / "sessions").mkdir()
+    (info["state"] / "sessions" / "01.log").write_text(json.dumps(
+        {"type": "item.completed", "item": {"type": "command_execution", "command": "pytest -q"}}) + "\n")
+    snap = dashboard.snapshot(tmp_path)
+    t = snap["teams"][0]
+    assert t["name"] == "t" and t["running"]["n"] == 1 and t["tokens"]["input"] == 1000
+    assert any(a["kind"] == "harness shell" and "pytest" in a["text"] for a in t["actions"])
+    assert t["jobs"] and "python train.py" in t["jobs"][0]["text"]
+    assert snap["feed"][0]["team"] == "t"

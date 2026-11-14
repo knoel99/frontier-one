@@ -12,7 +12,7 @@
 
 [claude]
 install = "npm install -g @anthropic-ai/claude-code"
-command = ["claude", "-p", "{prompt}", "--model", "{model}", "--effort", "{effort}", "--permission-mode", "bypassPermissions", "--output-format", "json"]
+command = ["claude", "-p", "{prompt}", "--model", "{model}", "--effort", "{effort}", "--permission-mode", "bypassPermissions", "--output-format", "stream-json", "--verbose"]
 effort = "level"
 env = { ANTHROPIC_API_KEY = "{key}", MCP_TOOL_TIMEOUT = "3600000", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1" }
 route = { ANTHROPIC_BASE_URL = "{gateway}/anthropic" }

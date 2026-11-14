@@ -224,10 +224,11 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
             run.log(event="session_start", n=n, command=cmd[0])
             started = budget_mod.now().isoformat(timespec="seconds")
             t0 = time.time()
-            with open(logs / f"{n:02d}.log", "w") as f:
-                p = subprocess.run(cmd, cwd=ws, env=env, stdout=subprocess.PIPE, stderr=f, text=True,
+            log = logs / f"{n:02d}.log"
+            with open(log, "w") as f:  # written live: the dashboard follows the session as it runs
+                p = subprocess.run(cmd, cwd=ws, env=env, stdout=f, stderr=subprocess.STDOUT, text=True,
                                    stdin=subprocess.DEVNULL)
-                f.write(p.stdout)
+            p.stdout = log.read_text(errors="replace")
             metered = any(e["frontier.source"] == "gateway" and e["t"] >= started
                           for e in run.budget.llm_entries())
             if not metered:  # the gateway saw none of the session's traffic: charge what the harness reports

@@ -195,10 +195,16 @@ def main(argv=None) -> int:
     ms.add_argument("--max-sessions", type=int)
     ms.add_argument("--no-ping", action="store_true", help="do not check the LLM keys with a tiny call")
     sub.add_parser("harnesses", help="supported harnesses and the files generated for each")
+    sub.add_parser("dashboard", help="live race dashboard (see frontier/dashboard.py --help)", add_help=False)
     rp = sub.add_parser("reap", help="dead-man sweep: delete what overran its max_hours or budget (for cron)")
     rp.add_argument("state")
     c = sub.add_parser("cleanup", help="delete the resources a run left alive")
     c.add_argument("run_dir")
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["dashboard"]:
+        from .dashboard import main as dashboard_main
+
+        return dashboard_main(argv[1:])
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
     return {"run": cmd_run, "plan": cmd_plan, "ping": cmd_ping, "docs": cmd_docs, "tools": cmd_tools,

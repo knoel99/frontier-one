@@ -20,6 +20,9 @@ frontier-mcp = "frontier.mcp:main"
 [tool.setuptools]
 packages = ["frontier"]
 
+[tool.setuptools.package-data]
+frontier = ["dashboard.html"]
+
 [tool.ruff]
 line-length = 140
 target-version = "py311"
