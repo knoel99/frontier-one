@@ -117,6 +117,20 @@ def mode_of(provider_conf: dict, served: str) -> tuple[str, float]:
     return served, 1.0
 
 
+def worst_case(cfg: dict, provider: str, path: str, body: bytes) -> float:
+    """Upper bound of a call: the whole request as uncached input, its output limit (or DEFAULT_MAX_OUT), at the
+    dearest speed mode of the provider (the tier actually served is only known from the response)."""
+    try:
+        obj = json.loads(body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        obj = {}
+    out = (obj.get("max_output_tokens") or obj.get("max_completion_tokens") or obj.get("max_tokens")
+           or (obj.get("generationConfig") or {}).get("maxOutputTokens") or DEFAULT_MAX_OUT)
+    modes = cfg.get("providers", {}).get(provider, {}).get("modes", {}).values()
+    px = max([1.0, *(float(m.get("price_x", 1.0)) for m in modes)])
+    return worst_case_usd(provider, model_of(body, path, None), len(body), int(out), px)
+
+
 def model_of(req_body: bytes, path: str, resp_obj: dict | None) -> str:
     try:
         m = json.loads(req_body or b"{}").get("model")
@@ -184,28 +198,19 @@ class Handler(BaseHTTPRequestHandler):
                                                                            ":generateContent", ":streamGenerateContent",
                                                                            "/interactions")) \
             and "count_tokens" not in rest and "input_tokens" not in rest
-        rid = None
+        rid, worst = None, 0.0
         if is_llm_call:
-            rid, why = self.server.budget.reserve(self._worst_case(provider, rest, body), f"gateway {rest[:60]}")
+            worst = worst_case(self.server.cfg, provider, rest, body)
+            rid, why = self.server.budget.reserve(worst, f"gateway {rest[:60]}")
             if rid is None:
                 return self._send_json(402, {"error": {"type": "budget_exhausted", "code": "budget_exhausted", "message": why}})
             body = self._with_stream_usage(rest, body)
         try:
-            self._forward(origin, rest, body, provider, is_llm_call)
+            self._forward(origin, rest, body, provider, is_llm_call, worst)
         finally:
             self.server.budget.release(rid)
 
-    def _worst_case(self, provider: str, path: str, body: bytes) -> float:
-        """Upper bound of a call: the whole request as uncached input, and its output limit (or DEFAULT_MAX_OUT)."""
-        try:
-            obj = json.loads(body or b"{}")
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            obj = {}
-        out = (obj.get("max_output_tokens") or obj.get("max_completion_tokens") or obj.get("max_tokens")
-               or (obj.get("generationConfig") or {}).get("maxOutputTokens") or DEFAULT_MAX_OUT)
-        return worst_case_usd(provider, model_of(body, path, None), len(body), int(out))
-
-    def _forward(self, origin: str, rest: str, body: bytes, provider: str, is_llm_call: bool) -> None:
+    def _forward(self, origin: str, rest: str, body: bytes, provider: str, is_llm_call: bool, worst: float) -> None:
         headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP}
         headers["Accept-Encoding"] = "identity"
         req = urllib.request.Request(origin + rest, data=body if self.command in ("POST", "PUT") else None,
@@ -225,6 +230,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header(k, v)
         usage: dict = {}
         last_obj: dict | None = None
+        cut = False  # the harness hung up mid-stream: the usage, sent last, was not seen
         if streaming:
             self.send_header("Connection", "close")
             self.end_headers()
@@ -237,8 +243,9 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     self.wfile.write(chunk)
                     self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError):  # the harness hung up: charge what was seen so far
+                except (BrokenPipeError, ConnectionResetError):
                     resp.close()
+                    cut = True
                     break
                 if is_llm_call:
                     buf = chunk.strip()
@@ -264,7 +271,10 @@ class Handler(BaseHTTPRequestHandler):
                     last_obj = objs[-1] if objs else None
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     pass
-        if is_llm_call and usage:
+        if is_llm_call and 200 <= status < 300 and (cut or not usage):  # billed, but by how much is unknown
+            model = model_of(body, rest, last_obj if isinstance(last_obj, dict) else None)
+            self.server.budget.charge_llm("gateway", self.server.agent, provider, model, usage, usd=worst, exact=False)
+        elif is_llm_call and usage:
             model = model_of(body, rest, last_obj if isinstance(last_obj, dict) else None)
             served = usage.pop("served_tier", "") or resp.headers.get("x-gemini-service-tier", "")
             conf = self.server.cfg.get("providers", {}).get(provider, {})

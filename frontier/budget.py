@@ -156,8 +156,8 @@ class Budget:
     # Entries use the OpenTelemetry GenAI attribute names (gen_ai.*) plus frontier.* ones, and form a hash chain:
     # each line carries the hash of the previous one, so an edited or deleted line is detected (verify_chain).
     def charge_llm(self, source: str, agent: str, provider: str, model: str, usage: dict, mode: str = "",
-                   price_x: float = 1.0, usd: float | None = None) -> float:
-        exact = True
+                   price_x: float = 1.0, usd: float | None = None, exact: bool = True) -> float:
+        """Record a call; `usd` overrides the price computed from `usage`, `exact=False` marks it an estimate."""
         if usd is None:
             usd, exact = llm_cost(provider, model, usage, price_x)
         entry = {"t": now().isoformat(timespec="seconds"), "frontier.source": source, "gen_ai.agent.name": agent,
