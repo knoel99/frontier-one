@@ -1,0 +1,4 @@
+[mcp_servers.frontier]
+command = "python3"
+args = ["-m", "frontier.mcp"]
+tool_timeout_sec = 3600

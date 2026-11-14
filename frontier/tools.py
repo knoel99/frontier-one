@@ -12,7 +12,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from . import catalog, infra
+from . import catalog, hf, infra
 from .http import mcp_call, request, scw_raw
 
 
@@ -142,9 +142,10 @@ register("scw_offers", "Scaleway Instance types of a zone with real price (EUR/h
          _obj({"zone": S, "min_gpu_memory_gb": N, "gpu_only": B, "include_unavailable": B}), infra.scw_offers)
 register("scw_create_instance", "Create a Scaleway Instance (GPU types get the Ubuntu GPU OS image with NVIDIA driver and "
          "Docker), optional cloud-init script, power on, wait until running; returns id, state, public IPs, price. "
-         "Recorded in the run ledger. Needs --allow-spend.",
-         _obj({"name": S, "commercial_type": S, "zone": S, "image_label": S, "cloud_init": S, "tags": SL, "wait_running": B},
-              ["name", "commercial_type"]), infra.scw_create_instance)
+         "max_hours: deleted by the framework after that; the cloud budget reserves price x max_hours. "
+         "Recorded in the run ledger. Needs spending allowed.",
+         _obj({"name": S, "commercial_type": S, "max_hours": N, "zone": S, "image_label": S, "cloud_init": S, "tags": SL,
+               "wait_running": B}, ["name", "commercial_type", "max_hours"]), infra.scw_create_instance)
 register("scw_instance", "State, type, public IPs and volumes of a Scaleway Instance.",
          _obj({"server_id": S, "zone": S}, ["server_id"]), infra.scw_instance)
 register("scw_list_instances", "Scaleway Instances of a zone carrying a tag (default 'frontier').",
@@ -156,10 +157,10 @@ register("rp_offers", "Runpod GPU types for pods with USD/hour per GPU, memory, 
          _obj({"min_memory_gb": N, "cloud": {"type": "string", "enum": ["SECURE", "COMMUNITY"]}, "gpu_count": I,
                "include_unavailable": B}), infra.rp_offers)
 register("rp_create_pod", "Create a Runpod pod (billed per second from creation). gpu_type_id from rp_offers; command: "
-         "container command as one shell string; ports like ['22/tcp','8888/http']. Recorded in the run ledger. "
-         "Needs --allow-spend.",
-         _obj({"name": S, "gpu_type_id": S, "image": S, "gpu_count": I, "cloud": S, "disk_gb": I, "ports": SL, "env": J,
-               "command": S, "start_ssh": B}, ["name", "gpu_type_id"]), infra.rp_create_pod)
+         "container command as one shell string; ports like ['22/tcp','8888/http']. max_hours: deleted by the framework "
+         "after that; the cloud budget reserves price x max_hours. Recorded in the run ledger. Needs spending allowed.",
+         _obj({"name": S, "gpu_type_id": S, "max_hours": N, "image": S, "gpu_count": I, "cloud": S, "disk_gb": I,
+               "ports": SL, "env": J, "command": S, "start_ssh": B}, ["name", "gpu_type_id", "max_hours"]), infra.rp_create_pod)
 register("rp_pod", "Details and state of a Runpod pod.", _obj({"pod_id": S}, ["pod_id"]), infra.rp_pod)
 register("rp_list_pods", "All Runpod pods of the account.", _obj({}), infra.rp_list_pods)
 register("rp_exec", "Run a shell command inside a RUNNING pod (no SSH); waits at most 25 s; a longer command keeps "
@@ -171,6 +172,29 @@ register("rp_delete_pod", "Delete a Runpod pod (stops billing). Only pods of thi
 register("infra_resources", "Cloud resources created by this run (all agents), with state and hourly price.",
          _obj({}), infra.infra_resources)
 register("infra_cleanup", "Delete every resource of this run that is still alive.", _obj({}), infra.infra_cleanup)
+register("budget_status", "Budgets and spend so far: LLM (USD, by model and mode, every agent of the run including "
+         "metered harness traffic), Scaleway (EUR) and Runpod (USD) spent and committed by alive resources, elapsed "
+         "time and hours left before the deadline.", _obj({}), infra.budget_status)
+
+# Hugging Face Hub
+register("hf_whoami", "Hugging Face account of the token: user name, organisations, token role.", _obj({}), hf.hf_whoami)
+register("hf_publish", "Create (if needed) a Hugging Face repository (model, dataset or static space) and upload a "
+         "workspace folder to it. The folder must hold a card: README.md with YAML metadata (license for models and "
+         "datasets) and a real description. Visibility is set by the mission. Recorded in the run's publications.",
+         _obj({"repo_name": S, "folder": S, "repo_type": {"type": "string", "enum": ["model", "dataset", "space"]},
+               "namespace": S, "commit_message": S, "space_sdk": S}, ["repo_name", "folder"]), hf.hf_publish)
+
+# Mission
+def t_deliver(ctx, summary: str = "", force: bool = False) -> str:
+    from .mission import deliver  # late import: mission builds on the agent and harness modules
+
+    return deliver(ctx, summary, force)
+
+
+register("deliver", "End the mission: checks DELIVERY.md, COMPLIANCE.md and DECISIONS.md, deletes the cloud resources "
+         "still alive, writes COSTS.md from the ledgers, commits and tags the repository, and freezes clock and spend "
+         "(delivery time is measured here). force=true delivers with missing files, recorded as missing.",
+         _obj({"summary": S, "force": B}), t_deliver)
 
 # Catalog and raw calls, for anything the functions above do not cover.
 register("api_docs", "Catalog of the Scaleway and Runpod APIs, one compact signature per operation (like a Swagger "
@@ -181,14 +205,26 @@ register("api_docs", "Catalog of the Scaleway and Runpod APIs, one compact signa
          t_api_docs)
 register("scaleway", "Raw Scaleway API call (https://api.scaleway.com, auth handled). path like "
          "'/instance/v1/zones/{zone}/servers' ({zone}, {region}, {project_id} filled). raw_body: text body (with "
-         "content_type). Non-GET needs --allow-spend.",
+         "content_type). Non-GET calls need spending allowed.",
          _obj({"method": S, "path": S, "body": J, "query": J, "raw_body": S, "content_type": S}, ["method", "path"]), t_scaleway)
 register("runpod_mcp", "Raw call of a Runpod MCP server tool (125 tools: pods, serverless endpoints and jobs, templates, "
-         "volumes, billing). Signatures: api_docs doc='runpod/mcp'. Non-read-only tools need --allow-spend.",
+         "volumes, billing). Signatures: api_docs doc='runpod/mcp'. Non-read-only tools need spending allowed.",
          _obj({"tool": S, "arguments": J}, ["tool"]), t_runpod_mcp)
 
 BASE_TOOLS = ["shell", "read_file", "write_file", "edit_file", "http_request", "spawn_agent"]
 INFRA_TOOLS = ["scw_offers", "scw_create_instance", "scw_instance", "scw_list_instances", "scw_delete_instance",
                "rp_offers", "rp_create_pod", "rp_pod", "rp_list_pods", "rp_exec", "rp_logs", "rp_delete_pod",
                "infra_resources", "infra_cleanup", "api_docs", "scaleway", "runpod_mcp"]
-DEFAULT_TOOLS = BASE_TOOLS
+GROUPS = {"base": BASE_TOOLS, "infra": INFRA_TOOLS, "budget": ["budget_status"], "hf": ["hf_whoami", "hf_publish"],
+          "mission": ["deliver"]}
+
+
+def all_tools() -> list[str]:
+    """Every tool, in group order: what the main agent gets by default."""
+    out: list[str] = []
+    for names in GROUPS.values():
+        out += [n for n in names if n not in out]
+    return out
+
+
+DEFAULT_TOOLS = BASE_TOOLS  # kept for callers that want the workspace tools only

@@ -1,7 +1,7 @@
 # Cloud infrastructure
 
-- Use the ready-made functions first: `scw_offers`, `scw_create_instance`, `scw_instance`, `scw_delete_instance`, `rp_offers`, `rp_create_pod`, `rp_pod`, `rp_exec`, `rp_logs`, `rp_delete_pod`, `infra_resources`, `infra_cleanup`. They already handle prices, images, polling and leftover volumes, and their output is authoritative: do not re-check it with raw calls.
-- For anything else, find the operation in the catalog (`api_docs` search, then show) and call it with `scaleway` or `runpod_mcp`. Do not search the web for the API and do not guess field names.
-- Authentication is handled by the tools; never print, write or ask for keys.
-- Spending (creating, changing or deleting a resource) is {{spend}}. When it is allowed: give the hourly price before creating anything, take the cheapest offer that does the job, and delete what you created as soon as its results are saved. Never touch a resource this run did not create unless the task names it.
-- End with the table of `infra_resources`: what was created, its price, and whether it is deleted.
+- Ready-made functions: `scw_offers`, `scw_create_instance`, `scw_instance`, `scw_list_instances`, `scw_delete_instance`, `rp_offers`, `rp_create_pod`, `rp_pod`, `rp_list_pods`, `rp_exec`, `rp_logs`, `rp_delete_pod`, `infra_resources`, `infra_cleanup`. They handle prices, images, polling and leftover volumes; their output comes from the live APIs.
+- Anything else: the operation's signature is in the catalog (`api_docs` search, then show); call it with `scaleway` or `runpod_mcp`.
+- Authentication is handled by the tools; keys are never printed, written or asked for.
+- Spending (creating, changing or deleting a resource) is {{spend}}.
+- Billing facts: a resource bills from creation until deletion (a stopped Runpod pod or Scaleway Instance still bills its disk). Every resource created is in the run's ledger with its price; each has a `max_hours` after which the framework deletes it; creation is refused when it would exceed the cloud budget (`budget_status`); what is left at the end of the run is deleted. Resources this run did not create are not touched unless the task names them.

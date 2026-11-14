@@ -1,0 +1,41 @@
+# A mission: what the owner gives the AI. Copy this file, fill it, then:
+#   python3 -m frontier mission start my-mission.toml          # prepares the workspace and launches the harness
+#   python3 -m frontier mission start my-mission.toml --prepare-only
+# Keys are never written here: each section names the environment variable that holds the key.
+
+[mission]
+name = "milady-2027"
+subject = "subject/stage_milady_2027.pdf"   # file (copied into the workspace) or URL (downloaded) of the subject
+workspace = "../mission-milady-2027"        # created as a new git repository if missing
+duration_hours = 72                          # or: deadline = "2026-11-21T18:00:00+01:00"
+
+[harness]
+name = "auto"            # auto = the LLM provider's own harness, else opencode; or any name of `frontier harnesses`
+tier = "frontier"        # model tier of the main thread
+reasoning = "high"       # reasoning level of the main thread (none, low, medium, high, max)
+max_sessions = 20        # the launcher restarts the harness until `deliver` is called, the deadline or a budget ends
+
+[llm]
+provider = "openai"      # section of config/providers.toml
+key_env = "OPENAI_API_KEY"
+budget_usd = 50.0        # all LLM calls of the mission: the harness (metered by the gateway) and every sub-agent
+other_providers = []     # more providers usable by spawn_agent, each with its key in its own key_env
+
+[scaleway]
+key_env = "SCW_SECRET_KEY"
+project_id_env = "SCW_DEFAULT_PROJECT_ID"
+budget_eur = 30.0
+
+[runpod]
+key_env = "RUNPOD_API_KEY"
+budget_usd = 30.0
+
+[huggingface]
+token_env = "HF_TOKEN"
+namespace = ""           # user or organisation; default: the token's user
+visibility = "private"   # private or public: who can see what the AI publishes
+
+[grading]
+# Shown to the AI as the evaluation. Weights are optional; without them the criteria are listed unweighted.
+criteria = ["scientific quality", "cost control", "delivery time", "compliance with the subject's instructions"]
+weights = []

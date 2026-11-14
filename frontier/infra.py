@@ -104,11 +104,14 @@ def _server_view(s: dict) -> dict:
             "volumes": [{"id": v["id"], "type": v.get("volume_type")} for v in (s.get("volumes") or {}).values()]}
 
 
-def scw_create_instance(ctx, name: str, commercial_type: str, zone: str = "", image_label: str = "", cloud_init: str = "",
-                        tags: list[str] | None = None, wait_running: bool = True) -> str:
-    """Create an Instance from a marketplace image, set cloud-init, power it on, wait until running."""
+def scw_create_instance(ctx, name: str, commercial_type: str, max_hours: float, zone: str = "", image_label: str = "",
+                        cloud_init: str = "", tags: list[str] | None = None, wait_running: bool = True) -> str:
+    """Create an Instance from a marketplace image, set cloud-init, power it on, wait until running.
+    max_hours: the framework deletes it after that many hours; the budget reserves price x max_hours."""
     if g := _need_spend(ctx, f"creating a Scaleway {commercial_type}"):
         return g
+    if not max_hours or max_hours <= 0:
+        return "error: max_hours must be > 0"
     d = scw_defaults()
     zone = zone or d["zone"]
     gpu = any(commercial_type.upper().startswith(p) for p in ("L4", "L40S", "H100", "B300", "RENDER", "RTX", "GPU"))
@@ -120,11 +123,14 @@ def scw_create_instance(ctx, name: str, commercial_type: str, zone: str = "", im
         return f"error: no {image_label} image in {zone} compatible with {commercial_type}"
     offer = next((o for o in json.loads(scw_offers(ctx, zone, 0, gpu_only=False, include_unavailable=True))["offers"]
                   if o["type"] == commercial_type), {})
+    ok, why = ctx.run.budget.cloud_allowed("scaleway", offer.get("eur_per_hour"), max_hours)
+    if not ok:
+        return f"refused: {why}"
     body = {"name": name, "commercial_type": commercial_type, "image": img["id"], "project": d["project_id"],
             "tags": ["frontier", f"run:{ctx.run.run_id}", *(tags or [])]}
     s = scw("POST", f"/instance/v1/zones/{zone}/servers", body)["server"]
     ctx.run.record({"provider": "scaleway", "kind": "instance", "id": s["id"], "zone": zone, "name": name,
-                    "type": commercial_type, "eur_per_hour": offer.get("eur_per_hour"),
+                    "type": commercial_type, "eur_per_hour": offer.get("eur_per_hour"), "max_hours": max_hours,
                     "volumes": [v["id"] for v in (s.get("volumes") or {}).values()]})
     if cloud_init:
         scw("PATCH", f"/instance/v1/zones/{zone}/servers/{s['id']}/user_data/cloud-init", cloud_init, content_type="text/plain")
@@ -220,14 +226,21 @@ def rp_offers(ctx, min_memory_gb: float = 0, cloud: str = "SECURE", gpu_count: i
     return _j({"cloud": cloud, "gpu_count": gpu_count, "offers": rows})
 
 
-def rp_create_pod(ctx, name: str, gpu_type_id: str, image: str = "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
-                  gpu_count: int = 1, cloud: str = "SECURE", disk_gb: int = 50, ports: list[str] | None = None,
-                  env: dict | None = None, command: str = "", start_ssh: bool = False) -> str:
-    """Create a pod (billed per second from creation). `command`: container command as one shell string."""
+def rp_create_pod(ctx, name: str, gpu_type_id: str, max_hours: float,
+                  image: str = "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404", gpu_count: int = 1, cloud: str = "SECURE",
+                  disk_gb: int = 50, ports: list[str] | None = None, env: dict | None = None, command: str = "",
+                  start_ssh: bool = False) -> str:
+    """Create a pod (billed per second from creation). `command`: container command as one shell string.
+    max_hours: the framework deletes it after that many hours; the budget reserves price x max_hours."""
     if g := _need_spend(ctx, f"creating a Runpod pod ({gpu_count}× {gpu_type_id})"):
         return g
+    if not max_hours or max_hours <= 0:
+        return "error: max_hours must be > 0"
     offers = json.loads(rp_offers(ctx, 0, cloud, gpu_count, include_unavailable=True))["offers"]
     offer = next((o for o in offers if o["gpu_type_id"] == gpu_type_id), None)
+    ok, why = ctx.run.budget.cloud_allowed("runpod", offer["usd_per_gpu_hour"] * gpu_count if offer else None, max_hours)
+    if not ok:
+        return f"refused: {why}"
     body = {"name": name, "image": image, "gpu": {"id": gpu_type_id, "count": gpu_count}, "cloud": cloud, "disk": disk_gb,
             "env": {"FRONTIER_RUN": ctx.run.run_id, **(env or {})}}
     if ports:
@@ -242,7 +255,7 @@ def rp_create_pod(ctx, name: str, gpu_type_id: str, image: str = "runpod/pytorch
         return f"error: create-pod returned no id: {_j(pod)[:1500]}"
     usd = offer["usd_per_gpu_hour"] * gpu_count if offer else None
     ctx.run.record({"provider": "runpod", "kind": "pod", "id": pod_id, "name": name, "type": f"{gpu_count}x {gpu_type_id}",
-                    "usd_per_hour": usd})
+                    "usd_per_hour": usd, "max_hours": max_hours})
     return _j({"id": pod_id, "usd_per_hour_gpu_only": usd, "pod": pod,
                "note": "run commands with rp_exec once it is RUNNING; delete with rp_delete_pod"})
 
@@ -310,3 +323,39 @@ def cleanup(run) -> list[dict]:
 
 def infra_cleanup(ctx) -> str:
     return _j(cleanup(ctx.run))
+
+
+def enforce(run) -> list[dict]:
+    """Delete what overran its max_hours, and every resource of a provider whose budget is spent. Called by the
+    watchdog of long-lived processes (MCP server, gateway) and before every budget report."""
+    from .budget import CLOUD_CURRENCY, now
+
+    done = []
+    at = now()
+    caps = run.budget.caps
+    for r in run.alive():
+        cap = caps.get(CLOUD_CURRENCY[r["provider"]][0])
+        over_time = r.get("max_hours") and run.budget._hours(r, at) >= r["max_hours"]
+        over_budget = cap is not None and run.budget.cloud_spent(r["provider"], at) >= cap
+        if not (over_time or over_budget):
+            continue
+        why = "max_hours reached" if over_time else "budget spent"
+        try:
+            if r["provider"] == "scaleway":
+                res = _delete_scw_instance(run, r["id"], r["zone"])
+            else:
+                res = _delete_rp_pod(run, r["id"])
+        except APIError as e:
+            res = {"id": r["id"], "error": str(e)[:300]}
+        run.log(event="watchdog_delete", reason=why, result=res)
+        done.append({**res, "reason": why})
+    return done
+
+
+def budget_status(ctx) -> str:
+    """Budgets, spend so far (LLM by model, cloud by provider), commitments of alive resources, time left."""
+    deleted = enforce(ctx.run)
+    st = ctx.run.budget.status()
+    if deleted:
+        st["watchdog_deleted"] = deleted
+    return _j(st)

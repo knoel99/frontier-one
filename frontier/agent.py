@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
+import fcntl
 import json
 import os
 import pathlib
@@ -13,8 +15,9 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from . import llm
+from .budget import Budget, now, worst_case_usd
 from .config import ROOT
-from .tools import DEFAULT_TOOLS, INFRA_TOOLS, REGISTRY, Tool, _obj
+from .tools import GROUPS, INFRA_TOOLS, REGISTRY, Tool, _obj, all_tools
 
 PROMPTS = ROOT / "prompts"
 ROLES = ROOT / "roles"
@@ -25,6 +28,9 @@ ROLES = ROOT / "roles"
 
 @dataclass
 class Run:
+    """An agent tree, or a whole mission: limits, budgets, cloud ledger and logs, kept in `log_dir` on disk so that
+    every process of a mission (MCP server, shell calls, metering gateway) shares them."""
+
     cfg: dict
     workspace: pathlib.Path
     allow_spend: bool = False
@@ -32,14 +38,16 @@ class Run:
     log_dir: pathlib.Path | None = None
     tokens: int = 0
     agents: int = 0
-    resources: list = field(default_factory=list)
+    settings: dict = field(default_factory=dict)  # mission settings: allow_publish, publish_visibility, hf_namespace
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self):
         self.workspace = pathlib.Path(self.workspace).resolve()
         if self.log_dir is None:
             self.log_dir = pathlib.Path(os.environ.get("FRONTIER_RUNS", ROOT / "runs")) / self.run_id
+        self.log_dir = pathlib.Path(self.log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.budget = Budget(self.log_dir)
 
     @property
     def limits(self) -> dict:
@@ -50,29 +58,52 @@ class Run:
         with self._lock, open(self.log_dir / "events.jsonl", "a") as f:
             f.write(json.dumps(event, default=str) + "\n")
 
-    def charge(self, usage: dict) -> None:
+    def charge(self, usage: dict, spec: llm.ModelSpec | None = None, agent: str = "") -> float:
         with self._lock:
             self.tokens += usage.get("input", 0) + usage.get("output", 0)
+        if spec is None:
+            return 0.0
+        return self.budget.charge_llm("spawn_agent", agent, spec.provider, spec.model, usage, spec.mode, spec.price_x)
 
-    def over_budget(self) -> bool:
-        return self.tokens >= self.limits.get("max_tokens_per_run", 10**12)
+    def over_budget(self, next_call_usd: float = 0.0) -> str:
+        """Why no further model call may be made, or ''."""
+        if self.tokens >= self.limits.get("max_tokens_per_run", 10**12):
+            return "the token limit of the run is reached (limits.max_tokens_per_run)"
+        ok, why = self.budget.llm_allowed(next_call_usd)
+        return "" if ok else why
 
-    # ledger of the cloud resources created by any agent of the run
-    def _save_resources(self) -> None:
-        (self.log_dir / "resources.json").write_text(json.dumps(self.resources, indent=1) + "\n")
+    # ledger of the cloud resources created by any agent of the run (file-locked: shared between processes)
+    @contextlib.contextmanager
+    def _ledger(self):
+        f = self.log_dir / "resources.json"
+        with open(self.log_dir / ".resources.lock", "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            items = json.loads(f.read_text()) if f.exists() else []
+            yield items
+            f.write_text(json.dumps(items, indent=1) + "\n")
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+    @property
+    def resources(self) -> list[dict]:
+        f = self.log_dir / "resources.json"
+        return json.loads(f.read_text()) if f.exists() else []
+
+    @resources.setter
+    def resources(self, items: list[dict]) -> None:
+        (self.log_dir / "resources.json").write_text(json.dumps(items, indent=1) + "\n")
 
     def record(self, resource: dict) -> None:
-        with self._lock:
-            self.resources.append({**resource, "state": "alive", "created": dt.datetime.now().isoformat(timespec="seconds")})
-            self._save_resources()
+        with self._ledger() as items:
+            items.append({**resource, "state": "alive", "created": now().isoformat(timespec="seconds")})
         self.log(event="resource_created", **resource)
 
     def mark(self, resource_id: str, state: str) -> None:
-        with self._lock:
-            for r in self.resources:
+        with self._ledger() as items:
+            for r in items:
                 if r["id"] == resource_id:
                     r["state"] = state
-            self._save_resources()
+                    if state == "deleted":
+                        r.setdefault("deleted_at", now().isoformat(timespec="seconds"))
         self.log(event="resource_" + state, id=resource_id)
 
     def owns(self, resource_id: str) -> bool:
@@ -139,10 +170,10 @@ def roles_summary() -> str:
 
 
 def expand_tools(names) -> list[str]:
-    """Tool names, where the group name "infra" stands for all the cloud tools."""
+    """Tool names, where a group name (base, infra, budget, hf, mission) stands for its tools."""
     out: list[str] = []
     for n in names:
-        for t in (INFRA_TOOLS if n == "infra" else [n]):
+        for t in GROUPS.get(n, [n]):
             if t not in out:
                 out.append(t)
     return out
@@ -164,19 +195,19 @@ def _truncate(s: str, n: int) -> str:
 class Agent:
     def __init__(self, run: Run, provider: str, tier: str, reasoning: str, tools: list[str] | None = None,
                  instructions: str = "", depth: int = 0, parent: str | None = None, max_turns: int | None = None,
-                 name: str = "main"):
+                 name: str = "main", mode: str = ""):
         self.run = run
-        self.spec = llm.resolve(run.cfg, provider, tier, reasoning)
+        self.spec = llm.resolve(run.cfg, provider, tier, reasoning, mode)
         self.depth = depth
         self.parent = parent
         self.id = f"{name}-{uuid.uuid4().hex[:6]}"
         self.max_turns = min(int(max_turns or 10**9), run.limits.get("max_turns", 40))
-        names = expand_tools(tools or DEFAULT_TOOLS)
+        names = expand_tools(tools or all_tools())
         if depth >= run.limits.get("max_depth", 2):
             names = [n for n in names if n != "spawn_agent"]
         self.tools: dict[str, Tool] = {n: REGISTRY[n] for n in names if n in REGISTRY}
         self.messages = [{"role": "system", "content": self._system(instructions)}]
-        self.usage = {"input": 0, "output": 0, "reasoning": 0, "calls": 0}
+        self.usage = {"input": 0, "output": 0, "reasoning": 0, "calls": 0, "usd": 0.0}
 
     def _system(self, instructions: str) -> str:
         base = (PROMPTS / "system.md").read_text()
@@ -201,13 +232,18 @@ class Agent:
                      effort_value=self.spec.effort_value, tools=list(self.tools), task=task[:2000])
         final = ""
         for turn in range(self.max_turns):
-            if self.run.over_budget():
-                final = "[stopped: the token budget of the run is spent]\n" + final
+            max_out = self.run.limits.get("max_output_tokens", 16000)
+            tool_specs = [t.spec() for t in self.tools.values()]
+            worst = worst_case_usd(self.spec.provider, self.spec.model,
+                                   len(json.dumps(self.messages, default=str)) + len(json.dumps(tool_specs)), max_out,
+                                   self.spec.price_x)
+            if why := self.run.over_budget(worst):
+                final = f"[stopped: {why}]\n" + final
                 break
             t0 = time.time()
-            reply = llm.chat(self.spec, self.messages, [t.spec() for t in self.tools.values()],
-                             self.run.limits.get("max_output_tokens", 16000))
-            self.run.charge(reply.usage)
+            reply = llm.chat(self.spec, self.messages, tool_specs, max_out)
+            usd = self.run.charge(reply.usage, self.spec, self.id)
+            self.usage["usd"] = round(self.usage.get("usd", 0) + usd, 6)
             for k in ("input", "output", "reasoning"):
                 self.usage[k] += reply.usage.get(k, 0)
             self.usage["calls"] += 1
@@ -248,43 +284,49 @@ class Agent:
 
 
 def t_spawn_agent(ctx: Ctx, task: str, tier: str = "", reasoning: str = "", provider: str = "", role: str = "",
-                  tools: list[str] | None = None, max_turns: int = 0) -> str:
+                  tools: list[str] | None = None, max_turns: int = 0, instructions: str = "", mode: str = "") -> str:
     parent: Agent = ctx.agent
     r = load_role(role) if role else {}
+    allowed = ctx.run.settings.get("providers")
+    if allowed and (provider or r.get("provider")) and (provider or r.get("provider")) not in allowed:
+        return f"refused: provider {provider or r.get('provider')!r} is not available in this mission ({', '.join(allowed)})"
     tier = tier or r.get("tier") or "standard"
     reasoning = reasoning or r.get("reasoning") or "medium"
     provider = provider or r.get("provider") or parent.spec.provider
-    # A role's own tool list is granted as defined in roles/ (e.g. only the infra role holds the cloud tools);
-    # tools named in the call are limited to the parent's tools plus the role's.
-    role_tools = expand_tools(r.get("tools") or [])
-    if tools:
-        tools = [t for t in expand_tools(tools) if t in parent.tools or t in role_tools or t == "spawn_agent"]
-    else:
-        tools = role_tools or [t for t in parent.tools if t not in INFRA_TOOLS]
+    # Tools: those named in the call, else the role's, else the parent's; never one the parent does not have.
+    wanted = expand_tools(tools) if tools else expand_tools(r.get("tools") or []) or list(parent.tools)
+    tools = [t for t in wanted if t in parent.tools]
     if not ctx.run.take_agent_slot():
         return "refused: the run already started its maximum number of sub-agents (limits.max_agents)"
-    child = Agent(ctx.run, provider, tier, reasoning, tools=tools, instructions=r.get("instructions", ""),
-                  depth=parent.depth + 1, parent=parent.id, max_turns=max_turns or int(r.get("max_turns", 0) or 0) or None,
-                  name=role or "sub")
+    text = "\n\n".join(x for x in (r.get("instructions", ""), instructions) if x)
+    try:
+        child = Agent(ctx.run, provider, tier, reasoning, tools=tools, instructions=text, depth=parent.depth + 1,
+                      parent=parent.id, max_turns=max_turns or int(r.get("max_turns", 0) or 0) or None,
+                      name=role or "sub", mode=mode)
+    except llm.LLMError as e:
+        return f"refused: {e}"
     answer = child.run_task(task)
     u = child.usage
     return (f"[sub-agent {child.id}: {child.spec.label()}, tier {child.spec.tier}, {u['calls']} calls, "
-            f"{u['input']} in / {u['output']} out tokens]\n{answer}")
+            f"{u['input']} in / {u['output']} out tokens, {u['usd']:.4f} USD]\n{answer}")
 
 
 REGISTRY["spawn_agent"] = Tool(
     "spawn_agent",
-    "Start a sub-agent with its own context, model and reasoning level, give it a self-contained task, and get its "
-    "final answer. Choose tier and reasoning for the sub-task (see 'Sub-agents' in your instructions). Several "
-    "spawn_agent calls in one turn run in parallel.",
+    "Start a sub-agent on a model API with its own context, provider, model tier, reasoning level and speed mode; "
+    "give it a self-contained task and get its final answer. Several spawn_agent calls in one turn run in parallel. "
+    "Its model calls are charged to the run's LLM budget.",
     _obj({
         "task": {"type": "string", "description": "complete, self-contained task: the sub-agent sees nothing else"},
         "tier": {"type": "string", "enum": llm.TIERS},
         "reasoning": {"type": "string", "enum": llm.LEVELS},
         "provider": {"type": "string", "description": "provider section of config/providers.toml; default: yours"},
         "role": {"type": "string", "description": "optional preset from roles/ (sets tier, reasoning, tools, instructions)"},
-        "tools": {"type": "array", "items": {"type": "string"}, "description": "subset of your tools; default: all"},
+        "tools": {"type": "array", "items": {"type": "string"},
+                  "description": "subset of your tools (group names: infra, budget, hf); default: the role's, else yours"},
         "max_turns": {"type": "integer"},
+        "instructions": {"type": "string", "description": "system prompt of the sub-agent (defines your own sub-agent)"},
+        "mode": {"type": "string", "description": "speed/price mode of the provider, from frontier_plan (default: standard)"},
     }, ["task"]),
     t_spawn_agent,
 )

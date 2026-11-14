@@ -1,0 +1,10 @@
+# Pass to dsh at launch: dsh --patch .dsh/frontier.patch.yml (dsh has no project MCP file).
+- insert:
+    - id: mcp-frontier
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: frontier
+        transport: stdio
+        command: python3
+        args: ['-m', 'frontier.mcp']
+        env: {}

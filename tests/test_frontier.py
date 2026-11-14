@@ -153,8 +153,8 @@ def test_spend_guard(run, monkeypatch):
     ctx = agent_mod.Ctx(run, None)
     assert tools.t_scaleway(ctx, "POST", "/instance/v1/zones/{zone}/servers", {}).startswith("refused")
     assert tools.t_runpod_mcp(ctx, "create-pod", {}).startswith("refused")
-    assert infra.scw_create_instance(ctx, "x", "L4-1-24G").startswith("refused")
-    assert infra.rp_create_pod(ctx, "x", "NVIDIA A40").startswith("refused")
+    assert infra.scw_create_instance(ctx, "x", "L4-1-24G", max_hours=1).startswith("refused")
+    assert infra.rp_create_pod(ctx, "x", "NVIDIA A40", max_hours=1).startswith("refused")
     assert infra.rp_delete_pod(ctx, "foreign").startswith("refused")
     assert infra.scw_delete_instance(ctx, "foreign").startswith("refused")
     assert not called
@@ -217,29 +217,41 @@ def test_depth_and_agent_limits(cfg, tmp_path):
 
 
 def test_role_presets_load():
-    for name in ("worker", "reviewer", "infra", "scout"):
+    for name in ("reviewer", "infra"):
         r = agent_mod.load_role(name)
         assert r["tier"] in llm.TIERS and r["reasoning"] in llm.LEVELS and r["instructions"]
     assert agent_mod.load_role("reviewer")["tools"] == ["shell", "read_file", "http_request"]
 
 
-def test_only_the_infra_role_holds_cloud_tools(run, monkeypatch):
+def test_main_agent_has_every_tool_and_sub_agents_never_more(run, monkeypatch):
     main = agent_mod.Agent(run, "openai", "frontier", "high")
-    assert not set(tools.INFRA_TOOLS) & set(main.tools)
+    assert set(tools.all_tools()) <= set(main.tools)  # the main thread knows every tool
     seen = []
 
     def fake_run_task(self, task):
-        seen.append(list(self.tools))
+        seen.append((list(self.tools), self.messages[0]["content"]))
         return "ok"
 
     monkeypatch.setattr(agent_mod.Agent, "run_task", fake_run_task)
-    agent_mod.t_spawn_agent(agent_mod.Ctx(run, main), task="t", role="infra")
-    agent_mod.t_spawn_agent(agent_mod.Ctx(run, main), task="t", tools=["scw_create_instance", "shell"])
-    infra_tools, plain = seen
-    assert "scw_create_instance" in infra_tools and "rp_exec" in infra_tools and "spawn_agent" not in infra_tools
-    assert plain == ["shell"]
-    cloud_agent = agent_mod.Agent(run, "openai", "light", "low", tools=["infra"])
-    assert "Cloud infrastructure" in cloud_agent.messages[0]["content"]
+    ctx = agent_mod.Ctx(run, main)
+    agent_mod.t_spawn_agent(ctx, task="t", role="infra")
+    agent_mod.t_spawn_agent(ctx, task="t", tools=["scw_create_instance", "shell"], instructions="You are a GPU profiler.")
+    agent_mod.t_spawn_agent(ctx, task="t")
+    (infra_tools, infra_prompt), (two, own_prompt), (default, _) = seen
+    assert "scw_create_instance" in infra_tools and "rp_exec" in infra_tools and "budget_status" in infra_tools
+    assert "Cloud infrastructure" in infra_prompt
+    assert two == ["scw_create_instance", "shell"] and "You are a GPU profiler." in own_prompt
+    assert default == list(main.tools)
+    small = agent_mod.Agent(run, "openai", "light", "low", tools=["shell"], depth=1)
+    agent_mod.t_spawn_agent(agent_mod.Ctx(run, small), task="t", tools=["scw_create_instance", "shell"])
+    assert seen[-1][0] == ["shell"]  # never a tool the parent lacks
+    assert agent_mod.t_spawn_agent(ctx, task="t", mode="nope").startswith("refused")
+
+
+def test_mission_providers_restrict_spawn(run):
+    run.settings = {"providers": ["openai"]}
+    main = agent_mod.Agent(run, "openai", "frontier", "high")
+    assert agent_mod.t_spawn_agent(agent_mod.Ctx(run, main), task="t", provider="zhipu").startswith("refused")
 
 
 # ---------------------------------------------------------------- infra flows (mocked APIs)
@@ -288,7 +300,7 @@ def test_scaleway_create_then_cleanup(run, monkeypatch):
     run.allow_spend = True
     ctx = agent_mod.Ctx(run, None)
     assert json.loads(infra.scw_offers(ctx))["offers"][0]["eur_per_hour"] == 0.7875  # per-minute price converted
-    out = json.loads(infra.scw_create_instance(ctx, "n", "L4-1-24G", cloud_init="#!/bin/bash\necho hi"))
+    out = json.loads(infra.scw_create_instance(ctx, "n", "L4-1-24G", max_hours=2, cloud_init="#!/bin/bash\necho hi"))
     assert out["id"] == "srv" and out["public_ips"] == ["1.2.3.4"]
     assert ("PATCH", "/instance/v1/zones/fr-par-2/servers/srv/user_data/cloud-init") in fake.calls
     assert run.alive()[0]["eur_per_hour"] == 0.7875
@@ -312,7 +324,7 @@ def test_runpod_create_exec_delete(run, monkeypatch):
     monkeypatch.setattr(infra, "mcp_json", fake_mcp)
     run.allow_spend = True
     ctx = agent_mod.Ctx(run, None)
-    out = json.loads(infra.rp_create_pod(ctx, "n", "NVIDIA A40", gpu_count=2, command="python train.py"))
+    out = json.loads(infra.rp_create_pod(ctx, "n", "NVIDIA A40", max_hours=1, gpu_count=2, command="python train.py"))
     assert out["id"] == "pod1" and out["usd_per_hour_gpu_only"] == 1.18
     body = calls[-1][1]["body"]
     assert body["gpu"] == {"id": "NVIDIA A40", "count": 2} and "python train.py" in body["args"]
@@ -338,7 +350,7 @@ def test_mcp_server_protocol(tmp_path, monkeypatch):
     assert names[:3] == ["spawn_agent", "frontier_plan", "frontier_roles"] and "rp_create_pod" in names
     assert "shell" not in names  # the harness has its own
     r = srv.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
-                    "params": {"name": "rp_create_pod", "arguments": {"name": "x", "gpu_type_id": "g"}}})["result"]
+                    "params": {"name": "rp_create_pod", "arguments": {"name": "x", "gpu_type_id": "g", "max_hours": 1}}})["result"]
     assert r["isError"] and "refused" in r["content"][0]["text"]
     plan = json.loads(srv.call("frontier_plan", {})[0])
     assert "openai" in plan["providers"]

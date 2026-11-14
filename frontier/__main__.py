@@ -99,7 +99,7 @@ def cmd_call(a, cfg) -> int:
         os.environ["FRONTIER_SESSION"] = a.session
     if a.allow_spend:
         os.environ["FRONTIER_ALLOW_SPEND"] = "1"
-    server = Server(cfg)
+    server = Server(cfg, state=a.state or os.environ.get("FRONTIER_STATE"))
     if a.tool == "list":
         for t in server.tool_specs():
             print(f"{t['name']:20s} {json.dumps(t['inputSchema'].get('properties', {}))[:150]}")
@@ -107,6 +107,25 @@ def cmd_call(a, cfg) -> int:
     text, err = server.call(a.tool, json.loads(a.arguments or "{}"))
     print(text)
     return 1 if err else 0
+
+
+def cmd_mission(a, cfg) -> int:
+    from . import launcher
+
+    if a.action == "start":
+        return launcher.start(a.target, prepare_only=a.prepare_only, keep_resources=a.keep_resources,
+                              max_sessions=a.max_sessions, ping=not a.no_ping)
+    return launcher.status(a.target)
+
+
+def cmd_harnesses(a, cfg) -> int:
+    from .harnesses import HARNESSES, McpCommand, artifacts
+
+    for name, h in HARNESSES.items():
+        files = ", ".join(sorted(artifacts(McpCommand(), [name])))
+        extra = f" | user-level MCP: {h.user_config}" if h.user_config else ""
+        print(f"{name:12s} {h.title} [{h.kind}{', ' + h.provider if h.provider else ''}]: {files}{extra}")
+    return 0
 
 
 def cmd_cleanup(a, cfg) -> int:
@@ -156,12 +175,21 @@ def main(argv=None) -> int:
     k.add_argument("arguments", nargs="?", help="JSON object")
     k.add_argument("--session", default="cli", help="session under runs/ whose resource ledger is shared (default: cli)")
     k.add_argument("--allow-spend", action="store_true")
+    k.add_argument("--state", help="a mission's state directory (.frontier/); default $FRONTIER_STATE")
+    ms = sub.add_parser("mission", help="prepare and run a mission (see config/mission.example.toml)")
+    ms.add_argument("action", choices=["start", "status"])
+    ms.add_argument("target", help="mission .toml (start) or workspace directory (status)")
+    ms.add_argument("--prepare-only", action="store_true", help="write the workspace, do not launch the harness")
+    ms.add_argument("--keep-resources", action="store_true")
+    ms.add_argument("--max-sessions", type=int)
+    ms.add_argument("--no-ping", action="store_true", help="do not check the LLM keys with a tiny call")
+    sub.add_parser("harnesses", help="supported harnesses and the files generated for each")
     c = sub.add_parser("cleanup", help="delete the resources a run left alive")
     c.add_argument("run_dir")
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
     return {"run": cmd_run, "plan": cmd_plan, "ping": cmd_ping, "docs": cmd_docs, "tools": cmd_tools,
-            "cleanup": cmd_cleanup, "call": cmd_call}[a.cmd](a, cfg)
+            "cleanup": cmd_cleanup, "call": cmd_call, "mission": cmd_mission, "harnesses": cmd_harnesses}[a.cmd](a, cfg)
 
 
 if __name__ == "__main__":

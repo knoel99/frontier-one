@@ -1,0 +1,109 @@
+# How the mission launcher runs each harness headless: install, command, environment, LLM routing.
+# Placeholders: {prompt} {model} {effort} {max_turns} {workspace} {state} {key} {gateway} {frontier} {provider_model}.
+# effort: "level" = the abstract level (low..max) as is; "provider" = the provider's value from providers.toml.
+# Commands and environments of the vendor harnesses were run headless on 2026-11-13 by the previous campaign
+# (old/race/PROVIDERS-TESTED.md); the others come from the harnesses' docs (docs/HARNESSES.md). Check a new version
+# with `python3 -m frontier mission start <file> --prepare-only` and a short session before a real mission.
+#
+# Metering: `route` is how the harness's own LLM traffic is sent through the local gateway that charges the
+# mission's LLM budget: env variables set to a gateway URL ({gateway}/<provider>/<the provider's usual base path>);
+# empty when the harness cannot be routed (its main-thread spend is then read from its own usage report when it
+# gives one, see `usage`).
+
+[claude]
+install = "npm install -g @anthropic-ai/claude-code"
+command = ["claude", "-p", "{prompt}", "--model", "{model}", "--effort", "{effort}", "--permission-mode", "bypassPermissions", "--output-format", "json"]
+effort = "level"
+env = { ANTHROPIC_API_KEY = "{key}", MCP_TOOL_TIMEOUT = "3600000" }
+route = { ANTHROPIC_BASE_URL = "{gateway}/anthropic" }
+wire = "anthropic"
+usage = "json:total_cost_usd"
+
+[claude.providers.zhipu]   # Z.ai's Anthropic-compatible endpoint (run with Claude Code on 2026-11-13)
+env = { ANTHROPIC_AUTH_TOKEN = "{key}", ANTHROPIC_DEFAULT_OPUS_MODEL = "glm-5.3", ANTHROPIC_DEFAULT_SONNET_MODEL = "glm-5.3", ANTHROPIC_DEFAULT_HAIKU_MODEL = "glm-5.3-flash", API_TIMEOUT_MS = "3000000", MCP_TOOL_TIMEOUT = "3600000" }
+route = { ANTHROPIC_BASE_URL = "{gateway}/zhipu/api/anthropic" }
+default_base_url = { ANTHROPIC_BASE_URL = "https://api.z.ai/api/anthropic" }
+
+[codex]
+install = "npm install -g @openai/codex"
+setup = "printenv OPENAI_API_KEY | codex login --with-api-key"
+command = ["codex", "exec", "-m", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "--sandbox", "workspace-write", "--json", "{prompt}"]
+effort = "provider"
+env = { OPENAI_API_KEY = "{key}" }
+route = { OPENAI_BASE_URL = "{gateway}/openai/v1" }
+wire = "openai-responses"
+usage = "jsonl:usage"
+
+[antigravity]
+install = "curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --skip-aliases"
+command = ["agy", "-p", "{prompt}", "--model", "{model}", "--effort", "{effort}", "--output-format", "json", "--dangerously-skip-permissions"]
+effort = "provider"
+env = { GEMINI_API_KEY = "{key}" }
+route = {}
+wire = "gemini"
+usage = ""
+
+[grok]
+install = "curl -fsSL https://x.ai/cli/install.sh | bash"
+command = ["grok", "-p", "{prompt}", "-m", "{model}", "--effort", "{effort}", "--max-turns", "{max_turns}", "--always-approve", "--output-format", "json"]
+effort = "provider"
+env = { XAI_API_KEY = "{key}" }
+route = {}
+wire = "openai-chat"
+usage = ""
+
+[kimi]
+install = "npm install -g @moonshot-ai/kimi-code"
+command = ["kimi", "-p", "{prompt}", "--output-format", "stream-json"]
+effort = "provider"
+env = { KIMI_MODEL_NAME = "{model}", KIMI_MODEL_THINKING_EFFORT = "{effort}", KIMI_MODEL_API_KEY = "{key}", KIMI_CODE_TRUST_WORKSPACE = "1" }
+route = { KIMI_MODEL_BASE_URL = "{gateway}/moonshot/v1" }
+default_base_url = { KIMI_MODEL_BASE_URL = "https://api.moonshot.ai/v1" }
+wire = "openai-chat"
+usage = ""
+
+[qwen]
+install = "npm install -g @qwen-code/qwen-code"
+command = ["qwen", "-p", "{prompt}", "-m", "{model}", "--yolo", "-o", "json", "--max-session-turns", "{max_turns}"]
+effort = "provider"
+env = { OPENAI_API_KEY = "{key}", QWEN_CODE_SUPPRESS_YOLO_WARNING = "1" }
+route = { OPENAI_BASE_URL = "{gateway}/alibaba/compatible-mode/v1" }
+default_base_url = { OPENAI_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" }
+wire = "openai-chat"
+usage = ""
+
+[vibe]
+install = "uv tool install mistral-vibe"
+command = ["vibe", "-p", "{prompt}", "--model", "{model}", "--auto-approve", "--max-turns", "{max_turns}", "--output", "json"]
+effort = "provider"
+env = { MISTRAL_API_KEY = "{key}" }
+route = {}
+wire = "openai-chat"
+usage = ""
+
+[dsh]
+install = "npm install -g @deepseek-ai/dsh"
+command = ["dsh", "--profile", "headless", "--json", "--approval-policy", "never", "--patch", "{workspace}/.dsh/frontier.patch.yml", "{prompt}"]
+effort = "provider"
+env = { DEEPSEEK_API_KEY = "{key}", DSH_MODEL = "{model}", DSH_REASONING_EFFORT = "{effort}" }
+route = {}
+wire = "openai-chat"
+usage = ""
+
+[opencode]
+install = "npm install -g opencode-ai"
+command = ["opencode", "run", "--model", "{provider_model}", "{prompt}"]
+effort = "provider"
+env = {}
+route = {}
+wire = "openai-chat"
+usage = ""
+
+[hermes]
+install = "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"
+command = ["hermes", "chat", "-q", "{prompt}"]
+effort = "provider"
+env = {}
+route = {}
+wire = "openai-chat"
+usage = ""

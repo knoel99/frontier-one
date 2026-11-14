@@ -1,0 +1,11 @@
+{
+  "amp.mcpServers": {
+    "frontier": {
+      "command": "python3",
+      "args": [
+        "-m",
+        "frontier.mcp"
+      ]
+    }
+  }
+}

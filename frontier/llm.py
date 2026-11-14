@@ -50,13 +50,15 @@ class ModelSpec:
     effort_field: str
     extra: dict = field(default_factory=dict)
     max_tokens_field: str = "max_tokens"
+    mode: str = ""  # speed/price mode ("" = standard)
+    price_x: float = 1.0  # price multiplier of the mode
 
     def label(self) -> str:
-        return f"{self.provider}/{self.model}@{self.reasoning}"
+        return f"{self.provider}/{self.model}@{self.reasoning}" + (f"+{self.mode}" if self.mode else "")
 
 
-def resolve(cfg: dict, provider: str, tier: str, reasoning: str) -> ModelSpec:
-    """Turn (provider, abstract tier, abstract level) into a concrete model and parameter value."""
+def resolve(cfg: dict, provider: str, tier: str, reasoning: str, mode: str = "") -> ModelSpec:
+    """Turn (provider, abstract tier, abstract level, speed mode) into a concrete model and request parameters."""
     provs = cfg["providers"]
     if provider not in provs:
         raise LLMError(f"unknown provider {provider!r}; known: {', '.join(provs)}")
@@ -77,6 +79,19 @@ def resolve(cfg: dict, provider: str, tier: str, reasoning: str) -> ModelSpec:
             break
     if value is None:  # nothing at or below: take the lowest available (and turn thinking off for "none")
         value = next((rmap[lvl] for lvl in LEVELS if lvl in rmap), None)
+    extra = json.loads(json.dumps(p.get("extra", {})))
+    price_x = 1.0
+    if mode and mode != "standard":
+        modes = p.get("modes", {})
+        if mode not in modes:
+            raise LLMError(f"provider {provider} has no mode {mode!r}; modes: {', '.join(modes) or 'none'}")
+        m = modes[mode]
+        if m.get("models") and tiers[used_tier] not in m["models"]:
+            raise LLMError(f"mode {mode!r} of {provider} applies to {', '.join(m['models'])}, not {tiers[used_tier]}")
+        _merge(extra, json.loads(json.dumps(m.get("body", {}))))
+        price_x = float(m.get("price_x", 1.0))
+    else:
+        mode = ""
     return ModelSpec(
         provider=provider,
         style=p["style"],
@@ -87,8 +102,10 @@ def resolve(cfg: dict, provider: str, tier: str, reasoning: str) -> ModelSpec:
         reasoning=reasoning,
         effort_value=value,
         effort_field=p.get("effort_field", ""),
-        extra=p.get("extra", {}),
+        extra=extra,
         max_tokens_field=p.get("max_tokens_field", "max_tokens"),
+        mode=mode,
+        price_x=price_x,
     )
 
 
@@ -183,8 +200,9 @@ def _chat_openai(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
         calls.append({"id": c.get("id") or uuid.uuid4().hex[:12], "name": fn.get("name"), "arguments": args})
     u = r.get("usage") or {}
     det = u.get("completion_tokens_details") or {}
+    cached = (u.get("prompt_tokens_details") or {}).get("cached_tokens") or u.get("prompt_cache_hit_tokens") or 0
     usage = {"input": u.get("prompt_tokens", 0), "output": u.get("completion_tokens", 0),
-             "reasoning": det.get("reasoning_tokens", 0)}
+             "reasoning": det.get("reasoning_tokens", 0), "cached": cached}
     content = msg.get("content") or ""
     if isinstance(content, list):  # Mistral can return typed chunks (thinking + text)
         content = "".join(x.get("text", "") for x in content if isinstance(x, dict) and x.get("type") == "text")
@@ -242,7 +260,8 @@ def _chat_responses(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
             calls.append({"id": it["call_id"], "name": it["name"], "arguments": args})
     u = r.get("usage") or {}
     usage = {"input": u.get("input_tokens", 0), "output": u.get("output_tokens", 0),
-             "reasoning": (u.get("output_tokens_details") or {}).get("reasoning_tokens", 0)}
+             "reasoning": (u.get("output_tokens_details") or {}).get("reasoning_tokens", 0),
+             "cached": (u.get("input_tokens_details") or {}).get("cached_tokens", 0)}
     replay = [{k: v for k, v in it.items() if k not in ("status",)} for it in output]
     am = {"role": "assistant", "content": text, "tool_calls": calls, "_raw": {"output": replay}}
     return Reply(text, calls, usage, am, r.get("status", ""))
@@ -299,7 +318,7 @@ def _chat_gemini(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
     u = r.get("usageMetadata") or {}
     usage = {"input": u.get("promptTokenCount", 0),
              "output": u.get("candidatesTokenCount", 0) + u.get("thoughtsTokenCount", 0),
-             "reasoning": u.get("thoughtsTokenCount", 0)}
+             "reasoning": u.get("thoughtsTokenCount", 0), "cached": u.get("cachedContentTokenCount", 0)}
     am = {"role": "assistant", "content": text, "tool_calls": calls, "_raw": {"parts": parts}}
     return Reply(text, calls, usage, am, cand.get("finishReason", ""))
 
@@ -341,8 +360,9 @@ def _chat_anthropic(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
     text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
     calls = [{"id": b["id"], "name": b["name"], "arguments": b.get("input", {})} for b in blocks if b.get("type") == "tool_use"]
     u = r.get("usage") or {}
-    usage = {"input": u.get("input_tokens", 0) + u.get("cache_read_input_tokens", 0), "output": u.get("output_tokens", 0),
-             "reasoning": 0}
+    usage = {"input": u.get("input_tokens", 0) + u.get("cache_read_input_tokens", 0) + u.get("cache_creation_input_tokens", 0),
+             "output": u.get("output_tokens", 0), "reasoning": 0, "cached": u.get("cache_read_input_tokens", 0),
+             "cache_write": u.get("cache_creation_input_tokens", 0)}
     am = {"role": "assistant", "content": text, "tool_calls": calls, "_raw": {"content": blocks}}
     return Reply(text, calls, usage, am, r.get("stop_reason", ""))
 

@@ -1,21 +1,11 @@
 # Sub-agents
 
-`spawn_agent` starts a sub-agent with its own context and its own model and reasoning level, chosen by you. Use one when a sub-task is self-contained and either parallel to others, long enough to pollute your context, or better done by a cheaper or a stronger model. Do small things yourself: a sub-agent costs a full context.
+`spawn_agent` starts a sub-agent that runs on a model API, with its own context and the provider, tier, reasoning level and speed mode you choose for it, and returns its final answer.
 
-Choose the model for the sub-task, not for prestige:
-
-| Sub-task | tier | reasoning |
-|---|---|---|
-| mechanical: list, extract, reformat, run a known command, summarise a file | light | none or low |
-| ordinary coding, API calls from the docs, reading and reporting | standard | low or medium |
-| design, debugging a hard failure, a proof, a quantitative argument | frontier | high |
-| final check of a result that will be published or that spends money | frontier | high or max |
-
-- `max` reasoning is expensive: use it only for a decisive check.
-- The task you give must be self-contained: goal, inputs (paths, ids, numbers), constraints, expected output format. The sub-agent sees nothing of your conversation.
-- Independent sub-tasks: several `spawn_agent` calls in the same turn run in parallel.
-- A checking sub-agent is more independent on another provider (`provider`); available: {{providers}} (yours: {{provider}}). Use another provider only when its key is configured.
-- **Cloud compute (Scaleway, Runpod) goes through the `infra` role**: `spawn_agent(role="infra", task=...)`. Only that role holds the cloud tools. Give it a self-contained request: what to run (commands, image, repository), the hardware (GPU memory, count), the budget, the time limit, and what to bring back (files, numbers). It prices, creates, runs, collects and deletes. You can ask it again later: the resources of the run stay in a shared ledger.
-- A sub-agent's answer is a claim: verify what matters before relying on it.
-- Optional presets (`role`):
+- Tiers: `frontier` (the provider's strongest model), `standard`, `light` (smallest, cheapest). Reasoning levels: `none`, `low`, `medium`, `high`, `max`. `frontier_plan` (or TOOLS.md) gives the model behind each tier, its price per million tokens and the speed modes of each provider.
+- Providers usable in this run: {{providers}} (yours: {{provider}}).
+- A sub-agent sees only what you give it: `task` (and optional `instructions`, its system prompt). It gets the tools you list (default: yours) and cannot go deeper than the maximum depth.
+- Several `spawn_agent` calls in one turn run in parallel.
+- Every model call of every sub-agent is charged to the run's LLM budget (`budget_status`).
+- Presets (`role`), optional; you can also define your own sub-agent with `instructions`:
 {{roles}}

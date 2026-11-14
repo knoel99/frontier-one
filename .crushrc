@@ -1,0 +1,2 @@
+# Crush project configuration (bash with builtins)
+mcp add frontier --command python3 --args -m --args frontier.mcp

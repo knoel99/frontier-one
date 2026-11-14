@@ -1,0 +1,5 @@
+#!/bin/sh
+# The Frontier command line from anywhere (python3 -m frontier ...), e.g. the shell fallback `frontier call`.
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
+exec "${FRONTIER_PYTHON:-python3}" -m frontier "$@"
