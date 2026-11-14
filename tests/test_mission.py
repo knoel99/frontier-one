@@ -422,7 +422,9 @@ deny = ["github.com", "de.wikipedia.org"]
     info = mission.prepare(f, ping=False, offers=False)
     assert info["settings"]["sandbox"] == "openshell"
     conf = tomllib.loads((info["workspace"] / ".codex/config.toml").read_text())["mcp_servers"]["frontier"]
+    env_vars = conf.pop("env_vars")  # Codex passes a server only the variables it is told to
     assert conf == {"command": "/opt/frontier/bin/frontier-mcp", "args": ["--state", "/sandbox/state"], "tool_timeout_sec": 3600}
+    assert "HTTPS_PROXY" in env_vars and "ANTHROPIC_API_KEY" in env_vars and "RUNPOD_API_KEY" in env_vars
     box = sandbox.OpenShell(info, launcher.harness_conf("codex", "anthropic"), dry_run=True)
     warnings = box.write_files()
     assert any("github.com" in w for w in warnings) and any("wikipedia" in w for w in warnings)

@@ -31,6 +31,20 @@ class McpCommand:
         return [self.command, *self.args]
 
 
+PROXY_VARS = ["HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy"]
+
+
+def mcp_env_vars() -> list[str]:
+    """Names of the variables the frontier MCP server reads, for harnesses that pass a server only the variables they
+    are told to: the outbound proxy (which injects a key whose source is `proxy`), and every key and setting of the
+    services in config/providers.toml. Names only, never values."""
+    from .config import load_config
+    from .credentials import services
+
+    names = {v for s in services(load_config()).values() for v in (s.env, *s.settings)}
+    return PROXY_VARS + sorted(names)
+
+
 @dataclass
 class Harness:
     name: str
@@ -166,9 +180,9 @@ def artifacts(mcp: McpCommand, which: list[str] | None = None, target: dict | No
             out[".mcp.json"] = _j({"mcpServers": {"frontier": {"type": "stdio", **server}}})
         elif key == "github_mcp":
             out[".github/mcp.json"] = _j({"mcpServers": {"frontier": {"type": "local", **server, "tools": ["*"]}}})
-        elif key == "codex_config":
+        elif key == "codex_config":  # Codex starts MCP servers with a short list of variables: name the ones they need
             out[".codex/config.toml"] = (f'[mcp_servers.frontier]\ncommand = "{mcp.command}"\nargs = {_toml_list(mcp.args)}\n'
-                                         "tool_timeout_sec = 3600\n")
+                                         f"env_vars = {_toml_list(mcp_env_vars())}\ntool_timeout_sec = 3600\n")
         elif key == "agents_mcp":
             out[".agents/mcp_config.json"] = _j({"mcpServers": {"frontier": {**server, "timeoutSeconds": 3600}}})
         elif key == "gemini_settings":

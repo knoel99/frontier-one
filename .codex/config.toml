@@ -1,4 +1,5 @@
 [mcp_servers.frontier]
 command = "python3"
 args = ["-m", "frontier.mcp"]
+env_vars = ["HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy", "ANTHROPIC_API_KEY", "DASHSCOPE_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY", "HF_TOKEN", "MISTRAL_API_KEY", "MOONSHOT_API_KEY", "OPENAI_API_KEY", "RUNPOD_API_KEY", "SCW_DEFAULT_ORGANIZATION_ID", "SCW_DEFAULT_PROJECT_ID", "SCW_DEFAULT_REGION", "SCW_DEFAULT_ZONE", "SCW_SECRET_KEY", "XAI_API_KEY", "ZAI_API_KEY"]
 tool_timeout_sec = 3600
