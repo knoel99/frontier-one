@@ -7,7 +7,7 @@ import json
 import pathlib
 import sys
 
-from . import apidocs, llm
+from . import catalog, infra, llm
 from .agent import Agent, Run, load_role
 from .config import load_config
 from .tools import DEFAULT_TOOLS, REGISTRY
@@ -25,9 +25,15 @@ def cmd_run(a, cfg) -> int:
                   tools=a.tools.split(",") if a.tools else role.get("tools") or None,
                   instructions=role.get("instructions", ""), max_turns=a.max_turns or None, name=a.role or "main")
     print(f"run {run.run_id}: {agent.spec.label()} (tier {agent.spec.tier}); log {run.log_dir}/events.jsonl", file=sys.stderr)
-    answer = agent.run_task(task)
+    try:
+        answer = agent.run_task(task)
+    finally:
+        if run.alive() and not a.keep_resources:
+            print(f"cleanup: deleting {len(run.alive())} resource(s) left by the run", file=sys.stderr)
+            print(json.dumps(infra.cleanup(run)), file=sys.stderr)
     (run.log_dir / "answer.md").write_text(answer + "\n")
-    summary = {"run_id": run.run_id, "tokens": run.tokens, "sub_agents": run.agents, "main": agent.usage}
+    summary = {"run_id": run.run_id, "tokens": run.tokens, "sub_agents": run.agents, "main": agent.usage,
+               "resources": run.resources}
     (run.log_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")
     print(answer)
     print(json.dumps(summary), file=sys.stderr)
@@ -75,17 +81,27 @@ def cmd_ping(a, cfg) -> int:
 
 def cmd_docs(a, cfg) -> int:
     if a.action == "list":
-        print(apidocs.list_docs())
+        print(catalog.overview())
     elif a.action == "search":
-        print(apidocs.search(" ".join(a.args), a.doc))
+        print(catalog.search(" ".join(a.args), a.doc))
     else:
-        print(apidocs.show(a.args[0]))
+        print(catalog.show(a.args[0]))
+    return 0
+
+
+def cmd_cleanup(a, cfg) -> int:
+    """Delete what a finished or crashed run left alive, from its runs/<id>/resources.json."""
+    d = pathlib.Path(a.run_dir)
+    run = Run(cfg, workspace=".", log_dir=d, run_id=d.name)
+    run.resources = json.loads((d / "resources.json").read_text())
+    print(json.dumps(infra.cleanup(run), indent=1))
     return 0
 
 
 def cmd_tools(a, cfg) -> int:
-    for n in DEFAULT_TOOLS:
-        print(f"{n:13s} {REGISTRY[n].description}")
+    for n in REGISTRY:
+        tag = "all " if n in DEFAULT_TOOLS else "infra"
+        print(f"[{tag}] {n:20s} {REGISTRY[n].description[:110]}")
     return 0
 
 
@@ -104,6 +120,7 @@ def main(argv=None) -> int:
     r.add_argument("--workspace", default=".")
     r.add_argument("--max-turns", type=int)
     r.add_argument("--allow-spend", action="store_true", help="allow creating/changing/deleting cloud resources")
+    r.add_argument("--keep-resources", action="store_true", help="do not delete what the run left alive")
     sub.add_parser("plan", help="models and reasoning values of every provider and tier")
     p = sub.add_parser("ping", help="check model ids, reasoning values and tool calls with tiny requests")
     p.add_argument("--provider")
@@ -114,9 +131,12 @@ def main(argv=None) -> int:
     d.add_argument("args", nargs="*")
     d.add_argument("--doc", default="")
     sub.add_parser("tools", help="list the tools")
+    c = sub.add_parser("cleanup", help="delete the resources a run left alive")
+    c.add_argument("run_dir")
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
-    return {"run": cmd_run, "plan": cmd_plan, "ping": cmd_ping, "docs": cmd_docs, "tools": cmd_tools}[a.cmd](a, cfg)
+    return {"run": cmd_run, "plan": cmd_plan, "ping": cmd_ping, "docs": cmd_docs, "tools": cmd_tools,
+            "cleanup": cmd_cleanup}[a.cmd](a, cfg)
 
 
 if __name__ == "__main__":

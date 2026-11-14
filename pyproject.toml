@@ -9,7 +9,7 @@ dependencies = []
 dev = ["pytest", "ruff", "pyyaml"]
 
 [tool.ruff]
-line-length = 130
+line-length = 140
 target-version = "py311"
 extend-exclude = ["old"]
 

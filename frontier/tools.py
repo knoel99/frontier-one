@@ -1,23 +1,19 @@
-"""Tools every agent can be given. A tool is a JSON-schema function spec plus a Python function.
+"""Tools an agent can be given: a JSON-schema function spec plus a Python function fn(ctx, **arguments) -> str.
 
-Cloud tools (scaleway, runpod, runpod_mcp) only read unless the run allows spending (--allow-spend): anything that
-creates, changes or deletes a resource costs money or loses data.
+Two sets:
+  BASE_TOOLS   every agent: workspace, HTTP, spawn_agent (registered in agent.py)
+  INFRA_TOOLS  the `infra` role: ready-made Scaleway/Runpod functions, the API catalog, raw API calls
 """
 
 from __future__ import annotations
 
-import json
-import os
 import pathlib
 import subprocess
-import urllib.error
-import urllib.parse
-import urllib.request
-from dataclasses import dataclass
 from collections.abc import Callable
+from dataclasses import dataclass
 
-from . import apidocs
-from .llm import PROXY_PLACEHOLDER
+from . import catalog, infra
+from .http import mcp_call, request, scw_raw
 
 
 @dataclass
@@ -25,19 +21,19 @@ class Tool:
     name: str
     description: str
     parameters: dict
-    fn: Callable  # fn(ctx, **arguments) -> str
+    fn: Callable
 
     def spec(self) -> dict:
         return {"name": self.name, "description": self.description, "parameters": self.parameters}
 
 
-def _obj(props: dict, required: list[str]) -> dict:
-    return {"type": "object", "properties": props, "required": required}
+def _obj(props: dict, required: list[str] | tuple = ()) -> dict:
+    return {"type": "object", "properties": props, "required": list(required)}
 
 
-S = {"type": "string"}
-I = {"type": "integer"}
+S, I, B, N = {"type": "string"}, {"type": "integer"}, {"type": "boolean"}, {"type": "number"}
 J = {"type": "object", "description": "JSON object"}
+SL = {"type": "array", "items": {"type": "string"}}
 
 
 def _path(ctx, p: str) -> pathlib.Path:
@@ -47,7 +43,7 @@ def _path(ctx, p: str) -> pathlib.Path:
     return q
 
 
-# ---------------------------------------------------------------- workspace
+# ---------------------------------------------------------------- workspace and HTTP
 
 
 def t_shell(ctx, command: str, timeout_s: int = 0) -> str:
@@ -83,127 +79,41 @@ def t_edit_file(ctx, path: str, old: str, new: str) -> str:
     return f"edited {path}"
 
 
-# ---------------------------------------------------------------- HTTP
-
-
-def _http(method: str, url: str, headers: dict | None = None, body=None, timeout: float = 120) -> tuple[int, str]:
-    data = None
-    h = dict(headers or {})
-    if body is not None:
-        if isinstance(body, str):
-            data = body.encode()
-            h.setdefault("Content-Type", "text/plain")
-        else:
-            data = json.dumps(body).encode()
-            h.setdefault("Content-Type", "application/json")
-    req = urllib.request.Request(url, data=data, method=method.upper(), headers={"User-Agent": "frontier-agent", **h})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.status, r.read().decode(errors="replace")
-    except urllib.error.HTTPError as e:
-        return e.code, e.read().decode(errors="replace")
-    except (urllib.error.URLError, TimeoutError) as e:
-        return 0, f"network error: {e}"
-
-
 def t_http_request(ctx, method: str, url: str, headers: dict | None = None, body=None) -> str:
-    code, text = _http(method, url, headers, body)
+    code, text = request(method, url, headers, body)
     return f"HTTP {code}\n{text}"
 
 
-def _spend_guard(ctx, what: str) -> str | None:
-    if ctx.allow_spend:
-        return None
-    return (f"refused: {what} would create, change or delete a cloud resource and this run does not allow spending. "
-            "Read-only calls work. Ask the user to start the run with --allow-spend if this is needed.")
-
-
-# ---------------------------------------------------------------- Scaleway
-
-
-def t_scaleway(ctx, method: str, path: str, body: dict | None = None, query: dict | None = None,
-               raw_body: str = "", content_type: str = "") -> str:
-    """REST call to https://api.scaleway.com. {zone}, {region}, {project_id} in the path are filled from defaults."""
-    zone = os.environ.get("SCW_DEFAULT_ZONE", "fr-par-2")
-    defaults = {"zone": zone, "region": os.environ.get("SCW_DEFAULT_REGION", zone.rsplit("-", 1)[0]),
-                "project_id": os.environ.get("SCW_DEFAULT_PROJECT_ID", ""),
-                "organization_id": os.environ.get("SCW_DEFAULT_ORGANIZATION_ID", "")}
-    for k, v in defaults.items():
-        path = path.replace("{" + k + "}", v)
-    if method.upper() != "GET" and (g := _spend_guard(ctx, f"{method} {path}")):
-        return g
-    if isinstance(body, dict) and method.upper() == "POST" and "project" in body and not body["project"]:
-        body["project"] = defaults["project_id"]
-    url = "https://api.scaleway.com" + (path if path.startswith("/") else "/" + path)
-    if query:
-        url += "?" + urllib.parse.urlencode(query, doseq=True)
-    key = os.environ.get("SCW_SECRET_KEY") or PROXY_PLACEHOLDER
-    if raw_body:
-        body = raw_body
-    headers = {"X-Auth-Token": key, **({"Content-Type": content_type} if content_type else {})}
-    code, text = _http(method, url, headers, body)
-    return f"HTTP {code}\n{text}"
-
-
-# ---------------------------------------------------------------- Runpod
-
-
-def t_runpod(ctx, method: str, path: str, body: dict | None = None, query: dict | None = None) -> str:
-    """REST v1 call to https://rest.runpod.io/v1 (needs RUNPOD_API_KEY), or the serverless job API api.runpod.ai/v2."""
-    if method.upper() != "GET" and (g := _spend_guard(ctx, f"{method} {path}")):
-        return g
-    if path.startswith("https://"):
-        url = path
-    else:
-        url = "https://rest.runpod.io/v1" + (path if path.startswith("/") else "/" + path)
-    if query:
-        url += "?" + urllib.parse.urlencode(query, doseq=True)
-    key = os.environ.get("RUNPOD_API_KEY") or PROXY_PLACEHOLDER
-    code, text = _http(method, url, {"Authorization": f"Bearer {key}"}, body)
-    if code == 401 and key == PROXY_PLACEHOLDER:
-        text += "\n(no RUNPOD_API_KEY and no injected credential for this host: use the runpod_mcp tool instead)"
-    return f"HTTP {code}\n{text}"
-
-
-MCP_READ_PREFIXES = ("list-", "get-", "describe-", "search-", "lookup-", "read-", "endpoint-health", "stream-",
-                     "ask_question")
-
-
-def t_runpod_mcp(ctx, tool: str, arguments: dict | None = None) -> str:
-    """Call a tool of the Runpod MCP server (https://mcp.runpod.io, REST v2 surface)."""
-    if not tool.startswith(MCP_READ_PREFIXES) and (g := _spend_guard(ctx, f"runpod MCP {tool}")):
-        return g
-    key = os.environ.get("RUNPOD_API_KEY") or PROXY_PLACEHOLDER
-    payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": tool, "arguments": arguments or {}}}
-    code, text = _http("POST", os.environ.get("RUNPOD_MCP_URL", "https://mcp.runpod.io/"),
-                       {"Authorization": f"Bearer {key}", "Accept": "application/json, text/event-stream"}, payload,
-                       timeout=180)
-    if code != 200:
-        return f"HTTP {code}\n{text}"
-    if text.startswith("event:") or "\ndata:" in text:  # server-sent events: keep the last data line
-        text = [ln[5:].strip() for ln in text.splitlines() if ln.startswith("data:")][-1]
-    try:
-        r = json.loads(text)
-    except json.JSONDecodeError:
-        return text
-    if "error" in r:
-        return f"MCP error: {json.dumps(r['error'])}"
-    res = r.get("result", {})
-    out = "\n".join(c.get("text", json.dumps(c)) for c in res.get("content", []))
-    return ("ERROR: " if res.get("isError") else "") + out
-
-
-# ---------------------------------------------------------------- docs
+# ---------------------------------------------------------------- catalog and raw API calls
 
 
 def t_api_docs(ctx, action: str, query: str = "", id: str = "", doc: str = "") -> str:  # noqa: A002
     if action == "list":
-        return apidocs.list_docs()
+        return catalog.overview()
     if action == "search":
-        return apidocs.search(query, doc)
+        return catalog.search(query, doc)
     if action == "show":
-        return apidocs.show(id or query)
+        return catalog.show(id or query)
     return "action must be list, search or show"
+
+
+def _refuse(what: str) -> str:
+    return f"refused: {what} creates, changes or deletes a cloud resource and this run does not allow spending (--allow-spend)."
+
+
+def t_scaleway(ctx, method: str, path: str, body: dict | None = None, query: dict | None = None, raw_body: str = "",
+               content_type: str = "") -> str:
+    if method.upper() != "GET" and not ctx.allow_spend:
+        return _refuse(f"{method} {path}")
+    code, text = scw_raw(method, path, raw_body or body, query, content_type)
+    return f"HTTP {code}\n{text}"
+
+
+def t_runpod_mcp(ctx, tool: str, arguments: dict | None = None) -> str:
+    if tool not in catalog.read_only_mcp_tools() and tool != "describe-tool" and not ctx.allow_spend:
+        return _refuse(f"Runpod MCP tool {tool}")
+    ok, text = mcp_call(tool, arguments)
+    return text if ok else "ERROR: " + text
 
 
 # ---------------------------------------------------------------- registry
@@ -211,48 +121,74 @@ def t_api_docs(ctx, action: str, query: str = "", id: str = "", doc: str = "") -
 REGISTRY: dict[str, Tool] = {}
 
 
-def register(t: Tool) -> Tool:
-    REGISTRY[t.name] = t
-    return t
+def register(name: str, description: str, parameters: dict, fn: Callable) -> None:
+    REGISTRY[name] = Tool(name, description, parameters, fn)
 
 
-register(Tool("shell", "Run a bash command in the workspace and return exit code, stdout and stderr.",
-              _obj({"command": S, "timeout_s": I}, ["command"]), t_shell))
-register(Tool("read_file", "Read a text file of the workspace with line numbers (offset and limit in lines).",
-              _obj({"path": S, "offset": I, "limit": I}, ["path"]), t_read_file))
-register(Tool("write_file", "Create or overwrite a file of the workspace.",
-              _obj({"path": S, "content": S}, ["path", "content"]), t_write_file))
-register(Tool("edit_file", "Replace the unique occurrence of `old` by `new` in a workspace file.",
-              _obj({"path": S, "old": S, "new": S}, ["path", "old", "new"]), t_edit_file))
-register(Tool("http_request", "Generic HTTP request (method, url, optional headers and JSON body). Returns status and body.",
-              _obj({"method": S, "url": S, "headers": J, "body": J}, ["method", "url"]), t_http_request))
-register(Tool(
-    "api_docs",
-    "Offline official documentation of the Scaleway and Runpod APIs. action=list: the documents; "
-    "action=search query='create gpu instance' (optional doc='scaleway/instance'): matching operations with ids; "
-    "action=show id='scaleway/instance:CreateServer': parameters, request and response schemas. "
-    "Also id='scaleway/guide' or 'runpod/guide' for auth, flows and pitfalls. Read the docs here, never guess an API.",
-    _obj({"action": {"type": "string", "enum": ["list", "search", "show"]}, "query": S, "id": S, "doc": S}, ["action"]),
-    t_api_docs))
-register(Tool(
-    "scaleway",
-    "Call the Scaleway API (https://api.scaleway.com; auth handled). path like '/instance/v1/zones/{zone}/servers'; "
-    "{zone}, {region}, {project_id} are filled with the defaults. Look the operation up with api_docs first. "
-    "body: JSON object; raw_body: text sent as is (e.g. a cloud-init script, content_type='text/plain'). "
-    "Non-GET calls need a run with --allow-spend.",
-    _obj({"method": S, "path": S, "body": J, "query": J, "raw_body": S, "content_type": S},
-         ["method", "path"]), t_scaleway))
-register(Tool(
-    "runpod",
-    "Call the Runpod REST API v1 (https://rest.runpod.io/v1, e.g. path '/pods'), or a full https://api.runpod.ai/v2/... "
-    "serverless job URL. Needs RUNPOD_API_KEY; otherwise use runpod_mcp. Non-GET calls need --allow-spend.",
-    _obj({"method": S, "path": S, "body": J, "query": J}, ["method", "path"]), t_runpod))
-register(Tool(
-    "runpod_mcp",
-    "Call a tool of the Runpod MCP server (pods, endpoints, jobs, GPU stock and prices, billing; 125 tools). "
-    "Find the tool and its arguments with api_docs (doc='runpod/mcp'). Tools not starting with list-/get-/... "
-    "need --allow-spend.",
-    _obj({"tool": S, "arguments": J}, ["tool"]), t_runpod_mcp))
+register("shell", "Run a bash command in the workspace; returns exit code, stdout and stderr.",
+         _obj({"command": S, "timeout_s": I}, ["command"]), t_shell)
+register("read_file", "Read a workspace text file with line numbers (offset, limit in lines).",
+         _obj({"path": S, "offset": I, "limit": I}, ["path"]), t_read_file)
+register("write_file", "Create or overwrite a workspace file.", _obj({"path": S, "content": S}, ["path", "content"]), t_write_file)
+register("edit_file", "Replace the unique occurrence of `old` by `new` in a workspace file.",
+         _obj({"path": S, "old": S, "new": S}, ["path", "old", "new"]), t_edit_file)
+register("http_request", "Generic HTTP request; returns status and body.",
+         _obj({"method": S, "url": S, "headers": J, "body": J}, ["method", "url"]), t_http_request)
 
-DEFAULT_TOOLS = ["shell", "read_file", "write_file", "edit_file", "http_request", "api_docs", "scaleway", "runpod",
-                 "runpod_mcp", "spawn_agent"]
+# Ready-made infrastructure functions: prefer them to raw calls.
+register("scw_offers", "Scaleway Instance types of a zone with real price (EUR/hour, from the Product Catalog), GPU, "
+         "memory and stock, cheapest first. zone: one zone (default fr-par-2) or 'all'. GPU types only, available or "
+         "scarce only, unless told otherwise.",
+         _obj({"zone": S, "min_gpu_memory_gb": N, "gpu_only": B, "include_unavailable": B}), infra.scw_offers)
+register("scw_create_instance", "Create a Scaleway Instance (GPU types get the Ubuntu GPU OS image with NVIDIA driver and "
+         "Docker), optional cloud-init script, power on, wait until running; returns id, state, public IPs, price. "
+         "Recorded in the run ledger. Needs --allow-spend.",
+         _obj({"name": S, "commercial_type": S, "zone": S, "image_label": S, "cloud_init": S, "tags": SL, "wait_running": B},
+              ["name", "commercial_type"]), infra.scw_create_instance)
+register("scw_instance", "State, type, public IPs and volumes of a Scaleway Instance.",
+         _obj({"server_id": S, "zone": S}, ["server_id"]), infra.scw_instance)
+register("scw_list_instances", "Scaleway Instances of a zone carrying a tag (default 'frontier').",
+         _obj({"zone": S, "tag": S}), infra.scw_list_instances)
+register("scw_delete_instance", "Delete a Scaleway Instance AND its Block Storage volumes and flexible IPs (a plain "
+         "terminate leaves the volumes billing). Only resources of this run unless not_created_by_this_run=true.",
+         _obj({"server_id": S, "zone": S, "not_created_by_this_run": B}, ["server_id"]), infra.scw_delete_instance)
+register("rp_offers", "Runpod GPU types for pods with USD/hour per GPU, memory, stock and data centers, cheapest first.",
+         _obj({"min_memory_gb": N, "cloud": {"type": "string", "enum": ["SECURE", "COMMUNITY"]}, "gpu_count": I,
+               "include_unavailable": B}), infra.rp_offers)
+register("rp_create_pod", "Create a Runpod pod (billed per second from creation). gpu_type_id from rp_offers; command: "
+         "container command as one shell string; ports like ['22/tcp','8888/http']. Recorded in the run ledger. "
+         "Needs --allow-spend.",
+         _obj({"name": S, "gpu_type_id": S, "image": S, "gpu_count": I, "cloud": S, "disk_gb": I, "ports": SL, "env": J,
+               "command": S, "start_ssh": B}, ["name", "gpu_type_id"]), infra.rp_create_pod)
+register("rp_pod", "Details and state of a Runpod pod.", _obj({"pod_id": S}, ["pod_id"]), infra.rp_pod)
+register("rp_list_pods", "All Runpod pods of the account.", _obj({}), infra.rp_list_pods)
+register("rp_exec", "Run a shell command inside a RUNNING pod (no SSH); waits at most 25 s; a longer command keeps "
+         "running: start it with nohup … & and poll its output file.",
+         _obj({"pod_id": S, "command": S, "timeout_s": I}, ["pod_id", "command"]), infra.rp_exec)
+register("rp_logs", "Last lines of a pod's container and system logs.", _obj({"pod_id": S, "tail": I}, ["pod_id"]), infra.rp_logs)
+register("rp_delete_pod", "Delete a Runpod pod (stops billing). Only pods of this run unless not_created_by_this_run=true.",
+         _obj({"pod_id": S, "not_created_by_this_run": B}, ["pod_id"]), infra.rp_delete_pod)
+register("infra_resources", "Cloud resources created by this run (all agents), with state and hourly price.",
+         _obj({}), infra.infra_resources)
+register("infra_cleanup", "Delete every resource of this run that is still alive.", _obj({}), infra.infra_cleanup)
+
+# Catalog and raw calls, for anything the functions above do not cover.
+register("api_docs", "Catalog of the Scaleway and Runpod APIs, one compact signature per operation (like a Swagger "
+         "index): action=list; action=search query='create gpu instance' [doc='scaleway/instance' or 'runpod/mcp']; "
+         "action=show id='scaleway/instance:CreateServer' (params, body fields, return). Guides: id='scaleway/guide', "
+         "'runpod/guide'.",
+         _obj({"action": {"type": "string", "enum": ["list", "search", "show"]}, "query": S, "id": S, "doc": S}, ["action"]),
+         t_api_docs)
+register("scaleway", "Raw Scaleway API call (https://api.scaleway.com, auth handled). path like "
+         "'/instance/v1/zones/{zone}/servers' ({zone}, {region}, {project_id} filled). raw_body: text body (with "
+         "content_type). Non-GET needs --allow-spend.",
+         _obj({"method": S, "path": S, "body": J, "query": J, "raw_body": S, "content_type": S}, ["method", "path"]), t_scaleway)
+register("runpod_mcp", "Raw call of a Runpod MCP server tool (125 tools: pods, serverless endpoints and jobs, templates, "
+         "volumes, billing). Signatures: api_docs doc='runpod/mcp'. Non-read-only tools need --allow-spend.",
+         _obj({"tool": S, "arguments": J}, ["tool"]), t_runpod_mcp)
+
+BASE_TOOLS = ["shell", "read_file", "write_file", "edit_file", "http_request", "spawn_agent"]
+INFRA_TOOLS = ["scw_offers", "scw_create_instance", "scw_instance", "scw_list_instances", "scw_delete_instance",
+               "rp_offers", "rp_create_pod", "rp_pod", "rp_list_pods", "rp_exec", "rp_logs", "rp_delete_pod",
+               "infra_resources", "infra_cleanup", "api_docs", "scaleway", "runpod_mcp"]
+DEFAULT_TOOLS = BASE_TOOLS

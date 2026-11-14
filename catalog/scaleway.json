@@ -1,0 +1,4614 @@
+[
+{
+"id": "scaleway/instance:CheckBlockMigrationOrganizationQuotas",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/block-migration/check-organization-quotas",
+"summary": "",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target"
+],
+"body": {
+"organization": "string"
+}
+},
+{
+"id": "scaleway/instance:GetDashboard",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/dashboard",
+"summary": "",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"organization (query) string",
+"project (query) string"
+],
+"returns": "object{dashboard}"
+},
+{
+"id": "scaleway/instance:ListImages",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/images",
+"summary": "List Instance images",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"organization (query) string",
+"per_page (query) integer",
+"page (query) integer",
+"name (query) string",
+"public (query) boolean",
+"arch (query) string",
+"project (query) string",
+"tags (query) string"
+],
+"returns": "object{images}"
+},
+{
+"id": "scaleway/instance:CreateImage",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/images",
+"summary": "Create an Instance image",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target"
+],
+"body": {
+"name": "string: Name of the image.",
+"root_volume*": "string: UUID of the snapshot.",
+"arch*": "enum unknown_arch|x86_64|arm|arm64: Architecture of the image.",
+"extra_volumes": {
+"_": "object{<extra_volumeKey>}: Additional volumes of the image.",
+"<extra_volumeKey>": "object{id,name,size,volume_type,organization,project}: Additional volumes of the image."
+},
+"organization": "string: Organization ID of the image.",
+"project": "string: Project ID of the image.",
+"tags": "array<string>: Tags of the image.",
+"public": "boolean: True to create a public image."
+},
+"returns": "object{image}"
+},
+{
+"id": "scaleway/instance:SetImage",
+"method": "PUT",
+"path": "/instance/v1/zones/{zone}/images/{id}",
+"summary": "Update image",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"id* (path) string"
+],
+"body": {
+"name": "string",
+"arch": "enum unknown_arch|x86_64|arm|arm64",
+"creation_date": "string: (RFC 3339 format)",
+"modification_date": "string: (RFC 3339 format)",
+"default_bootscript": {
+"_": "object{architecture,bootcmdargs,default,dtb,id,initrd,kernel,organization,public,title,project,zone}",
+"architecture": "enum unknown_arch|x86_64|arm|arm64",
+"bootcmdargs": "string",
+"default": "boolean",
+"dtb": "string",
+"id": "string",
+"initrd": "string",
+"kernel": "string",
+"organization": "string",
+"public": "boolean",
+"title": "string",
+"project": "string",
+"zone": "string: The zone you want to target"
+},
+"extra_volumes": {
+"_": "object{<extra_volumeKey>}",
+"<extra_volumeKey>": "object{id,name,export_uri,size,volume_type,creation_date,modification_date,organization,project,tags,server,state…}"
+},
+"from_server": "string",
+"organization": "string",
+"public": "boolean",
+"root_volume": {
+"_": "object{id,name,size,volume_type}",
+"id": "string",
+"name": "string",
+"size": "integer: (in bytes)",
+"volume_type": "enum l_ssd|b_ssd|unified|scratch|sbs_volume|sbs_snapshot"
+},
+"state": "enum available|creating|error",
+"project": "string",
+"tags": "array<any>"
+},
+"returns": "object{image}"
+},
+{
+"id": "scaleway/instance:GetImage",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/images/{image_id}",
+"summary": "Get an Instance image",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"image_id* (path) string: UUID of the image you want to get."
+],
+"returns": "object{image}"
+},
+{
+"id": "scaleway/instance:UpdateImage",
+"method": "PATCH",
+"path": "/instance/v1/zones/{zone}/images/{image_id}",
+"summary": "Update image",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"image_id* (path) string: UUID of the image. (UUID format)"
+],
+"body": {
+"name": "string: Name of the image.",
+"arch": "enum unknown_arch|x86_64|arm|arm64: Architecture of the image.",
+"extra_volumes": {
+"_": "object{<extra_volumeKey>}: Additional snapshots of the image, with extra_volumeKey being the position of the snapshot in the image.",
+"<extra_volumeKey>": "object{id}: Additional snapshots of the image, with extra_volumeKey being the position of the snapshot in the image."
+},
+"tags": "array<any>: Tags of the image.",
+"public": "boolean: True to set the image as public."
+},
+"returns": "object{image}"
+},
+{
+"id": "scaleway/instance:DeleteImage",
+"method": "DELETE",
+"path": "/instance/v1/zones/{zone}/images/{image_id}",
+"summary": "Delete an Instance image",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"image_id* (path) string: UUID of the image you want to delete."
+]
+},
+{
+"id": "scaleway/instance:ListIps",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/ips",
+"summary": "List all flexible IPs",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"project (query) string: Project ID in which the IPs are reserved.",
+"organization (query) string: Organization ID in which the IPs are reserved.",
+"tags (query) string: Filter IPs with these exact tags (to filter with several tags, use commas to se…",
+"name (query) string: Filter on the IP address (Works as a LIKE operation on the IP address).",
+"per_page (query) integer: A positive integer lower or equal to 100 to select the number of items to retur…",
+"page (query) integer: A positive integer to choose the page to return.",
+"type (query) string: Filter on the IP Mobility IP type (whose value should be either 'routed_ipv4' o…",
+"server (query) string: Precisely one of server, detached can be set.",
+"detached (query) boolean: Precisely one of server, detached can be set."
+],
+"returns": "object{ips}"
+},
+{
+"id": "scaleway/instance:CreateIp",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/ips",
+"summary": "Reserve a flexible IP",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target"
+],
+"body": {
+"organization": "string: Organization ID in which the IP is reserved.",
+"project": "string: Project ID in which the IP is reserved.",
+"tags": "array<string>: Tags of the IP.",
+"server": "string: UUID of the Instance you want to attach the IP to.",
+"type": "enum unknown_iptype|routed_ipv4|routed_ipv6: IP type to reserve (either 'routed_ipv4' or 'routed_ipv6')."
+},
+"returns": "object{ip}"
+},
+{
+"id": "scaleway/instance:ReleaseIpToIpam",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/ips/{ip_id}/release-to-ipam",
+"summary": "Releases the reserved IP without deleting the reservation.",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"ip_id* (path) string: ID of the IP you want to release from the Instance but retain in IPAM."
+],
+"body": {}
+},
+{
+"id": "scaleway/instance:GetIp",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/ips/{ip}",
+"summary": "Get a flexible IP",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"ip* (path) string: IP ID or address to get."
+],
+"returns": "object{ip}"
+},
+{
+"id": "scaleway/instance:UpdateIp",
+"method": "PATCH",
+"path": "/instance/v1/zones/{zone}/ips/{ip}",
+"summary": "Update a flexible IP",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"ip* (path) string: IP ID or IP address."
+],
+"body": {
+"reverse": "string: Reverse domain name.",
+"type": "enum unknown_iptype|routed_ipv4|routed_ipv6: Should have no effect.",
+"tags": "array<any>: An array of keywords you want to tag this IP with.",
+"server": "string"
+},
+"returns": "object{ip}"
+},
+{
+"id": "scaleway/instance:DeleteIp",
+"method": "DELETE",
+"path": "/instance/v1/zones/{zone}/ips/{ip}",
+"summary": "Delete a flexible IP",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"ip* (path) string: ID or address of the IP to delete."
+]
+},
+{
+"id": "scaleway/instance:ListPlacementGroups",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/placement_groups",
+"summary": "List placement groups",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"per_page (query) integer: A positive integer lower or equal to 100 to select the number of items to retur…",
+"page (query) integer: A positive integer to choose the page to return.",
+"organization (query) string: List only placement groups of this Organization ID.",
+"project (query) string: List only placement groups of this Project ID.",
+"tags (query) string: List placement groups with these exact tags (to filter with several tags, use c…",
+"name (query) string: Filter placement groups by name (for eg. \"cluster1\" will return \"cluster100\" an…"
+],
+"returns": "object{placement_groups}"
+},
+{
+"id": "scaleway/instance:CreatePlacementGroup",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/placement_groups",
+"summary": "Create a placement group",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target"
+],
+"body": {
+"name": "string: Name of the placement group.",
+"organization": "string: Organization ID of the placement group.",
+"project": "string: Project ID of the placement group.",
+"tags": "array<string>: Tags of the placement group.",
+"policy_mode": "enum optional|enforced: Operating mode of the placement group.",
+"policy_type": "enum max_availability|low_latency: Policy type of the placement group."
+},
+"returns": "object{placement_group}"
+},
+{
+"id": "scaleway/instance:GetPlacementGroup",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/placement_groups/{placement_group_id}",
+"summary": "Get a placement group",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"placement_group_id* (path) string: UUID of the placement group you want to get."
+],
+"returns": "object{placement_group}"
+},
+{
+"id": "scaleway/instance:SetPlacementGroup",
+"method": "PUT",
+"path": "/instance/v1/zones/{zone}/placement_groups/{placement_group_id}",
+"summary": "Set placement group",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"placement_group_id* (path) string"
+],
+"body": {
+"name": "string",
+"organization": "string",
+"policy_mode": "enum optional|enforced",
+"policy_type": "enum max_availability|low_latency",
+"project": "string",
+"tags": "array<any>"
+},
+"returns": "object{placement_group}"
+},
+{
+"id": "scaleway/instance:UpdatePlacementGroup",
+"method": "PATCH",
+"path": "/instance/v1/zones/{zone}/placement_groups/{placement_group_id}",
+"summary": "Update a placement group",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"placement_group_id* (path) string: UUID of the placement group."
+],
+"body": {
+"name": "string: Name of the placement group.",
+"tags": "array<any>: Tags of the placement group.",
+"policy_mode": "enum optional|enforced: Operating mode of the placement group.",
+"policy_type": "enum max_availability|low_latency: Policy type of the placement group."
+},
+"returns": "object{placement_group}"
+},
+{
+"id": "scaleway/instance:DeletePlacementGroup",
+"method": "DELETE",
+"path": "/instance/v1/zones/{zone}/placement_groups/{placement_group_id}",
+"summary": "Delete the specified placement group",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"placement_group_id* (path) string: UUID of the placement group you want to delete."
+]
+},
+{
+"id": "scaleway/instance:GetPlacementGroupServers",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/placement_groups/{placement_group_id}/servers",
+"summary": "Get placement group servers",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"placement_group_id* (path) string: UUID of the placement group you want to get."
+],
+"returns": "object{servers}"
+},
+{
+"id": "scaleway/instance:SetPlacementGroupServers",
+"method": "PUT",
+"path": "/instance/v1/zones/{zone}/placement_groups/{placement_group_id}/servers",
+"summary": "Set placement group servers",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"placement_group_id* (path) string: UUID of the placement group you want to set."
+],
+"body": {
+"servers*": "array<string>: An array of the Instances' UUIDs you want to configure."
+},
+"returns": "object{servers}"
+},
+{
+"id": "scaleway/instance:UpdatePlacementGroupServers",
+"method": "PATCH",
+"path": "/instance/v1/zones/{zone}/placement_groups/{placement_group_id}/servers",
+"summary": "Update placement group servers",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"placement_group_id* (path) string: UUID of the placement group you want to update."
+],
+"body": {
+"servers*": "array<string>: An array of the Instances' UUIDs you want to configure."
+},
+"returns": "object{servers}"
+},
+{
+"id": "scaleway/instance:ListServersTypes",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/products/servers",
+"summary": "List Instance types",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"per_page (query) integer",
+"page (query) integer"
+],
+"returns": "object{servers}"
+},
+{
+"id": "scaleway/instance:GetServerTypesAvailability",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/products/servers/availability",
+"summary": "Get availability",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"per_page (query) integer: A positive integer lower or equal to 100 to select the number of items to retur…",
+"page (query) integer: A positive integer to choose the page to return."
+],
+"returns": "object{servers}"
+},
+{
+"id": "scaleway/instance:ListVolumesTypes",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/products/volumes",
+"summary": "List volume types",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"per_page (query) integer",
+"page (query) integer"
+],
+"returns": "object{volumes}"
+},
+{
+"id": "scaleway/instance:ListSecurityGroups",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/security_groups",
+"summary": "List security groups",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"name (query) string: Name of the security group.",
+"organization (query) string: Security group Organization ID.",
+"project (query) string: Security group Project ID.",
+"tags (query) string: List security groups with these exact tags (to filter with several tags, use co…",
+"project_default (query) boolean: Filter security groups with this value for project_default.",
+"per_page (query) integer: A positive integer lower or equal to 100 to select the number of items to retur…",
+"page (query) integer: A positive integer to choose the page to return."
+],
+"returns": "object{security_groups}"
+},
+{
+"id": "scaleway/instance:CreateSecurityGroup",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/security_groups",
+"summary": "Create a security group",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target"
+],
+"body": {
+"name*": "string: Name of the security group.",
+"description": "string: Description of the security group.",
+"organization": "string: Organization ID the security group belongs to.",
+"project": "string: Project ID the security group belong to.",
+"tags": "array<string>: Tags of the security group.",
+"organization_default": "boolean: Defines whether this security group becomes the default security group for new Instances.",
+"project_default": "boolean: Whether this security group becomes the default security group for new Instances.",
+"stateful": "boolean: Whether the security group is stateful or not.",
+"inbound_default_policy": "enum unknown_policy|accept|drop: Default policy for inbound rules.",
+"outbound_default_policy": "enum unknown_policy|accept|drop: Default policy for outbound rules.",
+"enable_default_security": "boolean: True to block SMTP on IPv4 and IPv6."
+},
+"returns": "object{security_group}"
+},
+{
+"id": "scaleway/instance:SetSecurityGroup",
+"method": "PUT",
+"path": "/instance/v1/zones/{zone}/security_groups/{id}",
+"summary": "Update a security group",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"id* (path) string: UUID of the security group."
+],
+"body": {
+"name": "string: Name of the security group.",
+"tags": "array<any>: Tags of the security group.",
+"creation_date": "string: Creation date of the security group (will be ignored). (RFC 3339 format)",
+"modification_date": "string: Modification date of the security group (will be ignored). (RFC 3339 format)",
+"description": "string: Description of the security group.",
+"enable_default_security": "boolean: True to block SMTP on IPv4 and IPv6.",
+"inbound_default_policy": "enum unknown_policy|accept|drop: Default inbound policy.",
+"outbound_default_policy": "enum unknown_policy|accept|drop: Default outbound policy.",
+"organization": "string: Security groups Organization ID.",
+"project": "string: Security group Project ID.",
+"organization_default": "boolean: Please use project_default instead.",
+"project_default": "boolean: True use this security group for future Instances created in this project.",
+"servers": {
+"_": "array<object{id,name}>: Instances attached to this security group.",
+"id": "string",
+"name": "string"
+},
+"stateful": "boolean: True to set the security group as stateful."
+},
+"returns": "object{security_group}"
+},
+{
+"id": "scaleway/instance:GetSecurityGroup",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/security_groups/{security_group_id}",
+"summary": "Get a security group",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"security_group_id* (path) string: UUID of the security group you want to get."
+],
+"returns": "object{security_group}"
+},
+{
+"id": "scaleway/instance:UpdateSecurityGroup",
+"method": "PATCH",
+"path": "/instance/v1/zones/{zone}/security_groups/{security_group_id}",
+"summary": "Update a security group",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"security_group_id* (path) string: UUID of the security group. (UUID format)"
+],
+"body": {
+"name": "string: Name of the security group.",
+"description": "string: Description of the security group.",
+"enable_default_security": "boolean: True to block SMTP on IPv4 and IPv6.",
+"inbound_default_policy": "enum unknown_policy|accept|drop: Default inbound policy.",
+"tags": "array<any>: Tags of the security group.",
+"organization_default": "boolean: Please use project_default instead.",
+"project_default": "boolean: True use this security group for future Instances created in this project.",
+"outbound_default_policy": "enum unknown_policy|accept|drop: Default outbound policy.",
+"stateful": "boolean: True to set the security group as stateful."
+},
+"returns": "object{security_group}"
+},
+{
+"id": "scaleway/instance:DeleteSecurityGroup",
+"method": "DELETE",
+"path": "/instance/v1/zones/{zone}/security_groups/{security_group_id}",
+"summary": "Delete a security group",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"security_group_id* (path) string: UUID of the security group you want to delete."
+]
+},
+{
+"id": "scaleway/instance:ListSecurityGroupRules",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/security_groups/{security_group_id}/rules",
+"summary": "List rules",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"security_group_id* (path) string: UUID of the security group.",
+"per_page (query) integer: A positive integer lower or equal to 100 to select the number of items to retur…",
+"page (query) integer: A positive integer to choose the page to return."
+],
+"returns": "object{rules}"
+},
+{
+"id": "scaleway/instance:CreateSecurityGroupRule",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/security_groups/{security_group_id}/rules",
+"summary": "Create rule",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"security_group_id* (path) string: UUID of the security group."
+],
+"body": {
+"protocol*": "enum unknown_protocol|TCP|UDP|ICMP|ANY",
+"direction*": "enum unknown_direction|inbound|outbound",
+"action*": "enum unknown_action|accept|drop",
+"ip_range*": "string: (IP network)",
+"dest_port_from": "integer: Beginning of the range of ports to apply this rule to (inclusive).",
+"dest_port_to": "integer: End of the range of ports to apply this rule to (inclusive).",
+"position": "integer: Position of this rule in the security group rules list.",
+"editable": "boolean: Indicates if this rule is editable (will be ignored)."
+},
+"returns": "object{rule}"
+},
+{
+"id": "scaleway/instance:SetSecurityGroupRules",
+"method": "PUT",
+"path": "/instance/v1/zones/{zone}/security_groups/{security_group_id}/rules",
+"summary": "Update all the rules of a security group",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"security_group_id* (path) string: UUID of the security group to update the rules on."
+],
+"body": {
+"rules": {
+"_": "array<object{id,action,protocol,direction,ip_range,dest_port_from,dest_port_to,position,editable,zone}>: List of rules to update in the security group.",
+"id": "string: UUID of the security rule to update.",
+"action": "enum unknown_action|accept|drop: Action to apply when the rule matches a packet.",
+"protocol": "enum unknown_protocol|TCP|UDP|ICMP|ANY: Protocol family this rule applies to.",
+"direction": "enum unknown_direction|inbound|outbound: Direction the rule applies to.",
+"ip_range": "string: Range of IP addresses these rules apply to. (IP network)",
+"dest_port_from": "integer: Beginning of the range of ports this rule applies to (inclusive).",
+"dest_port_to": "integer: End of the range of ports this rule applies to (inclusive).",
+"position": "integer: Position of this rule in the security group rules list.",
+"editable": "boolean: Indicates if this rule is editable.",
+"zone": "string: Zone of the rule."
+}
+},
+"returns": "object{rules}"
+},
+{
+"id": "scaleway/instance:GetSecurityGroupRule",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/security_groups/{security_group_id}/rules/{security_group_rule_id}",
+"summary": "Get rule",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"security_group_id* (path) string",
+"security_group_rule_id* (path) string"
+],
+"returns": "object{rule}"
+},
+{
+"id": "scaleway/instance:SetSecurityGroupRule",
+"method": "PUT",
+"path": "/instance/v1/zones/{zone}/security_groups/{security_group_id}/rules/{security_group_rule_id}",
+"summary": "Set security group rule",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"security_group_id* (path) string",
+"security_group_rule_id* (path) string"
+],
+"body": {
+"id": "string",
+"protocol": "enum unknown_protocol|TCP|UDP|ICMP|ANY",
+"direction": "enum unknown_direction|inbound|outbound",
+"action": "enum unknown_action|accept|drop",
+"ip_range": "string: (IP network)",
+"dest_port_from": "integer",
+"dest_port_to": "integer",
+"position": "integer",
+"editable": "boolean"
+},
+"returns": "object{rule}"
+},
+{
+"id": "scaleway/instance:UpdateSecurityGroupRule",
+"method": "PATCH",
+"path": "/instance/v1/zones/{zone}/security_groups/{security_group_id}/rules/{security_group_rule_id}",
+"summary": "Update security group rule",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"security_group_id* (path) string: UUID of the security group. (UUID format)",
+"security_group_rule_id* (path) string: UUID of the rule. (UUID format)"
+],
+"body": {
+"protocol": "enum unknown_protocol|TCP|UDP|ICMP|ANY: Protocol family this rule applies to.",
+"direction": "enum unknown_direction|inbound|outbound: Direction the rule applies to.",
+"action": "enum unknown_action|accept|drop: Action to apply when the rule matches a packet.",
+"ip_range": "string: Range of IP addresses these rules apply to. (IP network)",
+"dest_port_from": "integer: Beginning of the range of ports this rule applies to (inclusive).",
+"dest_port_to": "integer: End of the range of ports this rule applies to (inclusive).",
+"position": "integer: Position of this rule in the security group rules list."
+},
+"returns": "object{rule}"
+},
+{
+"id": "scaleway/instance:DeleteSecurityGroupRule",
+"method": "DELETE",
+"path": "/instance/v1/zones/{zone}/security_groups/{security_group_id}/rules/{security_group_rule_id}",
+"summary": "Delete rule",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"security_group_id* (path) string",
+"security_group_rule_id* (path) string"
+]
+},
+{
+"id": "scaleway/instance:ListDefaultSecurityGroupRules",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/security_groups/default/rules",
+"summary": "Get default rules",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target"
+],
+"returns": "object{rules}"
+},
+{
+"id": "scaleway/instance:ListServers",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/servers",
+"summary": "List all Instances",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"per_page (query) integer: A positive integer lower or equal to 100 to select the number of items to retur…",
+"page (query) integer: A positive integer to choose the page to return.",
+"organization (query) string: List only Instances of this Organization ID.",
+"project (query) string: List only Instances of this Project ID.",
+"name (query) string: Filter Instances by name (eg. \"server1\" will return \"server100\" and \"server1\" b…",
+"private_ip (query) string: List Instances by private_ip. (IP address)",
+"without_ip (query) boolean: List Instances that are not attached to a public IP.",
+"with_ip (query) string: List Instances by IP (both private_ip and public_ip are supported). (IP address)",
+"commercial_type (query) string: List Instances of this commercial type.",
+"state (query) enum running|stopped|stopped in place|starting|stopping|locked: List Instances in this state.",
+"tags (query) string: List Instances with these exact tags (to filter with several tags, use commas t…",
+"private_network (query) string: List Instances in this Private Network.",
+"order (query) enum creation_date_desc|creation_date_asc|modification_date_desc|modification_date_asc: Define the order of the returned servers.",
+"private_networks (query) string: List Instances from the given Private Networks (use commas to separate them).",
+"private_nic_mac_address (query) string: List Instances associated with the given private NIC MAC address.",
+"servers (query) string: List Instances from these server ids (use commas to separate them)."
+],
+"returns": "object{servers}"
+},
+{
+"id": "scaleway/instance:CreateServer",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/servers",
+"summary": "Create an Instance",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target"
+],
+"body": {
+"name*": "string: Instance name.",
+"dynamic_ip_required": "boolean: Define if a dynamic IPv4 is required for the Instance.",
+"routed_ip_enabled": "boolean: If true, configure the Instance so it uses the new routed IP mode.",
+"commercial_type*": "string: Define the Instance commercial type (i.e.",
+"image": "string: Instance image ID or label.",
+"volumes": {
+"_": "object{<volumeKey>}: Volumes attached to the server.",
+"<volumeKey>": "object{id,boot,name,size,volume_type,base_snapshot,organization,project}: Volumes attached to the server."
+},
+"enable_ipv6": "boolean: True if IPv6 is enabled on the server (deprecated and always `False` when `routed_ip_enabled` is `True`).",
+"public_ip": "string: ID of the reserved IP to attach to the Instance.",
+"public_ips": "array<any>: A list of reserved IP IDs to attach to the Instance.",
+"boot_type": "enum local|bootscript|rescue: Boot type to use.",
+"organization": "string: Instance Organization ID. Precisely one of project, organization can be set.",
+"project": "string: Instance Project ID. Precisely one of project, organization can be set.",
+"tags": "array<string>: Instance tags.",
+"security_group": "string: Security group ID.",
+"placement_group": "string: Placement group ID if Instance must be part of a placement group.",
+"admin_password_encryption_ssh_key_id": "string: UUID of the SSH RSA key that will be used to encrypt the initial admin password for OS requiring it.",
+"protected": "boolean: True to activate server protection option."
+},
+"returns": "object{server}"
+},
+{
+"id": "scaleway/instance:GetServer",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}",
+"summary": "Get an Instance",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string: UUID of the Instance you want to get."
+],
+"returns": "object{server}"
+},
+{
+"id": "scaleway/instance:UpdateServer",
+"method": "PATCH",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}",
+"summary": "Update an Instance",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string: UUID of the Instance."
+],
+"body": {
+"name": "string: Name of the Instance.",
+"boot_type": "enum local|bootscript|rescue",
+"tags": "array<any>: Tags of the Instance.",
+"volumes": {
+"_": "object{<volumeKey>}",
+"<volumeKey>": "object{id,boot,name,size,volume_type,base_snapshot,organization,project}"
+},
+"dynamic_ip_required": "boolean",
+"routed_ip_enabled": "boolean: True to configure the instance so it uses the new routed IP mode (once this is set to True you cannot set it …",
+"public_ips": "array<any>: A list of reserved IP IDs to attach to the Instance.",
+"enable_ipv6": "boolean",
+"protected": "boolean: True to activate server protection option.",
+"security_group": {
+"_": "object{id,name}",
+"id": "string",
+"name": "string"
+},
+"placement_group": "string: Placement group ID if Instance must be part of a placement group.",
+"private_nics": "array<any>: Instance private NICs.",
+"commercial_type": "string: Set the commercial_type for this Instance.",
+"admin_password_encryption_ssh_key_id": "string: UUID of the SSH RSA key that will be used to encrypt the initial admin password for OS requiring it."
+},
+"returns": "object{server}"
+},
+{
+"id": "scaleway/instance:DeleteServer",
+"method": "DELETE",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}",
+"summary": "Delete an Instance",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string"
+]
+},
+{
+"id": "scaleway/instance:ListServerActions",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/action",
+"summary": "List Instance actions",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string"
+],
+"returns": "object{actions}"
+},
+{
+"id": "scaleway/instance:ServerAction",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/action",
+"summary": "Perform action",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string: UUID of the Instance."
+],
+"body": {
+"action": "enum poweron|backup|stop_in_place|poweroff|terminate|reboot|enable_routed_ip: Action to perform on the Instance.",
+"name": "string: Name of the backup you want to create.",
+"volumes": {
+"_": "object{<volumeKey>}: For each volume UUID, the snapshot parameters of the volume.",
+"<volumeKey>": "object{volume_type}: For each volume UUID, the snapshot parameters of the volume."
+},
+"disable_ipv6": "boolean: Disable IPv6 on the Instance (true by default)."
+},
+"returns": "object{task}"
+},
+{
+"id": "scaleway/instance:AttachServerFileSystem",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/attach-filesystem",
+"summary": "Attach a filesystem volume to an Instance",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string"
+],
+"body": {
+"filesystem_id": "string"
+},
+"returns": "object{server}"
+},
+{
+"id": "scaleway/instance:AttachServerVolume",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/attach-volume",
+"summary": "Attach a volume to an Instance",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string"
+],
+"body": {
+"volume_id": "string",
+"volume_type": "enum unknown_volume_type|l_ssd|b_ssd|sbs_volume",
+"boot": "boolean"
+},
+"returns": "object{server}"
+},
+{
+"id": "scaleway/instance:GetServerCompatibleTypes",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/compatible-types",
+"summary": "Get Instance compatible types",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string: UUID of the Instance you want to get."
+],
+"returns": "object{compatible_types}"
+},
+{
+"id": "scaleway/instance:DetachServerFileSystem",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/detach-filesystem",
+"summary": "Detach a filesystem volume from an Instance",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string"
+],
+"body": {
+"filesystem_id": "string"
+},
+"returns": "object{server}"
+},
+{
+"id": "scaleway/instance:DetachServerVolume",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/detach-volume",
+"summary": "Detach a volume from an Instance",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string"
+],
+"body": {
+"volume_id": "string"
+},
+"returns": "object{server}"
+},
+{
+"id": "scaleway/instance:ListPrivateNICs",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/private_nics",
+"summary": "List all private NICs",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string: Instance to which the private NIC is attached.",
+"tags (query) string: Private NIC tags.",
+"per_page (query) integer: A positive integer lower or equal to 100 to select the number of items to retur…",
+"page (query) integer: A positive integer to choose the page to return."
+],
+"returns": "object{private_nics,total_count}"
+},
+{
+"id": "scaleway/instance:CreatePrivateNIC",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/private_nics",
+"summary": "Create a private NIC connecting an Instance to a Private Network",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string: UUID of the Instance the private NIC will be attached to."
+],
+"body": {
+"private_network_id*": "string: UUID of the private network where the private NIC will be attached.",
+"tags": "array<string>: Private NIC tags.",
+"ipam_ip_ids": "array<string>: UUID of IPAM ips, to be attached to the instance in the requested private network. (UUID format)"
+},
+"returns": "object{private_nic}"
+},
+{
+"id": "scaleway/instance:GetPrivateNIC",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/private_nics/{private_nic_id}",
+"summary": "Get a private NIC",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string: Instance to which the private NIC is attached.",
+"private_nic_id* (path) string: Private NIC unique ID."
+],
+"returns": "object{private_nic}"
+},
+{
+"id": "scaleway/instance:UpdatePrivateNIC",
+"method": "PATCH",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/private_nics/{private_nic_id}",
+"summary": "Update a private NIC",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string: UUID of the Instance the private NIC will be attached to.",
+"private_nic_id* (path) string: Private NIC unique ID."
+],
+"body": {
+"tags": "array<any>: Tags used to select private NIC/s."
+},
+"returns": "object{id,server_id,private_network_id,mac_address,state,tags,creation_date,zone,ipam_ip_ids}"
+},
+{
+"id": "scaleway/instance:DeletePrivateNIC",
+"method": "DELETE",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/private_nics/{private_nic_id}",
+"summary": "Delete a private NIC",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string: Instance to which the private NIC is attached.",
+"private_nic_id* (path) string: Private NIC unique ID."
+]
+},
+{
+"id": "scaleway/instance:ListServerUserData",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/user_data",
+"summary": "List user data",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string: UUID of the Instance."
+],
+"returns": "object{user_data}"
+},
+{
+"id": "scaleway/instance:GetServerUserData",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/user_data/{key}",
+"summary": "Get user data",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string: UUID of the Instance.",
+"key* (path) string: Key of the user data to get."
+],
+"returns": "object{name,content_type,content}"
+},
+{
+"id": "scaleway/instance:SetServerUserData",
+"method": "PATCH",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/user_data/{key}",
+"summary": "Add/set user data",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string: UUID of the Instance.",
+"key* (path) string: Key of the user data to set."
+],
+"body": "*/* text"
+},
+{
+"id": "scaleway/instance:DeleteServerUserData",
+"method": "DELETE",
+"path": "/instance/v1/zones/{zone}/servers/{server_id}/user_data/{key}",
+"summary": "Delete user data",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"server_id* (path) string: UUID of the Instance.",
+"key* (path) string: Key of the user data to delete."
+]
+},
+{
+"id": "scaleway/instance:ListSnapshots",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/snapshots",
+"summary": "List snapshots",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"organization (query) string: List snapshots only for this Organization ID.",
+"project (query) string: List snapshots only for this Project ID.",
+"per_page (query) integer: Number of snapshots returned per page (positive integer lower or equal to 100).",
+"page (query) integer: Page to be returned.",
+"name (query) string: List snapshots of the requested name.",
+"tags (query) string: List snapshots that have the requested tag.",
+"base_volume_id (query) string: List snapshots originating only from this volume."
+],
+"returns": "object{snapshots}"
+},
+{
+"id": "scaleway/instance:CreateSnapshot",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/snapshots",
+"summary": "Create a snapshot from a specified volume or from a QCOW2 file",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target"
+],
+"body": {
+"name": "string: Name of the snapshot.",
+"volume_id": "string: UUID of the volume.",
+"tags": "array<any>: Tags of the snapshot.",
+"organization": "string: Organization ID of the snapshot.",
+"project": "string: Project ID of the snapshot.",
+"volume_type": "enum unknown_volume_type|l_ssd|b_ssd|unified: Volume type of the snapshot.",
+"bucket": "string: Bucket name for snapshot imports.",
+"key": "string: Object key for snapshot imports.",
+"size": "integer: Imported snapshot size, must be a multiple of 512. (in bytes)"
+},
+"returns": "object{snapshot,task}"
+},
+{
+"id": "scaleway/instance:GetSnapshot",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/snapshots/{snapshot_id}",
+"summary": "Get a snapshot",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"snapshot_id* (path) string: UUID of the snapshot you want to get."
+],
+"returns": "object{snapshot}"
+},
+{
+"id": "scaleway/instance:SetSnapshot",
+"method": "PUT",
+"path": "/instance/v1/zones/{zone}/snapshots/{snapshot_id}",
+"summary": "Set snapshot",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"snapshot_id* (path) string"
+],
+"body": {
+"id": "string",
+"name": "string",
+"organization": "string",
+"volume_type": "enum l_ssd|b_ssd|unified|scratch|sbs_volume|sbs_snapshot",
+"size": "integer: (in bytes)",
+"state": "enum available|snapshotting|error|invalid_data|importing|exporting",
+"base_volume": {
+"_": "object{id,name}",
+"id": "string: Volume ID on which the snapshot is based.",
+"name": "string: Volume name on which the snapshot is based on."
+},
+"creation_date": "string: (RFC 3339 format)",
+"modification_date": "string: (RFC 3339 format)",
+"project": "string",
+"tags": "array<any>"
+},
+"returns": "object{snapshot}"
+},
+{
+"id": "scaleway/instance:UpdateSnapshot",
+"method": "PATCH",
+"path": "/instance/v1/zones/{zone}/snapshots/{snapshot_id}",
+"summary": "Update a snapshot",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"snapshot_id* (path) string: UUID of the snapshot. (UUID format)"
+],
+"body": {
+"name": "string: Name of the snapshot.",
+"tags": "array<any>: Tags of the snapshot."
+},
+"returns": "object{snapshot}"
+},
+{
+"id": "scaleway/instance:DeleteSnapshot",
+"method": "DELETE",
+"path": "/instance/v1/zones/{zone}/snapshots/{snapshot_id}",
+"summary": "Delete a snapshot",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"snapshot_id* (path) string: UUID of the snapshot you want to delete."
+]
+},
+{
+"id": "scaleway/instance:ExportSnapshot",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/snapshots/{snapshot_id}/export",
+"summary": "Export a snapshot",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"snapshot_id* (path) string: Snapshot ID."
+],
+"body": {
+"bucket": "string: Object Storage bucket name.",
+"key": "string: Object key."
+},
+"returns": "object{task}"
+},
+{
+"id": "scaleway/instance:ListVolumes",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/volumes",
+"summary": "List volumes",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"volume_type (query) enum l_ssd|b_ssd|unified|scratch|sbs_volume|sbs_snapshot: Filter by volume type.",
+"per_page (query) integer: A positive integer lower or equal to 100 to select the number of items to retur…",
+"page (query) integer: A positive integer to choose the page to return.",
+"organization (query) string: Filter volume by Organization ID.",
+"project (query) string: Filter volume by Project ID.",
+"tags (query) string: Filter volumes with these exact tags (to filter with several tags, use commas t…",
+"name (query) string: Filter volume by name (for eg. \"vol\" will return \"myvolume\" but not \"data\")."
+],
+"returns": "object{volumes}"
+},
+{
+"id": "scaleway/instance:CreateVolume",
+"method": "POST",
+"path": "/instance/v1/zones/{zone}/volumes",
+"summary": "Create a volume",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target"
+],
+"body": {
+"name": "string: Volume name.",
+"organization": "string: Volume Organization ID. Precisely one of project, organization can be set.",
+"project": "string: Volume Project ID. Precisely one of project, organization can be set.",
+"tags": "array<string>: Volume tags.",
+"volume_type": "enum l_ssd|b_ssd|unified|scratch|sbs_volume|sbs_snapshot: Volume type.",
+"size": "integer: Volume disk size, must be a multiple of 512. (in bytes) Precisely one of size, base_snapshot can be set.",
+"base_snapshot": "string: ID of the snapshot on which this volume will be based."
+},
+"returns": "object{volume}"
+},
+{
+"id": "scaleway/instance:SetVolume",
+"method": "PUT",
+"path": "/instance/v1/zones/{zone}/volumes/{id}",
+"summary": "Update volume",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"id* (path) string: Unique ID of the volume."
+],
+"body": {
+"name": "string: Name of the volume.",
+"tags": "array<any>: Tags of the volume.",
+"export_uri": "string: NBD export URI of the Volume (deprecated, this field is ignored).",
+"size": "integer: Volume's disk size, must be a multiple of 512. (in bytes)",
+"volume_type": "enum l_ssd|b_ssd|unified|scratch|sbs_volume|sbs_snapshot: Volume type.",
+"creation_date": "string: Volume creation date. (RFC 3339 format)",
+"modification_date": "string: Volume modification date. (RFC 3339 format)",
+"organization": "string: Volume Organization ID.",
+"project": "string: Volume Project ID.",
+"server": {
+"_": "object{id,name}: Instance attached to the volume.",
+"id": "string",
+"name": "string"
+},
+"state": "enum available|snapshotting|fetching|saving|attaching|resizing|hotsyncing|error: Volume state."
+},
+"returns": "object{volume}"
+},
+{
+"id": "scaleway/instance:GetVolume",
+"method": "GET",
+"path": "/instance/v1/zones/{zone}/volumes/{volume_id}",
+"summary": "Get a volume",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"volume_id* (path) string: UUID of the volume you want to get."
+],
+"returns": "object{volume}"
+},
+{
+"id": "scaleway/instance:UpdateVolume",
+"method": "PATCH",
+"path": "/instance/v1/zones/{zone}/volumes/{volume_id}",
+"summary": "Update a volume",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"volume_id* (path) string: UUID of the volume."
+],
+"body": {
+"name": "string: Volume name.",
+"tags": "array<any>: Tags of the volume.",
+"size": "integer: Volume disk size, must be a multiple of 512. (in bytes)"
+},
+"returns": "object{volume}"
+},
+{
+"id": "scaleway/instance:DeleteVolume",
+"method": "DELETE",
+"path": "/instance/v1/zones/{zone}/volumes/{volume_id}",
+"summary": "Delete a volume",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1: The zone you want to target",
+"volume_id* (path) string: UUID of the volume you want to delete."
+]
+},
+{
+"id": "scaleway/block:ListSnapshots",
+"method": "GET",
+"path": "/block/v1/zones/{zone}/snapshots",
+"summary": "List all snapshots",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1|…: The zone you want to target",
+"order_by (query) enum created_at_asc|created_at_desc|name_asc|name_desc: Criteria to use when ordering the list.",
+"project_id (query) string: Filter by Project ID.",
+"organization_id (query) string: Filter by Organization ID.",
+"page (query) integer: Page number.",
+"page_size (query) integer: Page size, defines how many entries are returned in one page, must be lower or …",
+"volume_id (query) string: Filter snapshots by the ID of the original volume.",
+"name (query) string: Filter snapshots by their names.",
+"tags (query) array<string>: Filter by tags.",
+"include_deleted* (query) boolean: Display deleted snapshots not erased yet."
+],
+"returns": "object{snapshots,total_count}"
+},
+{
+"id": "scaleway/block:CreateSnapshot",
+"method": "POST",
+"path": "/block/v1/zones/{zone}/snapshots",
+"summary": "Create a snapshot of a volume",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1|…: The zone you want to target"
+],
+"body": {
+"volume_id": "string: UUID of the volume to snapshot.",
+"name": "string: Name of the snapshot.",
+"project_id": "string: UUID of the project to which the volume and the snapshot belong.",
+"tags": "array<string>: List of tags assigned to the snapshot.",
+"public": "boolean: Public snapshots can be used by anyone to create a volume from."
+},
+"returns": "object{id,name,parent_volume,size,project_id,created_at,updated_at,references,status,tags,zone,class…}"
+},
+{
+"id": "scaleway/block:GetSnapshot",
+"method": "GET",
+"path": "/block/v1/zones/{zone}/snapshots/{snapshot_id}",
+"summary": "Get a snapshot",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1|…: The zone you want to target",
+"snapshot_id* (path) string: UUID of the snapshot."
+],
+"returns": "object{id,name,parent_volume,size,project_id,created_at,updated_at,references,status,tags,zone,class…}"
+},
+{
+"id": "scaleway/block:UpdateSnapshot",
+"method": "PATCH",
+"path": "/block/v1/zones/{zone}/snapshots/{snapshot_id}",
+"summary": "Update a snapshot",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1|…: The zone you want to target",
+"snapshot_id* (path) string: UUID of the snapshot."
+],
+"body": {
+"name": "string: When defined, is the name of the snapshot.",
+"tags": "array<any>: List of tags assigned to the snapshot.",
+"public": "boolean: Public snapshots can be used by anyone to create a volume from."
+},
+"returns": "object{id,name,parent_volume,size,project_id,created_at,updated_at,references,status,tags,zone,class…}"
+},
+{
+"id": "scaleway/block:DeleteSnapshot",
+"method": "DELETE",
+"path": "/block/v1/zones/{zone}/snapshots/{snapshot_id}",
+"summary": "Delete a snapshot",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1|…: The zone you want to target",
+"snapshot_id* (path) string: UUID of the snapshot."
+]
+},
+{
+"id": "scaleway/block:ExportSnapshotToObjectStorage",
+"method": "POST",
+"path": "/block/v1/zones/{zone}/snapshots/{snapshot_id}/export-to-object-storage",
+"summary": "Export a snapshot to a Scaleway Object Storage bucket",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1|…: The zone you want to target",
+"snapshot_id* (path) string: UUID of the snapshot. (UUID format)"
+],
+"body": {
+"bucket": "string: Scaleway Object Storage bucket where the object is stored.",
+"key": "string: The object key inside the given bucket."
+},
+"returns": "object{id,name,parent_volume,size,project_id,created_at,updated_at,references,status,tags,zone,class…}"
+},
+{
+"id": "scaleway/block:ImportSnapshotFromObjectStorage",
+"method": "POST",
+"path": "/block/v1/zones/{zone}/snapshots/import-from-object-storage",
+"summary": "Import a snapshot from a Scaleway Object Storage bucket",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1|…: The zone you want to target"
+],
+"body": {
+"bucket": "string: Scaleway Object Storage bucket where the object is stored.",
+"key": "string: The object key inside the given bucket.",
+"name": "string: Name of the snapshot.",
+"project_id": "string: UUID of the Project to which the volume and the snapshot belong.",
+"tags": "array<string>: List of tags assigned to the snapshot.",
+"size": "integer: Size of the snapshot. (in bytes)"
+},
+"returns": "object{id,name,parent_volume,size,project_id,created_at,updated_at,references,status,tags,zone,class…}"
+},
+{
+"id": "scaleway/block:ListVolumeTypes",
+"method": "GET",
+"path": "/block/v1/zones/{zone}/volume-types",
+"summary": "List volume types",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1|…: The zone you want to target",
+"page (query) integer: Page number.",
+"page_size (query) integer: Page size, defines how many entries are returned in one page, must be lower or …"
+],
+"returns": "object{volume_types,total_count}"
+},
+{
+"id": "scaleway/block:ListVolumes",
+"method": "GET",
+"path": "/block/v1/zones/{zone}/volumes",
+"summary": "List volumes",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1|…: The zone you want to target",
+"order_by (query) enum created_at_asc|created_at_desc|name_asc|name_desc: Criteria to use when ordering the list.",
+"project_id (query) string: Filter by Project ID.",
+"organization_id (query) string: Filter by Organization ID.",
+"page (query) integer: Page number.",
+"page_size (query) integer: Page size, defines how many entries are returned in one page, must be lower or …",
+"name (query) string: Filter the return volumes by their names.",
+"product_resource_id (query) string: Filter by a product resource ID linked to this volume (such as an Instance ID).",
+"tags (query) array<string>: Filter by tags.",
+"include_deleted* (query) boolean: Display deleted volumes not erased yet.",
+"volume_type (query) string: Filter by volume type.",
+"volume_ids (query) array<string>: Filter by volume IDs."
+],
+"returns": "object{volumes,total_count}"
+},
+{
+"id": "scaleway/block:CreateVolume",
+"method": "POST",
+"path": "/block/v1/zones/{zone}/volumes",
+"summary": "Create a volume",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1|…: The zone you want to target"
+],
+"body": {
+"name*": "string: Name of the volume.",
+"perf_iops": "integer: The maximum IO/s expected, according to the different options available in stock (`5000 | 15000`).",
+"project_id*": "string: UUID of the project the volume belongs to.",
+"from_empty": "object{size} | null: Specify the size of the new volume if creating a new one from scratch.",
+"from_snapshot": "object{size,snapshot_id} | null: Specify the snapshot ID of the original snapshot.",
+"tags": "array<string>: List of tags assigned to the volume.",
+"kms_key_id": "string: UUID of the KMS key used to protect the volume's encryption."
+},
+"returns": "object{id,name,type,size,project_id,created_at,updated_at,references,parent_snapshot_id,status,tags,zone…}"
+},
+{
+"id": "scaleway/block:GetVolume",
+"method": "GET",
+"path": "/block/v1/zones/{zone}/volumes/{volume_id}",
+"summary": "Get a volume",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1|…: The zone you want to target",
+"volume_id* (path) string: UUID of the volume."
+],
+"returns": "object{id,name,type,size,project_id,created_at,updated_at,references,parent_snapshot_id,status,tags,zone…}"
+},
+{
+"id": "scaleway/block:UpdateVolume",
+"method": "PATCH",
+"path": "/block/v1/zones/{zone}/volumes/{volume_id}",
+"summary": "Update a volume",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1|…: The zone you want to target",
+"volume_id* (path) string: UUID of the volume."
+],
+"body": {
+"name": "string: When defined, is the new name of the volume.",
+"size": "integer: Optional field for increasing the size of a volume (size must be equal or larger than the current one).",
+"tags": "array<any>: List of tags assigned to the volume.",
+"perf_iops": "integer: The maximum IO/s expected, according to the different options available in stock (`5000 | 15000`)."
+},
+"returns": "object{id,name,type,size,project_id,created_at,updated_at,references,parent_snapshot_id,status,tags,zone…}"
+},
+{
+"id": "scaleway/block:DeleteVolume",
+"method": "DELETE",
+"path": "/block/v1/zones/{zone}/volumes/{volume_id}",
+"summary": "Delete a detached volume",
+"params": [
+"zone* (path) enum fr-par-1|fr-par-2|fr-par-3|nl-ams-1|nl-ams-2|nl-ams-3|pl-waw-1|pl-waw-2|pl-waw-3|it-mil-1|…: The zone you want to target",
+"volume_id* (path) string: UUID of the volume."
+]
+},
+{
+"id": "scaleway/marketplace:ListCategories",
+"method": "GET",
+"path": "/marketplace/v2/categories",
+"summary": "List existing image categories",
+"params": [
+"page_size (query) integer",
+"page (query) integer"
+],
+"returns": "object{categories,total_count}"
+},
+{
+"id": "scaleway/marketplace:GetCategory",
+"method": "GET",
+"path": "/marketplace/v2/categories/{category_id}",
+"summary": "Get a specific category",
+"params": [
+"category_id* (path) string: (UUID format)"
+],
+"returns": "object{id,name,description}"
+},
+{
+"id": "scaleway/marketplace:ListImages",
+"method": "GET",
+"path": "/marketplace/v2/images",
+"summary": "List marketplace images",
+"params": [
+"page_size (query) integer: A positive integer lower or equal to 100 to select the number of items to displ…",
+"page (query) integer: A positive integer to choose the page to display.",
+"order_by (query) enum name_asc|name_desc|created_at_asc|created_at_desc|updated_at_asc|updated_at_desc: Ordering to use.",
+"arch (query) string: Choose for which machine architecture to return images.",
+"category (query) string: Choose the category of images to get.",
+"include_eol* (query) boolean: Choose to include end-of-life images."
+],
+"returns": "object{images,total_count}"
+},
+{
+"id": "scaleway/marketplace:GetImage",
+"method": "GET",
+"path": "/marketplace/v2/images/{image_id}",
+"summary": "Get a specific marketplace image",
+"params": [
+"image_id* (path) string: Display the image name. (UUID format)"
+],
+"returns": "object{id,name,description,logo,categories,created_at,updated_at,valid_until,label}"
+},
+{
+"id": "scaleway/marketplace:ListLocalImages",
+"method": "GET",
+"path": "/marketplace/v2/local-images",
+"summary": "List local images from a specific image or version",
+"params": [
+"page_size (query) integer: A positive integer lower or equal to 100 to select the number of items to displ…",
+"page (query) integer: A positive integer to choose the page to display.",
+"order_by (query) enum type_asc|type_desc|created_at_asc|created_at_desc: Ordering to use.",
+"zone* (query) string: Filter local images available on this Availability Zone.",
+"arch (query) string: Filter local images available for this machine architecture.",
+"type (query) enum unknown_type|instance_local|instance_sbs: Filter by type.",
+"image_id (query) string: Filter by image id. (UUID format) Precisely one of image_id, version_id, image_…",
+"version_id (query) string: Filter by version id. (UUID format) Precisely one of image_id, version_id, imag…",
+"image_label (query) string: Filter by image label."
+],
+"returns": "object{local_images,total_count}"
+},
+{
+"id": "scaleway/marketplace:GetLocalImage",
+"method": "GET",
+"path": "/marketplace/v2/local-images/{local_image_id}",
+"summary": "Get a specific local image by ID",
+"params": [
+"local_image_id* (path) string: (UUID format)"
+],
+"returns": "object{id,compatible_commercial_types,arch,zone,label,type}"
+},
+{
+"id": "scaleway/marketplace:ListVersions",
+"method": "GET",
+"path": "/marketplace/v2/versions",
+"summary": "List versions of an Image",
+"params": [
+"image_id* (query) string: (UUID format)",
+"page_size (query) integer",
+"page (query) integer",
+"order_by (query) enum created_at_asc|created_at_desc"
+],
+"returns": "object{versions,total_count}"
+},
+{
+"id": "scaleway/marketplace:GetVersion",
+"method": "GET",
+"path": "/marketplace/v2/versions/{version_id}",
+"summary": "Get a specific image version",
+"params": [
+"version_id* (path) string: (UUID format)"
+],
+"returns": "object{id,name,created_at,updated_at,published_at}"
+},
+{
+"id": "scaleway/billing:ListConsumptions",
+"method": "GET",
+"path": "/billing/v2beta1/consumptions",
+"summary": "Get monthly consumption",
+"params": [
+"order_by (query) enum updated_at_desc|updated_at_asc|category_name_desc|category_name_asc: Order consumptions list in the response by their update date.",
+"page (query) integer: Positive integer to choose the page to return.",
+"page_size (query) integer: Positive integer lower or equal to 100 to select the number of items to return.",
+"category_name (query) string: Filter by name of a Category as they are shown in the invoice (Compute, Network…",
+"billing_period (query) string: Filter by the billing period in the YYYY-MM format.",
+"organization_id (query) string: Filter by Organization ID. (UUID format) Precisely one of organization_id, proj…",
+"project_id (query) string: Filter by Project ID. (UUID format) Precisely one of organization_id, project_i…"
+],
+"returns": "object{consumptions,total_count,total_discount_untaxed_value,updated_at}"
+},
+{
+"id": "scaleway/billing:ListDiscounts",
+"method": "GET",
+"path": "/billing/v2beta1/discounts",
+"summary": "List discounts",
+"params": [
+"order_by (query) enum creation_date_desc|creation_date_asc|start_date_desc|start_date_asc|stop_date_desc|stop_date_asc: Order discounts in the response by their description.",
+"page (query) integer: Positive integer to choose the page to return.",
+"page_size (query) integer: Positive integer lower or equal to 100 to select the number of items to return.",
+"organization_id (query) string: ID of the organization. (UUID format)"
+],
+"returns": "object{total_count,discounts}"
+},
+{
+"id": "scaleway/billing:ExportInvoices",
+"method": "GET",
+"path": "/billing/v2beta1/export-invoices",
+"summary": "Export invoices",
+"params": [
+"organization_id (query) string: Organization ID. If specified, only invoices from this Organization will be ret…",
+"billing_period_start_after (query) string: Return only invoice with start date greater than billing_period_start. (RFC 333…",
+"billing_period_start_before (query) string: Return only invoice with start date less than billing_period_start. (RFC 3339 f…",
+"invoice_type (query) enum unknown_type|periodic|purchase|credit_note: Invoice type.",
+"page (query) integer: Page number.",
+"page_size (query) integer: Positive integer lower or equal to 100 to select the number of items to return.",
+"order_by (query) enum invoice_number_desc|invoice_number_asc|start_date_desc|start_date_asc|issued_date_desc|issued_date_asc|due_date_desc|due_date_asc|total_untaxed_desc|total_untaxed_asc|…: How invoices are ordered in the response.",
+"file_type (query) enum csv: File format for exporting the invoice list."
+],
+"returns": "object{name,content_type,content}"
+},
+{
+"id": "scaleway/billing:ListInvoices",
+"method": "GET",
+"path": "/billing/v2beta1/invoices",
+"summary": "List invoices",
+"params": [
+"organization_id (query) string: Organization ID. If specified, only invoices from this Organization will be ret…",
+"billing_period_start_after (query) string: Return only invoice with start date greater than billing_period_start. (RFC 333…",
+"billing_period_start_before (query) string: Return only invoice with start date less than billing_period_start. (RFC 3339 f…",
+"invoice_type (query) enum unknown_type|periodic|purchase|credit_note: Invoice type.",
+"page (query) integer: Page number.",
+"page_size (query) integer: Positive integer lower or equal to 100 to select the number of items to return.",
+"order_by (query) enum invoice_number_desc|invoice_number_asc|start_date_desc|start_date_asc|issued_date_desc|issued_date_asc|due_date_desc|due_date_asc|total_untaxed_desc|total_untaxed_asc|…: How invoices are ordered in the response."
+],
+"returns": "object{total_count,invoices}"
+},
+{
+"id": "scaleway/billing:GetInvoice",
+"method": "GET",
+"path": "/billing/v2beta1/invoices/{invoice_id}",
+"summary": "Get an invoice",
+"params": [
+"invoice_id* (path) string: Invoice ID. (UUID format)"
+],
+"returns": "object{id,organization_id,organization_name,start_date,stop_date,billing_period,issued_date,due_date,total_untaxed,total_taxed,total_tax,total_discount…}"
+},
+{
+"id": "scaleway/billing:ListDiscountLines",
+"method": "GET",
+"path": "/billing/v2beta1/invoices/{invoice_id}/discount-lines",
+"summary": "List discount lines",
+"params": [
+"invoice_id* (path) string: Invoice ID. (UUID format)",
+"page (query) integer: Positive integer to choose the page to return.",
+"page_size (query) integer: Positive integer lower or equal to 1000 to select the number of items to return."
+],
+"returns": "object{total_count,discount_lines}"
+},
+{
+"id": "scaleway/billing:DownloadInvoice",
+"method": "GET",
+"path": "/billing/v2beta1/invoices/{invoice_id}/download",
+"summary": "Download an invoice",
+"params": [
+"invoice_id* (path) string: Invoice ID. (UUID format)",
+"file_type (query) enum pdf: File type."
+],
+"returns": "object{name,content_type,content}"
+},
+{
+"id": "scaleway/billing:ListInvoiceLines",
+"method": "GET",
+"path": "/billing/v2beta1/invoices/{invoice_id}/lines",
+"summary": "List invoice lines",
+"params": [
+"invoice_id* (path) string: Invoice ID. (UUID format)",
+"page (query) integer: Positive integer to choose the page to return.",
+"page_size (query) integer: Positive integer lower or equal to 1000 to select the number of items to return."
+],
+"returns": "object{total_count,invoice_lines}"
+},
+{
+"id": "scaleway/billing:RedeemCoupon",
+"method": "POST",
+"path": "/billing/v2beta1/redeem-coupon",
+"summary": "Redeem coupon",
+"params": [
+"organization_id* (query) string: The Organization ID of the discount. (UUID format)",
+"code* (query) string: The code of the coupon to redeem."
+],
+"returns": "object{id,creation_date,organization_id,description,value,value_used,value_remaining,mode,start_date,stop_date,coupon,filters}"
+},
+{
+"id": "scaleway/billing:ListTaxes",
+"method": "GET",
+"path": "/billing/v2beta1/taxes",
+"summary": "Get monthly consumption taxes",
+"params": [
+"order_by (query) enum updated_at_desc|updated_at_asc|category_name_desc|category_name_asc: Order consumed taxes list in the response by their update date.",
+"page (query) integer: Page number.",
+"page_size (query) integer: Positive integer lower or equal to 100 to select the number of items to return.",
+"organization_id* (query) string: Filter by Organization ID. (UUID format)",
+"billing_period (query) string: Filter by the billing period in the YYYY-MM format."
+],
+"returns": "object{taxes,total_count,updated_at}"
+},
+{
+"id": "scaleway/iam:ListAPIKeys",
+"method": "GET",
+"path": "/iam/v1alpha1/api-keys",
+"summary": "List API keys",
+"params": [
+"order_by (query) enum created_at_asc|created_at_desc|updated_at_asc|updated_at_desc|expires_at_asc|expires_at_desc|access_key_asc|access_key_desc: Criteria for sorting results.",
+"page (query) integer: Page number.",
+"page_size (query) integer: Number of results per page.",
+"organization_id (query) string: ID of Organization.",
+"editable (query) boolean: Defines whether to filter out editable API keys or not.",
+"expired (query) boolean: Defines whether to filter out expired API keys or not.",
+"access_key (query) string: Filter by access key (deprecated in favor of `access_keys`).",
+"description (query) string: Filter by description.",
+"bearer_id (query) string: Filter by bearer ID.",
+"bearer_type (query) enum unknown_bearer_type|user|application: Filter by type of bearer.",
+"access_keys (query) array<string>: Filter by a list of access keys.",
+"application_id (query) string: ID of application that bears the API key.",
+"user_id (query) string: ID of user that bears the API key."
+],
+"returns": "object{api_keys,total_count}"
+},
+{
+"id": "scaleway/iam:CreateAPIKey",
+"method": "POST",
+"path": "/iam/v1alpha1/api-keys",
+"summary": "Create an API key",
+"params": [],
+"body": {
+"application_id": "string: ID of the application.",
+"user_id": "string: ID of the user.",
+"expires_at": "string: Expiration date of the API key. (RFC 3339 format)",
+"default_project_id": "string: Default Project ID to use with Object Storage.",
+"description": "string: Description of the API key (max length is 200 characters)."
+},
+"returns": "object{access_key,secret_key,application_id,user_id,description,created_at,updated_at,expires_at,default_project_id,editable,deletable,managed…}"
+},
+{
+"id": "scaleway/iam:GetAPIKey",
+"method": "GET",
+"path": "/iam/v1alpha1/api-keys/{access_key}",
+"summary": "Get an API key",
+"params": [
+"access_key* (path) string: Access key to search for."
+],
+"returns": "object{access_key,secret_key,application_id,user_id,description,created_at,updated_at,expires_at,default_project_id,editable,deletable,managed…}"
+},
+{
+"id": "scaleway/iam:UpdateAPIKey",
+"method": "PATCH",
+"path": "/iam/v1alpha1/api-keys/{access_key}",
+"summary": "Update an API key",
+"params": [
+"access_key* (path) string: Access key to update."
+],
+"body": {
+"default_project_id": "string: New default Project ID to set.",
+"description": "string: New description to update.",
+"expires_at": "string: New expiration date of the API key. (RFC 3339 format)"
+},
+"returns": "object{access_key,secret_key,application_id,user_id,description,created_at,updated_at,expires_at,default_project_id,editable,deletable,managed…}"
+},
+{
+"id": "scaleway/iam:DeleteAPIKey",
+"method": "DELETE",
+"path": "/iam/v1alpha1/api-keys/{access_key}",
+"summary": "Delete an API key",
+"params": [
+"access_key* (path) string: Access key to delete."
+]
+},
+{
+"id": "scaleway/iam:ListApplications",
+"method": "GET",
+"path": "/iam/v1alpha1/applications",
+"summary": "List applications of an Organization",
+"params": [
+"order_by (query) enum created_at_asc|created_at_desc|updated_at_asc|updated_at_desc|name_asc|name_desc: Criteria for sorting results.",
+"page_size (query) integer: Number of results per page.",
+"page (query) integer: Page number.",
+"name (query) string: Name of the application to filter.",
+"organization_id (query) string: ID of the Organization to filter.",
+"editable (query) boolean: Defines whether to filter out editable applications or not.",
+"application_ids (query) array<string>: Filter by list of IDs.",
+"tag (query) string: Filter by tags containing a given string."
+],
+"returns": "object{applications,total_count}"
+},
+{
+"id": "scaleway/iam:CreateApplication",
+"method": "POST",
+"path": "/iam/v1alpha1/applications",
+"summary": "Create a new application",
+"params": [],
+"body": {
+"name*": "string: Name of the application to create (max length is 64 characters).",
+"organization_id": "string: ID of the Organization.",
+"description": "string: Description of the application (max length is 200 characters).",
+"tags": "array<string>: Tags associated with the application (maximum of 10 tags)."
+},
+"returns": "object{id,name,description,created_at,updated_at,organization_id,editable,deletable,managed,nb_api_keys,tags,srn}"
+},
+{
+"id": "scaleway/iam:GetApplication",
+"method": "GET",
+"path": "/iam/v1alpha1/applications/{application_id}",
+"summary": "Get a given application",
+"params": [
+"application_id* (path) string: ID of the application to find."
+],
+"returns": "object{id,name,description,created_at,updated_at,organization_id,editable,deletable,managed,nb_api_keys,tags,srn}"
+},
+{
+"id": "scaleway/iam:UpdateApplication",
+"method": "PATCH",
+"path": "/iam/v1alpha1/applications/{application_id}",
+"summary": "Update an application",
+"params": [
+"application_id* (path) string: ID of the application to update."
+],
+"body": {
+"name": "string: New name for the application (max length is 64 chars).",
+"description": "string: New description for the application (max length is 200 chars).",
+"tags": "array<any>: New tags for the application (maximum of 10 tags)."
+},
+"returns": "object{id,name,description,created_at,updated_at,organization_id,editable,deletable,managed,nb_api_keys,tags,srn}"
+},
+{
+"id": "scaleway/iam:DeleteApplication",
+"method": "DELETE",
+"path": "/iam/v1alpha1/applications/{application_id}",
+"summary": "Delete an application",
+"params": [
+"application_id* (path) string: ID of the application to delete."
+]
+},
+{
+"id": "scaleway/iam:CheckPermissions",
+"method": "POST",
+"path": "/iam/v1alpha1/check-permissions",
+"summary": "",
+"params": [],
+"body": {
+"permissions": {
+"_": "array<any | any>",
+"service": "string",
+"name": "string",
+"action": "string",
+"project_id": "string: One of project_id, organization_id is required.",
+"organization_id": "string: One of project_id, organization_id is required."
+}
+},
+"returns": "object{responses}"
+},
+{
+"id": "scaleway/iam:ListGracePeriods",
+"method": "GET",
+"path": "/iam/v1alpha1/grace-periods",
+"summary": "List grace periods of a member",
+"params": [
+"user_id (query) string: ID of the user to list grace periods for."
+],
+"returns": "object{grace_periods}"
+},
+{
+"id": "scaleway/iam:ListGroups",
+"method": "GET",
+"path": "/iam/v1alpha1/groups",
+"summary": "List groups",
+"params": [
+"order_by (query) enum created_at_asc|created_at_desc|updated_at_asc|updated_at_desc|name_asc|name_desc: Sort order of groups.",
+"page (query) integer: Requested page number.",
+"page_size (query) integer: Number of items per page.",
+"organization_id (query) string: Filter by Organization ID.",
+"name (query) string: Name of group to find.",
+"application_ids (query) array<string>: Filter by a list of application IDs.",
+"user_ids (query) array<string>: Filter by a list of user IDs.",
+"group_ids (query) array<string>: Filter by a list of group IDs.",
+"tag (query) string: Filter by tags containing a given string."
+],
+"returns": "object{groups,total_count}"
+},
+{
+"id": "scaleway/iam:CreateGroup",
+"method": "POST",
+"path": "/iam/v1alpha1/groups",
+"summary": "Create a group",
+"params": [],
+"body": {
+"organization_id*": "string: ID of Organization linked to the group.",
+"name*": "string: Name of the group to create (max length is 64 chars).",
+"description": "string: Description of the group to create (max length is 200 chars).",
+"tags": "array<string>: Tags associated with the group (maximum of 10 tags)."
+},
+"returns": "object{id,created_at,updated_at,organization_id,name,description,user_ids,application_ids,tags,editable,deletable,managed…}"
+},
+{
+"id": "scaleway/iam:GetGroup",
+"method": "GET",
+"path": "/iam/v1alpha1/groups/{group_id}",
+"summary": "Get a group",
+"params": [
+"group_id* (path) string: ID of the group."
+],
+"returns": "object{id,created_at,updated_at,organization_id,name,description,user_ids,application_ids,tags,editable,deletable,managed…}"
+},
+{
+"id": "scaleway/iam:UpdateGroup",
+"method": "PATCH",
+"path": "/iam/v1alpha1/groups/{group_id}",
+"summary": "Update a group",
+"params": [
+"group_id* (path) string: ID of the group to update."
+],
+"body": {
+"name": "string: New name for the group (max length is 64 chars).",
+"description": "string: New description for the group (max length is 200 chars).",
+"tags": "array<any>: New tags for the group (maximum of 10 tags)."
+},
+"returns": "object{id,created_at,updated_at,organization_id,name,description,user_ids,application_ids,tags,editable,deletable,managed…}"
+},
+{
+"id": "scaleway/iam:DeleteGroup",
+"method": "DELETE",
+"path": "/iam/v1alpha1/groups/{group_id}",
+"summary": "Delete a group",
+"params": [
+"group_id* (path) string: ID of the group to delete."
+]
+},
+{
+"id": "scaleway/iam:AddGroupMember",
+"method": "POST",
+"path": "/iam/v1alpha1/groups/{group_id}/add-member",
+"summary": "Add a user or an application to a group",
+"params": [
+"group_id* (path) string: ID of the group."
+],
+"body": {
+"user_id": "string: ID of the user to add.",
+"application_id": "string: ID of the application to add."
+},
+"returns": "object{id,created_at,updated_at,organization_id,name,description,user_ids,application_ids,tags,editable,deletable,managed…}"
+},
+{
+"id": "scaleway/iam:AddGroupMembers",
+"method": "POST",
+"path": "/iam/v1alpha1/groups/{group_id}/add-members",
+"summary": "Add multiple users and applications to a group",
+"params": [
+"group_id* (path) string: ID of the group."
+],
+"body": {
+"user_ids": "array<string>: IDs of the users to add.",
+"application_ids": "array<string>: IDs of the applications to add."
+},
+"returns": "object{id,created_at,updated_at,organization_id,name,description,user_ids,application_ids,tags,editable,deletable,managed…}"
+},
+{
+"id": "scaleway/iam:SetGroupMembers",
+"method": "PUT",
+"path": "/iam/v1alpha1/groups/{group_id}/members",
+"summary": "Overwrite users and applications of a group",
+"params": [
+"group_id* (path) string"
+],
+"body": {
+"user_ids*": "array<string>",
+"application_ids*": "array<string>"
+},
+"returns": "object{id,created_at,updated_at,organization_id,name,description,user_ids,application_ids,tags,editable,deletable,managed…}"
+},
+{
+"id": "scaleway/iam:RemoveGroupMember",
+"method": "POST",
+"path": "/iam/v1alpha1/groups/{group_id}/remove-member",
+"summary": "Remove a user or an application from a group",
+"params": [
+"group_id* (path) string: ID of the group."
+],
+"body": {
+"user_id": "string: ID of the user to remove.",
+"application_id": "string: ID of the application to remove."
+},
+"returns": "object{id,created_at,updated_at,organization_id,name,description,user_ids,application_ids,tags,editable,deletable,managed…}"
+},
+{
+"id": "scaleway/iam:ListJWTs",
+"method": "GET",
+"path": "/iam/v1alpha1/jwts",
+"summary": "List JWTs",
+"params": [
+"order_by (query) enum created_at_asc|created_at_desc|updated_at_asc|updated_at_desc: Criteria for sorting results.",
+"audience_id (query) string: ID of the user to search.",
+"page_size (query) integer: Number of results per page.",
+"page (query) integer: Page number.",
+"expired (query) boolean: Filter out expired JWTs or not."
+],
+"returns": "object{jwts,total_count}"
+},
+{
+"id": "scaleway/iam:GetJWT",
+"method": "GET",
+"path": "/iam/v1alpha1/jwts/{jti}",
+"summary": "Get a JWT",
+"params": [
+"jti* (path) string: JWT ID of the JWT to get."
+],
+"returns": "object{jti,issuer_id,audience_id,created_at,updated_at,expires_at,ip,user_agent,srn}"
+},
+{
+"id": "scaleway/iam:DeleteJWT",
+"method": "DELETE",
+"path": "/iam/v1alpha1/jwts/{jti}",
+"summary": "Delete a JWT",
+"params": [
+"jti* (path) string: JWT ID of the JWT to delete."
+]
+},
+{
+"id": "scaleway/iam:ListLogs",
+"method": "GET",
+"path": "/iam/v1alpha1/logs",
+"summary": "List logs",
+"params": [
+"order_by (query) enum created_at_asc|created_at_desc: Criteria for sorting results.",
+"organization_id (query) string: Filter by Organization ID.",
+"page_size (query) integer: Number of results per page.",
+"page (query) integer: Page number.",
+"created_after (query) string: Defined whether or not to filter out logs created after this timestamp. (RFC 33…",
+"created_before (query) string: Defined whether or not to filter out logs created before this timestamp. (RFC 3…",
+"action (query) enum unknown_action|created|updated|deleted: Defined whether or not to filter out by a specific action.",
+"resource_type (query) enum unknown_resource_type|api_key|user|application|group|policy: Defined whether or not to filter out by a specific type of resource.",
+"search (query) string: Defined whether or not to filter out log by bearer ID or resource ID."
+],
+"returns": "object{logs,total_count}"
+},
+{
+"id": "scaleway/iam:GetLog",
+"method": "GET",
+"path": "/iam/v1alpha1/logs/{log_id}",
+"summary": "Get a log",
+"params": [
+"log_id* (path) string: ID of the log."
+],
+"returns": "object{id,created_at,ip,user_agent,action,bearer_id,organization_id,resource_type,resource_id,srn}"
+},
+{
+"id": "scaleway/iam:GetOrganization",
+"method": "GET",
+"path": "/iam/v1alpha1/organizations/{organization_id}",
+"summary": "Get your Organization's IAM information",
+"params": [
+"organization_id* (path) string: ID of the Organization."
+],
+"returns": "object{id,name,alias,login_password_enabled,login_magic_code_enabled,login_oauth2_enabled,login_saml_enabled}"
+},
+{
+"id": "scaleway/iam:SetOrganizationAlias",
+"method": "PUT",
+"path": "/iam/v1alpha1/organizations/{organization_id}/alias",
+"summary": "Set your Organization's alias.",
+"params": [
+"organization_id* (path) string: ID of the Organization."
+],
+"body": {
+"alias": "string: Alias of the Organization."
+},
+"returns": "object{id,name,alias,login_password_enabled,login_magic_code_enabled,login_oauth2_enabled,login_saml_enabled}"
+},
+{
+"id": "scaleway/iam:UpdateOrganizationLoginMethods",
+"method": "PATCH",
+"path": "/iam/v1alpha1/organizations/{organization_id}/login-methods",
+"summary": "Set your Organization's allowed login methods.",
+"params": [
+"organization_id* (path) string: ID of the Organization."
+],
+"body": {
+"login_password_enabled": "boolean: Defines whether login with a password is enabled for the Organization.",
+"login_oauth2_enabled": "boolean: Defines whether login through OAuth2 is enabled for the Organization.",
+"login_magic_code_enabled": "boolean: Defines whether login with an authentication code is enabled for the Organization.",
+"login_saml_enabled": "boolean: Defines whether login through SAML is enabled for the Organization."
+},
+"returns": "object{id,name,alias,login_password_enabled,login_magic_code_enabled,login_oauth2_enabled,login_saml_enabled}"
+},
+{
+"id": "scaleway/iam:GetOrganizationSaml",
+"method": "GET",
+"path": "/iam/v1alpha1/organizations/{organization_id}/saml",
+"summary": "Get SAML Identity Provider configuration of an Organization",
+"params": [
+"organization_id* (path) string: ID of the Organization."
+],
+"returns": "object{id,status,service_provider,entity_id,single_sign_on_url,srn}"
+},
+{
+"id": "scaleway/iam:EnableOrganizationSaml",
+"method": "POST",
+"path": "/iam/v1alpha1/organizations/{organization_id}/saml",
+"summary": "Enable SAML Identity Provider for an Organization",
+"params": [
+"organization_id* (path) string: ID of the Organization."
+],
+"body": {},
+"returns": "object{id,status,service_provider,entity_id,single_sign_on_url,srn}"
+},
+{
+"id": "scaleway/iam:GetOrganizationScim",
+"method": "GET",
+"path": "/iam/v1alpha1/organizations/{organization_id}/scim",
+"summary": "Get SCIM configuration of an Organization",
+"params": [
+"organization_id* (path) string"
+],
+"returns": "object{id,created_at}"
+},
+{
+"id": "scaleway/iam:EnableOrganizationScim",
+"method": "POST",
+"path": "/iam/v1alpha1/organizations/{organization_id}/scim",
+"summary": "Enable SCIM for an Organization",
+"params": [
+"organization_id* (path) string: ID of the Organization."
+],
+"body": {},
+"returns": "object{id,created_at}"
+},
+{
+"id": "scaleway/iam:GetOrganizationSecuritySettings",
+"method": "GET",
+"path": "/iam/v1alpha1/organizations/{organization_id}/security-settings",
+"summary": "Get security settings of an Organization",
+"params": [
+"organization_id* (path) string: ID of the Organization."
+],
+"returns": "object{enforce_password_renewal,grace_period_duration,login_attempts_before_locked,max_login_session_duration,max_api_key_expiration_duration}"
+},
+{
+"id": "scaleway/iam:UpdateOrganizationSecuritySettings",
+"method": "PATCH",
+"path": "/iam/v1alpha1/organizations/{organization_id}/security-settings",
+"summary": "Update the security settings of an Organization",
+"params": [
+"organization_id* (path) string: ID of the Organization."
+],
+"body": {
+"enforce_password_renewal": "boolean: Defines whether password renewal is enforced during first login.",
+"grace_period_duration": "string: Duration of the grace period to renew password or enable MFA. (in seconds)",
+"login_attempts_before_locked": "integer: Number of login attempts before the account is locked.",
+"max_login_session_duration": "string: Maximum duration a login session will stay active before needing to relogin. (in seconds)",
+"max_api_key_expiration_duration": "string: Maximum duration the `expires_at` field of an API key can represent."
+},
+"returns": "object{enforce_password_renewal,grace_period_duration,login_attempts_before_locked,max_login_session_duration,max_api_key_expiration_duration}"
+},
+{
+"id": "scaleway/iam:ListPermissionSets",
+"method": "GET",
+"path": "/iam/v1alpha1/permission-sets",
+"summary": "List permission sets",
+"params": [
+"order_by (query) enum name_asc|name_desc|created_at_asc|created_at_desc: Criteria for sorting results.",
+"page_size (query) integer: Number of results per page.",
+"page (query) integer: Page number.",
+"organization_id* (query) string: Filter by Organization ID."
+],
+"returns": "object{permission_sets,total_count}"
+},
+{
+"id": "scaleway/iam:ListPolicies",
+"method": "GET",
+"path": "/iam/v1alpha1/policies",
+"summary": "List policies of an Organization",
+"params": [
+"order_by (query) enum policy_name_asc|policy_name_desc|created_at_asc|created_at_desc: Criteria for sorting results.",
+"page_size (query) integer: Number of results per page.",
+"page (query) integer: Page number.",
+"organization_id (query) string: ID of the Organization to filter.",
+"editable (query) boolean: Defines whether or not filter out editable policies.",
+"user_ids (query) array<string>: Defines whether or not to filter by list of user IDs.",
+"group_ids (query) array<string>: Defines whether or not to filter by list of group IDs.",
+"application_ids (query) array<string>: Filter by a list of application IDs.",
+"no_principal (query) boolean: Defines whether or not the policy is attributed to a principal.",
+"policy_name (query) string: Name of the policy to fetch.",
+"tag (query) string: Filter by tags containing a given string.",
+"policy_ids (query) array<string>: Filter by a list of IDs."
+],
+"returns": "object{policies,total_count}"
+},
+{
+"id": "scaleway/iam:CreatePolicy",
+"method": "POST",
+"path": "/iam/v1alpha1/policies",
+"summary": "Create a new policy",
+"params": [],
+"body": {
+"name*": "string: Name of the policy to create (max length is 64 characters).",
+"description": "string: Description of the policy to create (max length is 200 characters).",
+"organization_id": "string: ID of the Organization.",
+"rules": {
+"_": "array<any | any>: Rules of the policy to create.",
+"permission_set_names": "array<any>: Names of permission sets bound to the rule.",
+"condition": "string: Condition expression to evaluate.",
+"project_ids": "array<any>: List of Project IDs the rule is scoped to.",
+"organization_id": "string: ID of Organization the rule is scoped to.",
+"deny": "boolean: Select whether the rule should remove the permissions instead of granting them."
+},
+"tags": "array<string>: Tags associated with the policy (maximum of 10 tags).",
+"user_id": "string: ID of user attributed to the policy.",
+"group_id": "string: ID of group attributed to the policy.",
+"application_id": "string: ID of application attributed to the policy.",
+"no_principal": "boolean: Defines whether or not a policy is attributed to a principal."
+},
+"returns": "object{id,name,description,organization_id,created_at,updated_at,editable,deletable,managed,nb_rules,nb_scopes,nb_permission_sets…}"
+},
+{
+"id": "scaleway/iam:GetPolicy",
+"method": "GET",
+"path": "/iam/v1alpha1/policies/{policy_id}",
+"summary": "Get an existing policy",
+"params": [
+"policy_id* (path) string: Id of policy to search."
+],
+"returns": "object{id,name,description,organization_id,created_at,updated_at,editable,deletable,managed,nb_rules,nb_scopes,nb_permission_sets…}"
+},
+{
+"id": "scaleway/iam:UpdatePolicy",
+"method": "PATCH",
+"path": "/iam/v1alpha1/policies/{policy_id}",
+"summary": "Update an existing policy",
+"params": [
+"policy_id* (path) string: Id of policy to update."
+],
+"body": {
+"name": "string: New name for the policy (max length is 64 characters).",
+"description": "string: New description of policy (max length is 200 characters).",
+"tags": "array<any>: New tags for the policy (maximum of 10 tags).",
+"user_id": "string: New ID of user attributed to the policy.",
+"group_id": "string: New ID of group attributed to the policy.",
+"application_id": "string: New ID of application attributed to the policy.",
+"no_principal": "boolean: Defines whether or not the policy is attributed to a principal."
+},
+"returns": "object{id,name,description,organization_id,created_at,updated_at,editable,deletable,managed,nb_rules,nb_scopes,nb_permission_sets…}"
+},
+{
+"id": "scaleway/iam:DeletePolicy",
+"method": "DELETE",
+"path": "/iam/v1alpha1/policies/{policy_id}",
+"summary": "Delete a policy",
+"params": [
+"policy_id* (path) string: Id of policy to delete."
+]
+},
+{
+"id": "scaleway/iam:ClonePolicy",
+"method": "POST",
+"path": "/iam/v1alpha1/policies/{policy_id}/clone",
+"summary": "Clone a policy",
+"params": [
+"policy_id* (path) string"
+],
+"body": {},
+"returns": "object{id,name,description,organization_id,created_at,updated_at,editable,deletable,managed,nb_rules,nb_scopes,nb_permission_sets…}"
+},
+{
+"id": "scaleway/iam:ListQuota",
+"method": "GET",
+"path": "/iam/v1alpha1/quota",
+"summary": "List all quotas in the Organization",
+"params": [
+"order_by (query) enum name_asc|name_desc: Criteria for sorting results.",
+"page_size (query) integer: Number of results per page.",
+"page (query) integer: Page number.",
+"organization_id* (query) string: Filter by Organization ID.",
+"quotum_names (query) array<string>: List of quotum names to filter from."
+],
+"returns": "object{quota,total_count}"
+},
+{
+"id": "scaleway/iam:GetQuotum",
+"method": "GET",
+"path": "/iam/v1alpha1/quota/{quotum_name}",
+"summary": "Get a quota in the Organization",
+"params": [
+"quotum_name* (path) string: Name of the quota to get.",
+"organization_id* (query) string: ID of the Organization."
+],
+"returns": "object{name,limit,unlimited,pretty_name,unit,description,locality_type,limits,srn}"
+},
+{
+"id": "scaleway/iam:ListRules",
+"method": "GET",
+"path": "/iam/v1alpha1/rules",
+"summary": "List rules of a given policy",
+"params": [
+"policy_id (query) string: Id of policy to search.",
+"page_size (query) integer: Number of results per page.",
+"page (query) integer: Page number."
+],
+"returns": "object{rules,total_count}"
+},
+{
+"id": "scaleway/iam:SetRules",
+"method": "PUT",
+"path": "/iam/v1alpha1/rules",
+"summary": "Set rules of a given policy",
+"params": [],
+"body": {
+"policy_id*": "string: Id of policy to update.",
+"rules*": {
+"_": "array<any | any>: Rules of the policy to set.",
+"permission_set_names": "array<any>: Names of permission sets bound to the rule.",
+"condition": "string: Condition expression to evaluate.",
+"project_ids": "array<any>: List of Project IDs the rule is scoped to.",
+"organization_id": "string: ID of Organization the rule is scoped to.",
+"deny": "boolean: Select whether the rule should remove the permissions instead of granting them."
+}
+},
+"returns": "object{rules}"
+},
+{
+"id": "scaleway/iam:GetSamlCertificate",
+"method": "GET",
+"path": "/iam/v1alpha1/saml-certificates/{certificate_id}",
+"summary": "Get a SAML certificate",
+"params": [
+"certificate_id* (path) string: ID of the certificate to get."
+],
+"returns": "object{id,type,origin,content,expires_at,srn}"
+},
+{
+"id": "scaleway/iam:DeleteSamlCertificate",
+"method": "DELETE",
+"path": "/iam/v1alpha1/saml-certificates/{certificate_id}",
+"summary": "Delete a SAML certificate",
+"params": [
+"certificate_id* (path) string: ID of the certificate to delete."
+]
+},
+{
+"id": "scaleway/iam:UpdateSaml",
+"method": "PATCH",
+"path": "/iam/v1alpha1/saml/{saml_id}",
+"summary": "Update SAML Identity Provider configuration",
+"params": [
+"saml_id* (path) string: ID of the SAML configuration."
+],
+"body": {
+"entity_id": "string: Entity ID of the SAML Identity Provider.",
+"single_sign_on_url": "string: Single Sign-On URL of the SAML Identity Provider."
+},
+"returns": "object{id,status,service_provider,entity_id,single_sign_on_url,srn}"
+},
+{
+"id": "scaleway/iam:DeleteSaml",
+"method": "DELETE",
+"path": "/iam/v1alpha1/saml/{saml_id}",
+"summary": "Disable SAML Identity Provider for an Organization",
+"params": [
+"saml_id* (path) string: ID of the SAML configuration."
+]
+},
+{
+"id": "scaleway/iam:ListSamlCertificates",
+"method": "GET",
+"path": "/iam/v1alpha1/saml/{saml_id}/certificates",
+"summary": "List SAML certificates",
+"params": [
+"saml_id* (path) string: ID of the SAML configuration."
+],
+"returns": "object{certificates}"
+},
+{
+"id": "scaleway/iam:AddSamlCertificate",
+"method": "POST",
+"path": "/iam/v1alpha1/saml/{saml_id}/certificates",
+"summary": "Add a SAML certificate",
+"params": [
+"saml_id* (path) string: ID of the SAML configuration."
+],
+"body": {
+"type*": "enum unknown_certificate_type|signing|encryption: Type of the SAML certificate.",
+"content*": "string: Content of the SAML certificate."
+},
+"returns": "object{id,type,origin,content,expires_at,srn}"
+},
+{
+"id": "scaleway/iam:GetScimToken",
+"method": "GET",
+"path": "/iam/v1alpha1/scim-tokens/{scim_token_id}",
+"summary": "",
+"params": [
+"scim_token_id* (path) string"
+],
+"returns": "object{id,scim_id,created_at,expires_at}"
+},
+{
+"id": "scaleway/iam:DeleteScimToken",
+"method": "DELETE",
+"path": "/iam/v1alpha1/scim-tokens/{token_id}",
+"summary": "Delete a SCIM token",
+"params": [
+"token_id* (path) string: The SCIM token ID."
+]
+},
+{
+"id": "scaleway/iam:DeleteScim",
+"method": "DELETE",
+"path": "/iam/v1alpha1/scim/{scim_id}",
+"summary": "Disable SCIM for an Organization",
+"params": [
+"scim_id* (path) string: ID of the SCIM configuration."
+]
+},
+{
+"id": "scaleway/iam:ListScimTokens",
+"method": "GET",
+"path": "/iam/v1alpha1/scim/{scim_id}/tokens",
+"summary": "List SCIM tokens",
+"params": [
+"scim_id* (path) string: ID of the SCIM configuration.",
+"order_by (query) enum created_at_asc|created_at_desc: Sort order of SCIM tokens.",
+"page (query) integer: Requested page number.",
+"page_size (query) integer: Number of items per page."
+],
+"returns": "object{scim_tokens,total_count}"
+},
+{
+"id": "scaleway/iam:CreateScimToken",
+"method": "POST",
+"path": "/iam/v1alpha1/scim/{scim_id}/tokens",
+"summary": "Create a SCIM token",
+"params": [
+"scim_id* (path) string: ID of the SCIM configuration."
+],
+"returns": "object{token,bearer_token}"
+},
+{
+"id": "scaleway/iam:ListSSHKeys",
+"method": "GET",
+"path": "/iam/v1alpha1/ssh-keys",
+"summary": "List SSH keys",
+"params": [
+"order_by (query) enum created_at_asc|created_at_desc|updated_at_asc|updated_at_desc|name_asc|name_desc: Sort order of the SSH keys.",
+"page (query) integer: Requested page number.",
+"page_size (query) integer: Number of items per page.",
+"organization_id (query) string: Filter by Organization ID.",
+"name (query) string: Name of group to find.",
+"project_id (query) string: Filter by Project ID.",
+"disabled (query) boolean: Defines whether to include disabled SSH keys or not."
+],
+"returns": "object{ssh_keys,total_count}"
+},
+{
+"id": "scaleway/iam:CreateSSHKey",
+"method": "POST",
+"path": "/iam/v1alpha1/ssh-keys",
+"summary": "Create an SSH key",
+"params": [],
+"body": {
+"name*": "string: Name of the SSH key.",
+"public_key*": "string: SSH public key.",
+"project_id*": "string: Project the resource is attributed to."
+},
+"returns": "object{id,name,public_key,fingerprint,created_at,updated_at,organization_id,project_id,disabled,srn}"
+},
+{
+"id": "scaleway/iam:GetSSHKey",
+"method": "GET",
+"path": "/iam/v1alpha1/ssh-keys/{ssh_key_id}",
+"summary": "Get an SSH key",
+"params": [
+"ssh_key_id* (path) string: ID of the SSH key."
+],
+"returns": "object{id,name,public_key,fingerprint,created_at,updated_at,organization_id,project_id,disabled,srn}"
+},
+{
+"id": "scaleway/iam:UpdateSSHKey",
+"method": "PATCH",
+"path": "/iam/v1alpha1/ssh-keys/{ssh_key_id}",
+"summary": "Update an SSH key",
+"params": [
+"ssh_key_id* (path) string"
+],
+"body": {
+"name": "string: Name of the SSH key.",
+"disabled": "boolean: Enable or disable the SSH key."
+},
+"returns": "object{id,name,public_key,fingerprint,created_at,updated_at,organization_id,project_id,disabled,srn}"
+},
+{
+"id": "scaleway/iam:DeleteSSHKey",
+"method": "DELETE",
+"path": "/iam/v1alpha1/ssh-keys/{ssh_key_id}",
+"summary": "Delete an SSH key",
+"params": [
+"ssh_key_id* (path) string"
+]
+},
+{
+"id": "scaleway/iam:ListUsers",
+"method": "GET",
+"path": "/iam/v1alpha1/users",
+"summary": "List users of an Organization",
+"params": [
+"order_by (query) enum created_at_asc|created_at_desc|updated_at_asc|updated_at_desc|email_asc|email_desc|last_login_asc|last_login_desc|username_asc|username_desc: Criteria for sorting results.",
+"page_size (query) integer: Number of results per page.",
+"page (query) integer: Page number.",
+"organization_id (query) string: ID of the Organization to filter.",
+"user_ids (query) array<string>: Filter by list of IDs.",
+"mfa (query) boolean: Filter by MFA status.",
+"tag (query) string: Filter by tags containing a given string.",
+"type (query) enum unknown_type|owner|member: Filter by user type."
+],
+"returns": "object{users,total_count}"
+},
+{
+"id": "scaleway/iam:CreateUser",
+"method": "POST",
+"path": "/iam/v1alpha1/users",
+"summary": "Create a new user",
+"params": [],
+"body": {
+"organization_id*": "string: ID of the Organization.",
+"email": "string: Email of the user.",
+"tags": "array<string>: Tags associated with the user.",
+"member": "object{email,send_password_email,send_welcome_email,username,password,first_name,last_name,phone_number,locale} | null: Details of IAM member."
+},
+"returns": "object{id,email,username,first_name,last_name,phone_number,locale,created_at,updated_at,organization_id,deletable,last_login_at…}"
+},
+{
+"id": "scaleway/iam:GetUser",
+"method": "GET",
+"path": "/iam/v1alpha1/users/{user_id}",
+"summary": "Get a given user",
+"params": [
+"user_id* (path) string: ID of the user to find."
+],
+"returns": "object{id,email,username,first_name,last_name,phone_number,locale,created_at,updated_at,organization_id,deletable,last_login_at…}"
+},
+{
+"id": "scaleway/iam:UpdateUser",
+"method": "PATCH",
+"path": "/iam/v1alpha1/users/{user_id}",
+"summary": "Update a user",
+"params": [
+"user_id* (path) string: ID of the user to update."
+],
+"body": {
+"tags": "array<any>: New tags for the user (maximum of 10 tags).",
+"email": "string: IAM member email.",
+"first_name": "string: IAM member first name.",
+"last_name": "string: IAM member last name.",
+"phone_number": "string: IAM member phone number.",
+"locale": "string: IAM member locale."
+},
+"returns": "object{id,email,username,first_name,last_name,phone_number,locale,created_at,updated_at,organization_id,deletable,last_login_at…}"
+},
+{
+"id": "scaleway/iam:DeleteUser",
+"method": "DELETE",
+"path": "/iam/v1alpha1/users/{user_id}",
+"summary": "Delete a guest user from an Organization",
+"params": [
+"user_id* (path) string: ID of the user to delete."
+]
+},
+{
+"id": "scaleway/iam:GetUserConnections",
+"method": "GET",
+"path": "/iam/v1alpha1/users/{user_id}/connections",
+"summary": "",
+"params": [
+"user_id* (path) string: ID of the user to list connections for."
+],
+"returns": "object{connections}"
+},
+{
+"id": "scaleway/iam:InitiateUserConnection",
+"method": "POST",
+"path": "/iam/v1alpha1/users/{user_id}/initiate-connection",
+"summary": "",
+"params": [
+"user_id* (path) string: ID of the user that will be added to your connection."
+],
+"body": {},
+"returns": "object{token}"
+},
+{
+"id": "scaleway/iam:JoinUserConnection",
+"method": "POST",
+"path": "/iam/v1alpha1/users/{user_id}/join-connection",
+"summary": "",
+"params": [
+"user_id* (path) string: User ID."
+],
+"body": {
+"token": "string: A token returned by InitiateUserConnection."
+}
+},
+{
+"id": "scaleway/iam:LockUser",
+"method": "POST",
+"path": "/iam/v1alpha1/users/{user_id}/lock",
+"summary": "Lock a member",
+"params": [
+"user_id* (path) string: ID of the user to lock."
+],
+"body": {},
+"returns": "object{id,email,username,first_name,last_name,phone_number,locale,created_at,updated_at,organization_id,deletable,last_login_at…}"
+},
+{
+"id": "scaleway/iam:CreateUserMFAOTP",
+"method": "POST",
+"path": "/iam/v1alpha1/users/{user_id}/mfa-otp",
+"summary": "Create a MFA OTP.",
+"params": [
+"user_id* (path) string: User ID of the MFA OTP."
+],
+"body": {},
+"returns": "object{secret}"
+},
+{
+"id": "scaleway/iam:DeleteUserMFAOTP",
+"method": "DELETE",
+"path": "/iam/v1alpha1/users/{user_id}/mfa-otp",
+"summary": "Delete a MFA OTP.",
+"params": [
+"user_id* (path) string: User ID of the MFA OTP."
+],
+"body": {}
+},
+{
+"id": "scaleway/iam:RemoveUserConnection",
+"method": "POST",
+"path": "/iam/v1alpha1/users/{user_id}/remove-connection",
+"summary": "",
+"params": [
+"user_id* (path) string: ID of the user you want to manage the connection for."
+],
+"body": {
+"target_user_id": "string: ID of the user you want to remove from your connection."
+}
+},
+{
+"id": "scaleway/iam:UnlockUser",
+"method": "POST",
+"path": "/iam/v1alpha1/users/{user_id}/unlock",
+"summary": "Unlock a member",
+"params": [
+"user_id* (path) string: ID of the user to unlock."
+],
+"body": {},
+"returns": "object{id,email,username,first_name,last_name,phone_number,locale,created_at,updated_at,organization_id,deletable,last_login_at…}"
+},
+{
+"id": "scaleway/iam:UpdateUserPassword",
+"method": "POST",
+"path": "/iam/v1alpha1/users/{user_id}/update-password",
+"summary": "Update an user's password.",
+"params": [
+"user_id* (path) string: ID of the user to update."
+],
+"body": {
+"password*": "string: The new password."
+},
+"returns": "object{id,email,username,first_name,last_name,phone_number,locale,created_at,updated_at,organization_id,deletable,last_login_at…}"
+},
+{
+"id": "scaleway/iam:UpdateUserUsername",
+"method": "POST",
+"path": "/iam/v1alpha1/users/{user_id}/update-username",
+"summary": "Update an user's username.",
+"params": [
+"user_id* (path) string: ID of the user to update."
+],
+"body": {
+"username*": "string: The new username."
+},
+"returns": "object{id,email,username,first_name,last_name,phone_number,locale,created_at,updated_at,organization_id,deletable,last_login_at…}"
+},
+{
+"id": "scaleway/iam:ValidateUserMFAOTP",
+"method": "POST",
+"path": "/iam/v1alpha1/users/{user_id}/validate-mfa-otp",
+"summary": "Validate a MFA OTP.",
+"params": [
+"user_id* (path) string: User ID of the MFA OTP."
+],
+"body": {
+"one_time_password": "string: A password generated using the OTP."
+},
+"returns": "object{recovery_codes}"
+},
+{
+"id": "scaleway/vpc:ListIngressRules",
+"method": "GET",
+"path": "/vpc/v2/regions/{region}/ingress-rules",
+"summary": "List ingress rules",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"order_by (query) enum created_at_asc|created_at_desc|source_asc|source_desc|prefix_len_asc|prefix_len_desc: Sort order of the returned ingress rules.",
+"page (query) integer: Page number to return, from the paginated results.",
+"page_size (query) integer: Maximum number of ingress rules to return per page.",
+"vpc_id (query) string: ID of the VPC to filter for. (UUID format)",
+"nexthop_resource_ip (query) string: Next hop IP to filter for. (IP address)",
+"nexthop_private_network_id (query) string: Next hop Private Network ID to filter for.",
+"is_ipv6 (query) boolean: Whether to return only IPv4 or IPv6 ingress rules.",
+"tags (query) array<string>: Tags to filter for.",
+"organization_id (query) string: Organization ID to filter for.",
+"project_id (query) string: Project ID to filter for."
+],
+"returns": "object{rules,total_count}"
+},
+{
+"id": "scaleway/vpc:CreateIngressRule",
+"method": "POST",
+"path": "/vpc/v2/regions/{region}/ingress-rules",
+"summary": "Create an ingress rule",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target"
+],
+"body": {
+"vpc_id*": "string: ID of the VPC this rule will belong to. (UUID format)",
+"source*": "string: Source network to match ingress traffic on.",
+"nexthop_resource_ip*": "string: IP of the local resource to redirect ingress traffic to.",
+"nexthop_private_network_id*": "string: ID of the Private Network the destination resource is in. (UUID format)",
+"description": "string: Description for this ingress rule.",
+"tags": "array<string>: Tags for this ingress rule."
+},
+"returns": "object{id,srn,vpc_id,created_at,updated_at,is_ipv6,source,nexthop_resource_ip,nexthop_private_network_id,description,tags,organization_id…}"
+},
+{
+"id": "scaleway/vpc:GetIngressRule",
+"method": "GET",
+"path": "/vpc/v2/regions/{region}/ingress-rules/{rule_id}",
+"summary": "Get an ingress rule",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"rule_id* (path) string: ID of the ingress rule to return. (UUID format)"
+],
+"returns": "object{id,srn,vpc_id,created_at,updated_at,is_ipv6,source,nexthop_resource_ip,nexthop_private_network_id,description,tags,organization_id…}"
+},
+{
+"id": "scaleway/vpc:UpdateIngressRule",
+"method": "PATCH",
+"path": "/vpc/v2/regions/{region}/ingress-rules/{rule_id}",
+"summary": "Update an ingress rule",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"rule_id* (path) string: ID of the ingress rule to update. (UUID format)"
+],
+"body": {
+"source": "string: Source network to match ingress traffic on.",
+"nexthop_resource_ip": "string: IP of the local resource to redirect ingress traffic to.",
+"nexthop_private_network_id": "string: ID of the Private Network the destination resource is in. (UUID format)",
+"description": "string: Description to set for this ingress rule.",
+"tags": "array<any>: Tags to set for this ingress rule."
+},
+"returns": "object{id,srn,vpc_id,created_at,updated_at,is_ipv6,source,nexthop_resource_ip,nexthop_private_network_id,description,tags,organization_id…}"
+},
+{
+"id": "scaleway/vpc:DeleteIngressRule",
+"method": "DELETE",
+"path": "/vpc/v2/regions/{region}/ingress-rules/{rule_id}",
+"summary": "Delete an ingress rule",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"rule_id* (path) string: ID of the ingress rule to delete. (UUID format)"
+]
+},
+{
+"id": "scaleway/vpc:DisableObjectStoragePrivateAccess",
+"method": "POST",
+"path": "/vpc/v2/regions/{region}/object-storage-private-access/{vpc_id}/disable",
+"summary": "Disable Object Storage private access",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_id* (path) string: ID of the VPC for which to disable Object Storage private access. (UUID format)"
+],
+"returns": "object{id,srn,name,organization_id,project_id,region,tags,is_default,created_at,updated_at,private_network_count,routing_enabled…}"
+},
+{
+"id": "scaleway/vpc:EnableObjectStoragePrivateAccess",
+"method": "POST",
+"path": "/vpc/v2/regions/{region}/object-storage-private-access/{vpc_id}/enable",
+"summary": "Enable Object Storage private access",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_id* (path) string: ID of the VPC for which to enable Object Storage private access. (UUID format)"
+],
+"body": {
+"private_network_ids": "array<string>: IDs of the Private Networks for which to enable Object Storage private access."
+},
+"returns": "object{id,srn,name,organization_id,project_id,region,tags,is_default,created_at,updated_at,private_network_count,routing_enabled…}"
+},
+{
+"id": "scaleway/vpc:AddPrivateNetworkObjectStoragePrivateAccess",
+"method": "POST",
+"path": "/vpc/v2/regions/{region}/object-storage-private-access/{vpc_id}/private-networks",
+"summary": "Add a Private Network to an Object Storage private access",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_id* (path) string: ID of the VPC containing the Object Storage private access. (UUID format)"
+],
+"body": {
+"private_network_id*": "string: ID of the Private Network to add to the Object Storage private access. (UUID format)"
+},
+"returns": "object{vpc_id,private_network_ids}"
+},
+{
+"id": "scaleway/vpc:SetPrivateNetworksObjectStoragePrivateAccess",
+"method": "PUT",
+"path": "/vpc/v2/regions/{region}/object-storage-private-access/{vpc_id}/private-networks",
+"summary": "Set Object Storage private access Private Networks",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_id* (path) string: ID of the VPC containing the Object Storage private access. (UUID format)"
+],
+"body": {
+"private_network_ids*": "array<string>: IDs of the Private Networks to associate with the Object Storage private access."
+},
+"returns": "object{vpc_id,private_network_ids}"
+},
+{
+"id": "scaleway/vpc:DeletePrivateNetworkObjectStoragePrivateAccess",
+"method": "DELETE",
+"path": "/vpc/v2/regions/{region}/object-storage-private-access/{vpc_id}/private-networks/{private_network_id}",
+"summary": "Remove a Private Network from an Object Storage private access",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_id* (path) string: ID of the VPC containing the Object Storage private access. (UUID format)",
+"private_network_id* (path) string: ID of the Private Network to remove from the Object Storage private access. (UU…"
+]
+},
+{
+"id": "scaleway/vpc:ListPrivateNetworks",
+"method": "GET",
+"path": "/vpc/v2/regions/{region}/private-networks",
+"summary": "List Private Networks",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"order_by (query) enum created_at_asc|created_at_desc|name_asc|name_desc: Sort order of the returned Private Networks.",
+"page (query) integer: Page number to return, from the paginated results.",
+"page_size (query) integer: Maximum number of Private Networks to return per page.",
+"name (query) string: Name to filter for.",
+"tags (query) array<string>: Tags to filter for.",
+"organization_id (query) string: Organization ID to filter for.",
+"project_id (query) string: Project ID to filter for.",
+"private_network_ids (query) array<string>: Private Network IDs to filter for.",
+"vpc_id (query) string: VPC ID to filter for.",
+"dhcp_enabled (query) boolean: DHCP status to filter for.",
+"object_storage_private_access_enabled (query) boolean: Filter by whether Object Storage private access is enabled."
+],
+"returns": "object{private_networks,total_count}"
+},
+{
+"id": "scaleway/vpc:CreatePrivateNetwork",
+"method": "POST",
+"path": "/vpc/v2/regions/{region}/private-networks",
+"summary": "Create a Private Network",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target"
+],
+"body": {
+"name*": "string: Name for the Private Network.",
+"project_id*": "string: Scaleway Project in which to create the Private Network. (UUID format)",
+"tags": "array<string>: Tags for the Private Network.",
+"subnets": "array<string>: Private Network subnets CIDR. (IP network)",
+"vpc_id": "string: VPC in which to create the Private Network. (UUID format)",
+"default_route_propagation_enabled": "boolean: Defines whether default v4 and v6 routes are propagated for this Private Network."
+},
+"returns": "object{id,srn,name,organization_id,project_id,region,tags,created_at,updated_at,subnets,vpc_id,dhcp_enabled…}"
+},
+{
+"id": "scaleway/vpc:GetPrivateNetwork",
+"method": "GET",
+"path": "/vpc/v2/regions/{region}/private-networks/{private_network_id}",
+"summary": "Get a Private Network",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"private_network_id* (path) string: Private Network ID. (UUID format)"
+],
+"returns": "object{id,srn,name,organization_id,project_id,region,tags,created_at,updated_at,subnets,vpc_id,dhcp_enabled…}"
+},
+{
+"id": "scaleway/vpc:UpdatePrivateNetwork",
+"method": "PATCH",
+"path": "/vpc/v2/regions/{region}/private-networks/{private_network_id}",
+"summary": "Update Private Network",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"private_network_id* (path) string: Private Network ID. (UUID format)"
+],
+"body": {
+"name": "string: Name for the Private Network.",
+"tags": "array<any>: Tags for the Private Network.",
+"default_route_propagation_enabled": "boolean: Defines whether default v4 and v6 routes are propagated for this Private Network."
+},
+"returns": "object{id,srn,name,organization_id,project_id,region,tags,created_at,updated_at,subnets,vpc_id,dhcp_enabled…}"
+},
+{
+"id": "scaleway/vpc:DeletePrivateNetwork",
+"method": "DELETE",
+"path": "/vpc/v2/regions/{region}/private-networks/{private_network_id}",
+"summary": "Delete a Private Network",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"private_network_id* (path) string: Private Network ID. (UUID format)"
+]
+},
+{
+"id": "scaleway/vpc:EnableDHCP",
+"method": "POST",
+"path": "/vpc/v2/regions/{region}/private-networks/{private_network_id}/enable-dhcp",
+"summary": "Enable DHCP on a Private Network",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"private_network_id* (path) string: Private Network ID. (UUID format)"
+],
+"body": {},
+"returns": "object{id,srn,name,organization_id,project_id,region,tags,created_at,updated_at,subnets,vpc_id,dhcp_enabled…}"
+},
+{
+"id": "scaleway/vpc:CreateRoute",
+"method": "POST",
+"path": "/vpc/v2/regions/{region}/routes",
+"summary": "Create a Route",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target"
+],
+"body": {
+"description": "string: Route description.",
+"tags": "array<string>: Tags of the Route.",
+"vpc_id": "string: VPC the Route belongs to. (UUID format)",
+"destination": "string: Destination of the Route. (IP network)",
+"nexthop_resource_id": "string: ID of the nexthop resource. (UUID format)",
+"nexthop_private_network_id": "string: ID of the nexthop private network. (UUID format)",
+"nexthop_vpc_connector_id": "string: ID of the nexthop VPC Connector. (UUID format)"
+},
+"returns": "object{id,srn,description,tags,vpc_id,destination,nexthop_resource_id,nexthop_private_network_id,nexthop_vpc_connector_id,created_at,updated_at,is_read_only…}"
+},
+{
+"id": "scaleway/vpc:GetRoute",
+"method": "GET",
+"path": "/vpc/v2/regions/{region}/routes/{route_id}",
+"summary": "Get a Route",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"route_id* (path) string: Route ID. (UUID format)"
+],
+"returns": "object{id,srn,description,tags,vpc_id,destination,nexthop_resource_id,nexthop_private_network_id,nexthop_vpc_connector_id,created_at,updated_at,is_read_only…}"
+},
+{
+"id": "scaleway/vpc:UpdateRoute",
+"method": "PATCH",
+"path": "/vpc/v2/regions/{region}/routes/{route_id}",
+"summary": "Update Route",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"route_id* (path) string: Route ID. (UUID format)"
+],
+"body": {
+"description": "string: Route description.",
+"tags": "array<any>: Tags of the Route.",
+"destination": "string: Destination of the Route. (IP network)",
+"nexthop_resource_id": "string: ID of the nexthop resource. (UUID format)",
+"nexthop_private_network_id": "string: ID of the nexthop private network. (UUID format)",
+"nexthop_vpc_connector_id": "string: ID of the nexthop VPC connector. (UUID format)"
+},
+"returns": "object{id,srn,description,tags,vpc_id,destination,nexthop_resource_id,nexthop_private_network_id,nexthop_vpc_connector_id,created_at,updated_at,is_read_only…}"
+},
+{
+"id": "scaleway/vpc:DeleteRoute",
+"method": "DELETE",
+"path": "/vpc/v2/regions/{region}/routes/{route_id}",
+"summary": "Delete a Route",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"route_id* (path) string: Route ID. (UUID format)"
+]
+},
+{
+"id": "scaleway/vpc:ListSubnets",
+"method": "GET",
+"path": "/vpc/v2/regions/{region}/subnets",
+"summary": "List subnets",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"order_by (query) enum created_at_asc|created_at_desc: Sort order of the returned subnets.",
+"page (query) integer: Page number to return, from the paginated results.",
+"page_size (query) integer: Maximum number of Private Networks to return per page.",
+"organization_id (query) string: Organization ID to filter for.",
+"project_id (query) string: Project ID to filter for.",
+"subnet_ids (query) array<string>: Subnet IDs to filter for.",
+"vpc_id (query) string: VPC ID to filter for."
+],
+"returns": "object{subnets,total_count}"
+},
+{
+"id": "scaleway/vpc:ListVPCConnectors",
+"method": "GET",
+"path": "/vpc/v2/regions/{region}/vpc-connectors",
+"summary": "List VPC connectors",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"order_by (query) enum created_at_asc|created_at_desc|name_asc|name_desc: Sort order of the returned VPC connectors.",
+"page (query) integer: Page number to return, from the paginated results.",
+"page_size (query) integer: Maximum number of VPC connectors to return per page.",
+"name (query) string: Name to filter for.",
+"tags (query) array<string>: Tags to filter for.",
+"organization_id (query) string: Organization ID to filter for.",
+"project_id (query) string: Project ID to filter for.",
+"vpc_id (query) string: VPC ID to filter for.",
+"target_vpc_id (query) string: Target VPC ID to filter for.",
+"status (query) enum unknown_vpc_connector_status|orphan|peered|conflict: Status of the VPC connector."
+],
+"returns": "object{vpc_connectors,total_count}"
+},
+{
+"id": "scaleway/vpc:CreateVPCConnector",
+"method": "POST",
+"path": "/vpc/v2/regions/{region}/vpc-connectors",
+"summary": "Create a VPC connector",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target"
+],
+"body": {
+"name*": "string: Name for the VPC connector.",
+"tags": "array<string>: Tags for the VPC connector.",
+"vpc_id": "string: VPC ID to filter for.",
+"target_vpc_id": "string: Target VPC ID to filter for."
+},
+"returns": "object{id,srn,name,organization_id,project_id,vpc_id,target_vpc_id,status,peer_info,region,tags,created_at…}"
+},
+{
+"id": "scaleway/vpc:GetVPCConnector",
+"method": "GET",
+"path": "/vpc/v2/regions/{region}/vpc-connectors/{vpc_connector_id}",
+"summary": "Get a VPC connector",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_connector_id* (path) string: VPC connector ID. (UUID format)"
+],
+"returns": "object{id,srn,name,organization_id,project_id,vpc_id,target_vpc_id,status,peer_info,region,tags,created_at…}"
+},
+{
+"id": "scaleway/vpc:UpdateVPCConnector",
+"method": "PATCH",
+"path": "/vpc/v2/regions/{region}/vpc-connectors/{vpc_connector_id}",
+"summary": "Update VPC connector",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_connector_id* (path) string: VPC connector ID. (UUID format)"
+],
+"body": {
+"name": "string: Name for the VPC connector.",
+"tags": "array<any>: Tags for the VPC connector."
+},
+"returns": "object{id,srn,name,organization_id,project_id,vpc_id,target_vpc_id,status,peer_info,region,tags,created_at…}"
+},
+{
+"id": "scaleway/vpc:DeleteVPCConnector",
+"method": "DELETE",
+"path": "/vpc/v2/regions/{region}/vpc-connectors/{vpc_connector_id}",
+"summary": "Delete a VPC connector",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_connector_id* (path) string: VPC connector ID. (UUID format)"
+]
+},
+{
+"id": "scaleway/vpc:ListSubnetOverlaps",
+"method": "GET",
+"path": "/vpc/v2/regions/{region}/vpc-connectors/{vpc_connector_id}/subnet-overlaps",
+"summary": "List subnet overlaps",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_connector_id* (path) string: VPC Peering connector ID. (UUID format)",
+"order_by (query) enum subnet_asc|subnet_desc|target_subnet_asc|target_subnet_desc: Sort order of the returned Subnet overlaps.",
+"page (query) integer: Page number to return, from the paginated results.",
+"page_size (query) integer: Maximum number of Subnet overlaps to return per page."
+],
+"returns": "object{subnet_overlaps,total_count}"
+},
+{
+"id": "scaleway/vpc:ListVPCs",
+"method": "GET",
+"path": "/vpc/v2/regions/{region}/vpcs",
+"summary": "List VPCs",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"order_by (query) enum created_at_asc|created_at_desc|name_asc|name_desc: Sort order of the returned VPCs.",
+"page (query) integer: Page number to return, from the paginated results.",
+"page_size (query) integer: Maximum number of VPCs to return per page.",
+"name (query) string: Name to filter for.",
+"tags (query) array<string>: Tags to filter for.",
+"organization_id (query) string: Organization ID to filter for.",
+"project_id (query) string: Project ID to filter for.",
+"is_default (query) boolean: Defines whether to filter only for VPCs which are the default one for their Pro…",
+"routing_enabled (query) boolean: Defines whether to filter only for VPCs which route traffic between their Priva…",
+"object_storage_private_access_enabled (query) boolean: Defines whether to filter only for VPCs with Object Storage private access enab…"
+],
+"returns": "object{vpcs,total_count}"
+},
+{
+"id": "scaleway/vpc:CreateVPC",
+"method": "POST",
+"path": "/vpc/v2/regions/{region}/vpcs",
+"summary": "Create a VPC",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target"
+],
+"body": {
+"name*": "string: Name for the VPC.",
+"project_id*": "string: Scaleway Project in which to create the VPC. (UUID format)",
+"tags": "array<string>: Tags for the VPC.",
+"enable_routing": "boolean: Enable routing between Private Networks in the VPC.",
+"enable_transitivity": "boolean: Enable packets from peered VPCs to transit through this VPC."
+},
+"returns": "object{id,srn,name,organization_id,project_id,region,tags,is_default,created_at,updated_at,private_network_count,routing_enabled…}"
+},
+{
+"id": "scaleway/vpc:GetVPC",
+"method": "GET",
+"path": "/vpc/v2/regions/{region}/vpcs/{vpc_id}",
+"summary": "Get a VPC",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_id* (path) string: VPC ID. (UUID format)"
+],
+"returns": "object{id,srn,name,organization_id,project_id,region,tags,is_default,created_at,updated_at,private_network_count,routing_enabled…}"
+},
+{
+"id": "scaleway/vpc:UpdateVPC",
+"method": "PATCH",
+"path": "/vpc/v2/regions/{region}/vpcs/{vpc_id}",
+"summary": "Update VPC",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_id* (path) string: VPC ID. (UUID format)"
+],
+"body": {
+"name": "string: Name for the VPC.",
+"tags": "array<any>: Tags for the VPC."
+},
+"returns": "object{id,srn,name,organization_id,project_id,region,tags,is_default,created_at,updated_at,private_network_count,routing_enabled…}"
+},
+{
+"id": "scaleway/vpc:DeleteVPC",
+"method": "DELETE",
+"path": "/vpc/v2/regions/{region}/vpcs/{vpc_id}",
+"summary": "Delete a VPC",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_id* (path) string: VPC ID. (UUID format)"
+]
+},
+{
+"id": "scaleway/vpc:GetAcl",
+"method": "GET",
+"path": "/vpc/v2/regions/{region}/vpcs/{vpc_id}/acl-rules",
+"summary": "Get ACL Rules for VPC",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_id* (path) string: ID of the Network ACL's VPC. (UUID format)",
+"is_ipv6* (query) boolean: Defines whether this set of ACL rules is for IPv6 (false = IPv4)."
+],
+"returns": "object{rules,default_policy}"
+},
+{
+"id": "scaleway/vpc:SetAcl",
+"method": "PUT",
+"path": "/vpc/v2/regions/{region}/vpcs/{vpc_id}/acl-rules",
+"summary": "Set VPC ACL rules",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_id* (path) string: ID of the Network ACL's VPC. (UUID format)"
+],
+"body": {
+"rules*": {
+"_": "array<object{protocol,source,src_port_low,src_port_high,destination,dst_port_low,dst_port_high,action,description}>: List of Network ACL rules.",
+"protocol*": "enum ANY|TCP|UDP|ICMP: Protocol to which this rule applies.",
+"source*": "string: Source IP range to which this rule applies (CIDR notation with subnet mask). (IP network)",
+"src_port_low*": "integer: Starting port of the source port range to which this rule applies (inclusive).",
+"src_port_high*": "integer: Ending port of the source port range to which this rule applies (inclusive).",
+"destination*": "string: Destination IP range to which this rule applies (CIDR notation with subnet mask). (IP network)",
+"dst_port_low*": "integer: Starting port of the destination port range to which this rule applies (inclusive).",
+"dst_port_high*": "integer: Ending port of the destination port range to which this rule applies (inclusive).",
+"action*": "enum unknown_action|accept|drop: Policy to apply to the packet.",
+"description*": "string: Rule description."
+},
+"is_ipv6*": "boolean: Defines whether this set of ACL rules is for IPv6 (false = IPv4).",
+"default_policy*": "enum unknown_action|accept|drop: Action to take for packets which do not match any rules."
+},
+"returns": "object{rules,default_policy}"
+},
+{
+"id": "scaleway/vpc:EnableRouting",
+"method": "POST",
+"path": "/vpc/v2/regions/{region}/vpcs/{vpc_id}/enable-routing",
+"summary": "Enable routing on a VPC",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"vpc_id* (path) string: VPC ID. (UUID format)"
+],
+"body": {},
+"returns": "object{id,srn,name,organization_id,project_id,region,tags,is_default,created_at,updated_at,private_network_count,routing_enabled…}"
+},
+{
+"id": "scaleway/ipam:ReleaseIPSet",
+"method": "POST",
+"path": "/ipam/v1/regions/{region}/ip-sets/release",
+"summary": "",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target"
+],
+"body": {
+"ip_ids": "array<string>: (UUID format)"
+}
+},
+{
+"id": "scaleway/ipam:ListIPs",
+"method": "GET",
+"path": "/ipam/v1/regions/{region}/ips",
+"summary": "List existing IPs",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"order_by (query) enum created_at_desc|created_at_asc|updated_at_desc|updated_at_asc|attached_at_desc|attached_at_asc|ip_address_desc|ip_address_asc|mac_address_desc|mac_address_asc: Sort order of the returned IPs.",
+"page (query) integer: Page number to return, from the paginated results.",
+"page_size (query) integer: Maximum number of IPs to return per page.",
+"project_id (query) string: Project ID to filter for.",
+"vpc_id (query) string: VPC ID to filter for.",
+"attached (query) boolean: Defines whether to filter only for IPs which are attached to a resource.",
+"resource_name (query) string: Attached resource name to filter for, only IPs attached to a resource with this…",
+"resource_id (query) string: Resource ID to filter for.",
+"resource_ids (query) array<string>: Resource IDs to filter for.",
+"resource_type (query) enum unknown_type|custom|instance_server|instance_ip|instance_private_nic|lb_server|lb_ip|fip_ip|vpc_gateway|vpc_gateway_network|…: Resource type to filter for.",
+"resource_types (query) array<enum unknown_type|custom|instance_server|instance_ip|instance_private_nic|lb_server|lb_ip|fip_ip|vpc_gateway|vpc_gateway_network|…>: Resource types to filter for.",
+"mac_address (query) string: MAC address to filter for.",
+"tags (query) array<string>: Tags to filter for, only IPs with one or more matching tags will be returned.",
+"organization_id (query) string: Organization ID to filter for.",
+"is_ipv6 (query) boolean: Defines whether to filter only for IPv4s or IPv6s.",
+"ip_ids (query) array<string>: IP IDs to filter for.",
+"zonal (query) string: Zone to filter for.",
+"regional (query) boolean: Filter on regional IPs only.",
+"private_network_id (query) string: Private Network to filter for.",
+"subnet_id (query) string: Subnet ID to filter for.",
+"source_vpc_id (query) string: Precisely one of zonal, regional, private_network_id, subnet_id, source_vpc_id …"
+],
+"returns": "object{total_count,ips}"
+},
+{
+"id": "scaleway/ipam:BookIP",
+"method": "POST",
+"path": "/ipam/v1/regions/{region}/ips",
+"summary": "Reserve a new IP",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target"
+],
+"body": {
+"project_id*": "string: Scaleway Project in which to create the IP. When creating an IP in a Private Network, the Project must match …",
+"source*": {
+"_": "object{zonal,private_network_id,subnet_id,vpc_id,regional}: Source in which to reserve the IP. Not all sources are available for reservation.",
+"zonal": "string: Zone the IP lives in if the IP is a public zoned IP. This source is global.",
+"private_network_id": "string: Private Network the IP lives in if the IP is a private IP. This source is specific.",
+"subnet_id": "string: Private Network subnet the IP lives in if the IP is a private IP in a Private Network.",
+"vpc_id": "string: Precisely one of zonal, private_network_id, subnet_id, vpc_id, regional can be set.",
+"regional": "boolean: Defines whether the IP is a public regional IP. This source is global."
+},
+"is_ipv6": "boolean: Request an IPv6 instead of an IPv4.",
+"address": "string: Request this specific IP address in the specified source pool.",
+"tags": "array<string>: Tags for the IP.",
+"resource": {
+"_": "object{mac_address,name}: Custom resource to attach to the IP being reserved.",
+"mac_address": "string: MAC address of the custom resource.",
+"name": "string: Name of the custom resource."
+}
+},
+"returns": "object{id,srn,address,project_id,is_ipv6,created_at,updated_at,source,resource,tags,reverses,region…}"
+},
+{
+"id": "scaleway/ipam:GetIP",
+"method": "GET",
+"path": "/ipam/v1/regions/{region}/ips/{ip_id}",
+"summary": "Get an IP",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"ip_id* (path) string: IP ID. (UUID format)"
+],
+"returns": "object{id,srn,address,project_id,is_ipv6,created_at,updated_at,source,resource,tags,reverses,region…}"
+},
+{
+"id": "scaleway/ipam:UpdateIP",
+"method": "PATCH",
+"path": "/ipam/v1/regions/{region}/ips/{ip_id}",
+"summary": "Update an IP",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"ip_id* (path) string: IP ID. (UUID format)"
+],
+"body": {
+"tags": "array<any>: Tags for the IP.",
+"reverses": {
+"_": "array<object{hostname,address}>: Array of reverse domain names associated with an IP in the subnet of the current IP.",
+"hostname": "string: Reverse domain name.",
+"address": "string: IP corresponding to the hostname. (IP address)"
+}
+},
+"returns": "object{id,srn,address,project_id,is_ipv6,created_at,updated_at,source,resource,tags,reverses,region…}"
+},
+{
+"id": "scaleway/ipam:ReleaseIP",
+"method": "DELETE",
+"path": "/ipam/v1/regions/{region}/ips/{ip_id}",
+"summary": "Release an IP",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"ip_id* (path) string: IP ID. (UUID format)"
+],
+"body": {}
+},
+{
+"id": "scaleway/ipam:AttachIP",
+"method": "POST",
+"path": "/ipam/v1/regions/{region}/ips/{ip_id}/attach",
+"summary": "Attach private IP to custom resource",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"ip_id* (path) string: IP ID. (UUID format)"
+],
+"body": {
+"resource*": {
+"_": "object{mac_address,name}: Custom resource to be attached to the IP.",
+"mac_address": "string: MAC address of the custom resource.",
+"name": "string: Name of the custom resource."
+}
+},
+"returns": "object{id,srn,address,project_id,is_ipv6,created_at,updated_at,source,resource,tags,reverses,region…}"
+},
+{
+"id": "scaleway/ipam:DetachIP",
+"method": "POST",
+"path": "/ipam/v1/regions/{region}/ips/{ip_id}/detach",
+"summary": "Detach private IP from a custom resource",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"ip_id* (path) string: IP ID. (UUID format)"
+],
+"body": {
+"resource*": {
+"_": "object{mac_address,name}: Custom resource currently attached to the IP.",
+"mac_address": "string: MAC address of the custom resource.",
+"name": "string: Name of the custom resource."
+}
+},
+"returns": "object{id,srn,address,project_id,is_ipv6,created_at,updated_at,source,resource,tags,reverses,region…}"
+},
+{
+"id": "scaleway/ipam:MoveIP",
+"method": "POST",
+"path": "/ipam/v1/regions/{region}/ips/{ip_id}/move",
+"summary": "Move private IP to a custom resource",
+"params": [
+"region* (path) enum fr-par|it-mil|nl-ams|pl-waw: The region you want to target",
+"ip_id* (path) string: IP ID. (UUID format)"
+],
+"body": {
+"from_resource*": {
+"_": "object{mac_address,name}: Custom resource currently attached to the IP.",
+"mac_address": "string: MAC address of the custom resource.",
+"name": "string: Name of the custom resource."
+},
+"to_resource": {
+"_": "object{mac_address,name}: Custom resource to be attached to the IP.",
+"mac_address": "string: MAC address of the custom resource.",
+"name": "string: Name of the custom resource."
+}
+},
+"returns": "object{id,srn,address,project_id,is_ipv6,created_at,updated_at,source,resource,tags,reverses,region…}"
+},
+{
+"id": "scaleway/secret-manager:ListSecrets",
+"method": "GET",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets",
+"summary": "List secrets",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"organization_id (query) string: Filter by Organization ID (optional). (UUID format)",
+"project_id (query) string: Filter by Project ID (optional). (UUID format)",
+"order_by (query) enum name_asc|name_desc|created_at_asc|created_at_desc|updated_at_asc|updated_at_desc",
+"page (query) integer",
+"page_size (query) integer",
+"tags (query) array<string>: List of tags to filter on (optional).",
+"name (query) string: Filter by secret name (optional).",
+"path (query) string: Filter by exact path (optional).",
+"ephemeral (query) boolean: Filter by ephemeral / not ephemeral (optional).",
+"type (query) enum unknown_type|opaque|certificate|key_value|basic_credentials|database_credentials|ssh_key: Filter by secret type (optional).",
+"scheduled_for_deletion* (query) boolean: Filter by whether the secret was scheduled for deletion / not scheduled for del…"
+],
+"returns": "object{secrets,total_count}"
+},
+{
+"id": "scaleway/secret-manager:CreateSecret",
+"method": "POST",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets",
+"summary": "Create a secret",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target"
+],
+"body": {
+"project_id": "string: ID of the Project containing the secret. (UUID format)",
+"name": "string: Name of the secret.",
+"tags": "array<string>: List of the secret's tags.",
+"description": "string: Description of the secret.",
+"type": "enum unknown_type|opaque|certificate|key_value|basic_credentials|database_credentials|ssh_key: Type of the secret. (Optional.) See the `Secret.Type` enum for a description of values.",
+"path": "string: Path of the secret. (Optional.) Location of the secret in the directory structure.",
+"ephemeral_policy": {
+"_": "object{time_to_live,expires_once_accessed,action}: Ephemeral policy of the secret. (Optional.) Policy that defines whether/when a secret's versions expire.",
+"time_to_live": "string: Time frame, from one second and up to one year, during which the secret's versions are valid. (in seconds)",
+"expires_once_accessed": "boolean: Returns `true` if the version expires after a single user access.",
+"action": "enum unknown_action|delete|disable: Action to perform when the version of a secret expires."
+},
+"protected": "boolean: Returns `true` if secret protection is applied to a given secret.",
+"key_id": "string: ID of the Scaleway Key Manager key. (Optional.) The Scaleway Key Manager key ID will be used to encrypt and d…"
+},
+"returns": "object{id,srn,project_id,name,status,created_at,updated_at,tags,version_count,description,managed,protected…}"
+},
+{
+"id": "scaleway/secret-manager:AccessSecretVersionByPath",
+"method": "GET",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets-by-path/versions/{revision}/access",
+"summary": "Access a secret's version using the secret's name and path",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"revision* (path) string: Version number.",
+"secret_path* (query) string: Secret's path.",
+"secret_name* (query) string: Secret's name.",
+"project_id* (query) string: ID of the Project to target. (UUID format)"
+],
+"returns": "object{secret_id,revision,data,data_crc32,type}"
+},
+{
+"id": "scaleway/secret-manager:GetSecret",
+"method": "GET",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}",
+"summary": "Get metadata using the secret's ID",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: ID of the secret. (UUID format)"
+],
+"returns": "object{id,srn,project_id,name,status,created_at,updated_at,tags,version_count,description,managed,protected…}"
+},
+{
+"id": "scaleway/secret-manager:UpdateSecret",
+"method": "PATCH",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}",
+"summary": "Update metadata of a secret",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: ID of the secret. (UUID format)"
+],
+"body": {
+"name": "string: Secret's updated name (optional).",
+"tags": "array<any>: Secret's updated list of tags (optional).",
+"description": "string: Description of the secret.",
+"path": "string: Path of the folder. (Optional.) Location of the folder in the directory structure.",
+"ephemeral_policy": {
+"_": "object{time_to_live,expires_once_accessed,action}: Ephemeral policy of the secret. (Optional.) Policy that defines whether/when a secret's versions expire.",
+"time_to_live": "string: Time frame, from one second and up to one year, during which the secret's versions are valid. (in seconds)",
+"expires_once_accessed": "boolean: Returns `true` if the version expires after a single user access.",
+"action": "enum unknown_action|delete|disable: Action to perform when the version of a secret expires."
+}
+},
+"returns": "object{id,srn,project_id,name,status,created_at,updated_at,tags,version_count,description,managed,protected…}"
+},
+{
+"id": "scaleway/secret-manager:DeleteSecret",
+"method": "DELETE",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}",
+"summary": "Delete a secret",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: ID of the secret. (UUID format)"
+]
+},
+{
+"id": "scaleway/secret-manager:AddSecretOwner",
+"method": "POST",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}/add-owner",
+"summary": "Allow a product to use the secret",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: ID of the secret. (UUID format)"
+],
+"body": {
+"product": "enum unknown_product|edge_services|s2s_vpn: ID of the product to add."
+}
+},
+{
+"id": "scaleway/secret-manager:ProtectSecret",
+"method": "POST",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}/protect",
+"summary": "Enable secret protection",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: ID of the secret to enable secret protection for. (UUID format)"
+],
+"body": {},
+"returns": "object{id,srn,project_id,name,status,created_at,updated_at,tags,version_count,description,managed,protected…}"
+},
+{
+"id": "scaleway/secret-manager:RestoreSecret",
+"method": "POST",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}/restore",
+"summary": "Restore a secret",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: (UUID format)"
+],
+"body": {},
+"returns": "object{id,srn,project_id,name,status,created_at,updated_at,tags,version_count,description,managed,protected…}"
+},
+{
+"id": "scaleway/secret-manager:UnprotectSecret",
+"method": "POST",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}/unprotect",
+"summary": "Disable secret protection",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: ID of the secret to disable secret protection for. (UUID format)"
+],
+"body": {},
+"returns": "object{id,srn,project_id,name,status,created_at,updated_at,tags,version_count,description,managed,protected…}"
+},
+{
+"id": "scaleway/secret-manager:ListSecretVersions",
+"method": "GET",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}/versions",
+"summary": "List versions of a secret using the secret's ID",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: ID of the secret. (UUID format)",
+"page (query) integer",
+"page_size (query) integer",
+"status (query) array<enum unknown_status|enabled|disabled|deleted|scheduled_for_deletion>: Filter results by status."
+],
+"returns": "object{versions,total_count}"
+},
+{
+"id": "scaleway/secret-manager:CreateSecretVersion",
+"method": "POST",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}/versions",
+"summary": "Create a version",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: ID of the secret. (UUID format)"
+],
+"body": {
+"data": "string: The base64-encoded secret payload of the version.",
+"description": "string: Description of the version.",
+"disable_previous": "boolean: Disable the previous secret version. (Optional.) If there is no previous version or if the previous version w…",
+"data_crc32": "integer: (Optional.) The CRC32 checksum of the data as a base-10 integer."
+},
+"returns": "object{revision,srn,secret_id,status,created_at,updated_at,deleted_at,description,latest,ephemeral_properties,deletion_requested_at,region}"
+},
+{
+"id": "scaleway/secret-manager:GetSecretVersion",
+"method": "GET",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}/versions/{revision}",
+"summary": "Get metadata of a secret's version using the secret's ID",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: ID of the secret. (UUID format)",
+"revision* (path) string: Version number."
+],
+"returns": "object{revision,srn,secret_id,status,created_at,updated_at,deleted_at,description,latest,ephemeral_properties,deletion_requested_at,region}"
+},
+{
+"id": "scaleway/secret-manager:UpdateSecretVersion",
+"method": "PATCH",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}/versions/{revision}",
+"summary": "Update metadata of a version",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: ID of the secret. (UUID format)",
+"revision* (path) string: Version number."
+],
+"body": {
+"description": "string: Description of the version.",
+"ephemeral_properties": {
+"_": "object{expires_at,expires_once_accessed,action}: Ephemeral properties of the version. (Optional.) Properties that defines the version's expiration date, wheth…",
+"expires_at": "string: The version's expiration date. (Optional.) If not specified, the version does not have an expiration date. (R…",
+"expires_once_accessed": "boolean: Returns `true` if the version expires after a single user access. (Optional.) If not specified, the version c…",
+"action": "enum unknown_action|delete|disable: Action to perform when the version of a secret expires."
+}
+},
+"returns": "object{revision,srn,secret_id,status,created_at,updated_at,deleted_at,description,latest,ephemeral_properties,deletion_requested_at,region}"
+},
+{
+"id": "scaleway/secret-manager:DeleteSecretVersion",
+"method": "DELETE",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}/versions/{revision}",
+"summary": "Delete a version",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: ID of the secret. (UUID format)",
+"revision* (path) string: Version number."
+]
+},
+{
+"id": "scaleway/secret-manager:AccessSecretVersion",
+"method": "GET",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}/versions/{revision}/access",
+"summary": "Access a secret's version using the secret's ID",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: ID of the secret. (UUID format)",
+"revision* (path) string: Version number."
+],
+"returns": "object{secret_id,revision,data,data_crc32,type}"
+},
+{
+"id": "scaleway/secret-manager:DisableSecretVersion",
+"method": "POST",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}/versions/{revision}/disable",
+"summary": "Disable a version",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: ID of the secret. (UUID format)",
+"revision* (path) string: Version number."
+],
+"body": {},
+"returns": "object{revision,srn,secret_id,status,created_at,updated_at,deleted_at,description,latest,ephemeral_properties,deletion_requested_at,region}"
+},
+{
+"id": "scaleway/secret-manager:EnableSecretVersion",
+"method": "POST",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}/versions/{revision}/enable",
+"summary": "Enable a version",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: ID of the secret. (UUID format)",
+"revision* (path) string: Version number."
+],
+"body": {},
+"returns": "object{revision,srn,secret_id,status,created_at,updated_at,deleted_at,description,latest,ephemeral_properties,deletion_requested_at,region}"
+},
+{
+"id": "scaleway/secret-manager:RestoreSecretVersion",
+"method": "POST",
+"path": "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}/versions/{revision}/restore",
+"summary": "Restore a version",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"secret_id* (path) string: (UUID format)",
+"revision* (path) string"
+],
+"body": {},
+"returns": "object{revision,srn,secret_id,status,created_at,updated_at,deleted_at,description,latest,ephemeral_properties,deletion_requested_at,region}"
+},
+{
+"id": "scaleway/registry:ListImages",
+"method": "GET",
+"path": "/registry/v1/regions/{region}/images",
+"summary": "List images",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"page (query) integer: A positive integer to choose the page to display.",
+"page_size (query) integer: A positive integer lower or equal to 100 to select the number of items to displ…",
+"order_by (query) enum created_at_asc|created_at_desc|name_asc|name_desc: Criteria to use when ordering image listings.",
+"namespace_id (query) string: Filter by the namespace ID.",
+"name (query) string: Filter by the image name (exact match).",
+"organization_id (query) string: Filter by Organization ID.",
+"project_id (query) string: Filter by Project ID."
+],
+"returns": "object{images,total_count}"
+},
+{
+"id": "scaleway/registry:GetImage",
+"method": "GET",
+"path": "/registry/v1/regions/{region}/images/{image_id}",
+"summary": "Get an image",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"image_id* (path) string: UUID of the image."
+],
+"returns": "object{id,name,namespace_id,status,status_message,visibility,size,created_at,updated_at,tags}"
+},
+{
+"id": "scaleway/registry:UpdateImage",
+"method": "PATCH",
+"path": "/registry/v1/regions/{region}/images/{image_id}",
+"summary": "Update an image",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"image_id* (path) string: ID of the image to update."
+],
+"body": {
+"visibility": "enum visibility_unknown|inherit|public|private: Set to `public` to allow the image to be pulled without authentication."
+},
+"returns": "object{id,name,namespace_id,status,status_message,visibility,size,created_at,updated_at,tags}"
+},
+{
+"id": "scaleway/registry:DeleteImage",
+"method": "DELETE",
+"path": "/registry/v1/regions/{region}/images/{image_id}",
+"summary": "Delete an image",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"image_id* (path) string: UUID of the image."
+],
+"returns": "object{id,name,namespace_id,status,status_message,visibility,size,created_at,updated_at,tags}"
+},
+{
+"id": "scaleway/registry:ListTags",
+"method": "GET",
+"path": "/registry/v1/regions/{region}/images/{image_id}/tags",
+"summary": "List tags",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"image_id* (path) string: UUID of the image.",
+"page (query) integer: A positive integer to choose the page to display.",
+"page_size (query) integer: A positive integer lower or equal to 100 to select the number of items to displ…",
+"order_by (query) enum created_at_asc|created_at_desc|name_asc|name_desc: Criteria to use when ordering tag listings.",
+"name (query) string: Filter by the tag name (exact match)."
+],
+"returns": "object{tags,total_count}"
+},
+{
+"id": "scaleway/registry:ListNamespaces",
+"method": "GET",
+"path": "/registry/v1/regions/{region}/namespaces",
+"summary": "List namespaces",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"page (query) integer: A positive integer to choose the page to display.",
+"page_size (query) integer: A positive integer lower or equal to 100 to select the number of items to displ…",
+"order_by (query) enum created_at_asc|created_at_desc|description_asc|description_desc|name_asc|name_desc: Criteria to use when ordering namespace listings.",
+"organization_id (query) string: Filter by Organization ID.",
+"project_id (query) string: Filter by Project ID.",
+"name (query) string: Filter by the namespace name (exact match)."
+],
+"returns": "object{namespaces,total_count}"
+},
+{
+"id": "scaleway/registry:CreateNamespace",
+"method": "POST",
+"path": "/registry/v1/regions/{region}/namespaces",
+"summary": "Create a namespace",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target"
+],
+"body": {
+"name*": "string: Name of the namespace.",
+"description": "string: Description of the namespace.",
+"organization_id": "string: Namespace owner (deprecated).",
+"project_id": "string: Project ID on which the namespace will be created.",
+"is_public": "boolean: Defines whether or not namespace is public."
+},
+"returns": "object{id,name,description,organization_id,project_id,status,status_message,endpoint,is_public,size,created_at,updated_at…}"
+},
+{
+"id": "scaleway/registry:GetNamespace",
+"method": "GET",
+"path": "/registry/v1/regions/{region}/namespaces/{namespace_id}",
+"summary": "Get a namespace",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"namespace_id* (path) string: UUID of the namespace."
+],
+"returns": "object{id,name,description,organization_id,project_id,status,status_message,endpoint,is_public,size,created_at,updated_at…}"
+},
+{
+"id": "scaleway/registry:UpdateNamespace",
+"method": "PATCH",
+"path": "/registry/v1/regions/{region}/namespaces/{namespace_id}",
+"summary": "Update a namespace",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"namespace_id* (path) string: ID of the namespace to update."
+],
+"body": {
+"description": "string: Namespace description.",
+"is_public": "boolean: Defines whether or not the namespace is public."
+},
+"returns": "object{id,name,description,organization_id,project_id,status,status_message,endpoint,is_public,size,created_at,updated_at…}"
+},
+{
+"id": "scaleway/registry:DeleteNamespace",
+"method": "DELETE",
+"path": "/registry/v1/regions/{region}/namespaces/{namespace_id}",
+"summary": "Delete a namespace",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"namespace_id* (path) string: UUID of the namespace."
+],
+"returns": "object{id,name,description,organization_id,project_id,status,status_message,endpoint,is_public,size,created_at,updated_at…}"
+},
+{
+"id": "scaleway/registry:GetTag",
+"method": "GET",
+"path": "/registry/v1/regions/{region}/tags/{tag_id}",
+"summary": "Get a tag",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"tag_id* (path) string: UUID of the tag."
+],
+"returns": "object{id,name,image_id,status,digest,created_at,updated_at}"
+},
+{
+"id": "scaleway/registry:DeleteTag",
+"method": "DELETE",
+"path": "/registry/v1/regions/{region}/tags/{tag_id}",
+"summary": "Delete a tag",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"tag_id* (path) string: UUID of the tag.",
+"force* (query) boolean: If two tags share the same digest the deletion will fail unless this parameter …"
+],
+"returns": "object{id,name,image_id,status,digest,created_at,updated_at}"
+},
+{
+"id": "scaleway/serverless-jobs:ListJobDefinitions",
+"method": "GET",
+"path": "/serverless-jobs/v1alpha1/regions/{region}/job-definitions",
+"summary": "List all your job definitions with filters",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"page (query) integer",
+"page_size (query) integer",
+"order_by (query) enum created_at_asc|created_at_desc",
+"project_id (query) string",
+"organization_id (query) string"
+],
+"returns": "object{job_definitions,total_count}"
+},
+{
+"id": "scaleway/serverless-jobs:CreateJobDefinition",
+"method": "POST",
+"path": "/serverless-jobs/v1alpha1/regions/{region}/job-definitions",
+"summary": "Create a new job definition in a specified Project",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target"
+],
+"body": {
+"name*": "string: Name of the job definition.",
+"cpu_limit*": "integer: CPU limit of the job.",
+"memory_limit*": "integer: Memory limit of the job (in MiB).",
+"local_storage_capacity": "integer: Local storage capacity of the job (in MiB).",
+"image_uri*": "string: Image to use for the job.",
+"command": "string: Startup command.",
+"project_id*": "string: UUID of the Scaleway Project containing the job.",
+"environment_variables": {
+"_": "object{<environment_variableKey>}: Environment variables of the job.",
+"<environment_variableKey>": "string: Environment variables of the job."
+},
+"description": "string: Description of the job.",
+"job_timeout": "string: Timeout of the job in seconds. (in seconds)",
+"cron_schedule": {
+"_": "object{schedule,timezone}: Configure a cron for the job.",
+"schedule": "string",
+"timezone": "string"
+}
+},
+"returns": "object{id,name,created_at,updated_at,cpu_limit,memory_limit,image_uri,command,project_id,environment_variables,description,job_timeout…}"
+},
+{
+"id": "scaleway/serverless-jobs:GetJobDefinition",
+"method": "GET",
+"path": "/serverless-jobs/v1alpha1/regions/{region}/job-definitions/{job_definition_id}",
+"summary": "Get a job definition by its unique identifier",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"job_definition_id* (path) string: UUID of the job definition to get."
+],
+"returns": "object{id,name,created_at,updated_at,cpu_limit,memory_limit,image_uri,command,project_id,environment_variables,description,job_timeout…}"
+},
+{
+"id": "scaleway/serverless-jobs:UpdateJobDefinition",
+"method": "PATCH",
+"path": "/serverless-jobs/v1alpha1/regions/{region}/job-definitions/{job_definition_id}",
+"summary": "Update an existing job definition associated with the specified unique identifier",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"job_definition_id* (path) string: UUID of the job definition to update."
+],
+"body": {
+"name": "string: Name of the job definition.",
+"cpu_limit": "integer: CPU limit of the job.",
+"memory_limit": "integer: Memory limit of the job (in MiB).",
+"local_storage_capacity": "integer: Local storage capacity of the job (in MiB).",
+"image_uri": "string: Image to use for the job.",
+"command": "string: Startup command.",
+"environment_variables": {
+"_": "object{<key>}: Environment variables of the job.",
+"<key>": "string"
+},
+"description": "string: Description of the job.",
+"job_timeout": "string: Timeout of the job in seconds. (in seconds)",
+"cron_schedule": {
+"_": "object{schedule,timezone}",
+"schedule": "string",
+"timezone": "string"
+}
+},
+"returns": "object{id,name,created_at,updated_at,cpu_limit,memory_limit,image_uri,command,project_id,environment_variables,description,job_timeout…}"
+},
+{
+"id": "scaleway/serverless-jobs:DeleteJobDefinition",
+"method": "DELETE",
+"path": "/serverless-jobs/v1alpha1/regions/{region}/job-definitions/{job_definition_id}",
+"summary": "Delete an existing job definition by its unique identifier",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"job_definition_id* (path) string: UUID of the job definition to delete."
+]
+},
+{
+"id": "scaleway/serverless-jobs:ListJobDefinitionSecrets",
+"method": "GET",
+"path": "/serverless-jobs/v1alpha1/regions/{region}/job-definitions/{job_definition_id}/secrets",
+"summary": "List secrets references within a job definition",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"job_definition_id* (path) string: UUID of the job definition."
+],
+"returns": "object{secrets,total_count}"
+},
+{
+"id": "scaleway/serverless-jobs:CreateJobDefinitionSecrets",
+"method": "POST",
+"path": "/serverless-jobs/v1alpha1/regions/{region}/job-definitions/{job_definition_id}/secrets",
+"summary": "Create a secret reference within a job definition",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"job_definition_id* (path) string: UUID of the job definition."
+],
+"body": {
+"secrets*": {
+"_": "array<any | any>: List of secrets to inject into the job.",
+"secret_manager_id": "string",
+"secret_manager_version": "string",
+"path": "string: One of path, env_var_name is required.",
+"env_var_name": "string: One of path, env_var_name is required."
+}
+},
+"returns": "object{secrets}"
+},
+{
+"id": "scaleway/serverless-jobs:GetJobDefinitionSecret",
+"method": "GET",
+"path": "/serverless-jobs/v1alpha1/regions/{region}/job-definitions/{job_definition_id}/secrets/{secret_id}",
+"summary": "Get a secret references within a job definition",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"job_definition_id* (path) string: UUID of the job definition.",
+"secret_id* (path) string: UUID of the secret reference within the job."
+],
+"returns": "any | any"
+},
+{
+"id": "scaleway/serverless-jobs:UpdateJobDefinitionSecret",
+"method": "PATCH",
+"path": "/serverless-jobs/v1alpha1/regions/{region}/job-definitions/{job_definition_id}/secrets/{secret_id}",
+"summary": "Update a secret reference within a job definition",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"job_definition_id* (path) string: UUID of the job definition.",
+"secret_id* (path) string: UUID of the secret reference within the job."
+],
+"body": {
+"secret_manager_version": "string: Version of the secret in Secret Manager.",
+"path": "string: Path of the secret to mount inside the job (either `path` or `env_var_name` must be set).",
+"env_var_name": "string: Environment variable name used to expose the secret inside the job (either `path` or `env_var_name` must be s…"
+},
+"returns": "any | any"
+},
+{
+"id": "scaleway/serverless-jobs:DeleteJobDefinitionSecret",
+"method": "DELETE",
+"path": "/serverless-jobs/v1alpha1/regions/{region}/job-definitions/{job_definition_id}/secrets/{secret_id}",
+"summary": "Delete a secret reference within a job definition",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"job_definition_id* (path) string: UUID of the job definition.",
+"secret_id* (path) string: UUID of the secret reference within the job."
+]
+},
+{
+"id": "scaleway/serverless-jobs:StartJobDefinition",
+"method": "POST",
+"path": "/serverless-jobs/v1alpha1/regions/{region}/job-definitions/{job_definition_id}/start",
+"summary": "Run an existing job definition by its unique identifier.",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"job_definition_id* (path) string: UUID of the job definition to start."
+],
+"body": {
+"command": "string: Contextual startup command for this specific job run.",
+"environment_variables": {
+"_": "object{<key>}: Contextual environment variables for this specific job run.",
+"<key>": "string"
+},
+"replicas": "integer: Number of jobs to run."
+},
+"returns": "object{job_runs}"
+},
+{
+"id": "scaleway/serverless-jobs:ListJobRuns",
+"method": "GET",
+"path": "/serverless-jobs/v1alpha1/regions/{region}/job-runs",
+"summary": "List all job runs with filters",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"page (query) integer",
+"page_size (query) integer",
+"order_by (query) enum created_at_asc|created_at_desc",
+"job_definition_id (query) string",
+"project_id (query) string",
+"organization_id (query) string",
+"state (query) enum unknown_state|queued|scheduled|running|succeeded|failed|canceled|internal_error",
+"states (query) array<enum unknown_state|queued|scheduled|running|succeeded|failed|canceled|internal_error>"
+],
+"returns": "object{job_runs,total_count}"
+},
+{
+"id": "scaleway/serverless-jobs:GetJobRun",
+"method": "GET",
+"path": "/serverless-jobs/v1alpha1/regions/{region}/job-runs/{job_run_id}",
+"summary": "Get a job run by its unique identifier",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"job_run_id* (path) string: UUID of the job run to get."
+],
+"returns": "object{id,job_definition_id,state,created_at,updated_at,terminated_at,exit_code,run_duration,error_message,cpu_limit,memory_limit,command…}"
+},
+{
+"id": "scaleway/serverless-jobs:StopJobRun",
+"method": "POST",
+"path": "/serverless-jobs/v1alpha1/regions/{region}/job-runs/{job_run_id}/stop",
+"summary": "Stop a job run by its unique identifier",
+"params": [
+"region* (path) enum fr-par|nl-ams|pl-waw: The region you want to target",
+"job_run_id* (path) string: UUID of the job run to stop."
+],
+"body": {},
+"returns": "object{id,job_definition_id,state,created_at,updated_at,terminated_at,exit_code,run_duration,error_message,cpu_limit,memory_limit,command…}"
+},
+{
+"id": "scaleway/inference:ListDeployments",
+"method": "GET",
+"path": "/inference/v1/regions/{region}/deployments",
+"summary": "List inference deployments",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"page (query) integer: Page number to return.",
+"page_size (query) integer: Maximum number of deployments to return per page.",
+"order_by (query) enum created_at_desc|created_at_asc|name_asc|name_desc: Order in which to return results.",
+"project_id (query) string: Filter by Project ID. (UUID format)",
+"organization_id (query) string: Filter by Organization ID. (UUID format)",
+"name (query) string: Filter by deployment name.",
+"tags (query) array<string>: Filter by tags."
+],
+"returns": "object{deployments,total_count}"
+},
+{
+"id": "scaleway/inference:CreateDeployment",
+"method": "POST",
+"path": "/inference/v1/regions/{region}/deployments",
+"summary": "Create a deployment",
+"params": [
+"region* (path) enum fr-par: The region you want to target"
+],
+"body": {
+"name*": "string: Name of the deployment.",
+"project_id*": "string: ID of the Project to create the deployment in. (UUID format)",
+"model_id*": "string: ID of the model to use. (UUID format)",
+"accept_eula": "boolean: Accept the model's End User License Agreement (EULA).",
+"node_type_name*": "string: Name of the node type to use.",
+"tags": "array<string>: List of tags to apply to the deployment.",
+"min_size": "integer: Defines the minimum size of the pool.",
+"max_size": "integer: Defines the maximum size of the pool.",
+"endpoints*": {
+"_": "array<object{public_network,private_network,disable_auth}>: List of endpoints to create.",
+"public_network": "object | null: Set the endpoint as public.",
+"private_network": "object{private_network_id} | null: Set the endpoint as private.",
+"disable_auth": "boolean: Disable the authentication on the endpoint."
+},
+"quantization": {
+"_": "object{bits}: Quantization settings to apply to this deployment.",
+"bits*": "integer: The number of bits each model parameter should be quantized to."
+}
+},
+"returns": "object{id,name,project_id,status,tags,node_type_name,endpoints,size,min_size,max_size,error_message,model_id…}"
+},
+{
+"id": "scaleway/inference:GetDeployment",
+"method": "GET",
+"path": "/inference/v1/regions/{region}/deployments/{deployment_id}",
+"summary": "Get a deployment",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"deployment_id* (path) string: ID of the deployment to get. (UUID format)"
+],
+"returns": "object{id,name,project_id,status,tags,node_type_name,endpoints,size,min_size,max_size,error_message,model_id…}"
+},
+{
+"id": "scaleway/inference:UpdateDeployment",
+"method": "PATCH",
+"path": "/inference/v1/regions/{region}/deployments/{deployment_id}",
+"summary": "Update a deployment",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"deployment_id* (path) string: ID of the deployment to update. (UUID format)"
+],
+"body": {
+"name": "string: Name of the deployment.",
+"tags": "array<any>: List of tags to apply to the deployment.",
+"min_size": "integer: Defines the new minimum size of the pool.",
+"max_size": "integer: Defines the maximum size of the pool.",
+"model_id": "string: Id of the model to set to the deployment.",
+"quantization": {
+"_": "object{bits}: Quantization to use to the deployment.",
+"bits*": "integer: The number of bits each model parameter should be quantized to."
+}
+},
+"returns": "object{id,name,project_id,status,tags,node_type_name,endpoints,size,min_size,max_size,error_message,model_id…}"
+},
+{
+"id": "scaleway/inference:DeleteDeployment",
+"method": "DELETE",
+"path": "/inference/v1/regions/{region}/deployments/{deployment_id}",
+"summary": "Delete a deployment",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"deployment_id* (path) string: ID of the deployment to delete. (UUID format)"
+],
+"returns": "object{id,name,project_id,status,tags,node_type_name,endpoints,size,min_size,max_size,error_message,model_id…}"
+},
+{
+"id": "scaleway/inference:GetDeploymentCertificate",
+"method": "GET",
+"path": "/inference/v1/regions/{region}/deployments/{deployment_id}/certificate",
+"summary": "Get the CA certificate",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"deployment_id* (path) string: (UUID format)"
+],
+"returns": "object{name,content_type,content}"
+},
+{
+"id": "scaleway/inference:CreateEndpoint",
+"method": "POST",
+"path": "/inference/v1/regions/{region}/endpoints",
+"summary": "Create an endpoint",
+"params": [
+"region* (path) enum fr-par: The region you want to target"
+],
+"body": {
+"deployment_id*": "string: ID of the deployment to create the endpoint for. (UUID format)",
+"endpoint*": {
+"_": "object{public_network,private_network,disable_auth}: Specification of the endpoint.",
+"public_network": "object | null: Set the endpoint as public.",
+"private_network": "object{private_network_id} | null: Set the endpoint as private.",
+"disable_auth": "boolean: Disable the authentication on the endpoint."
+}
+},
+"returns": "object{id,url,public_network,private_network,disable_auth}"
+},
+{
+"id": "scaleway/inference:UpdateEndpoint",
+"method": "PATCH",
+"path": "/inference/v1/regions/{region}/endpoints/{endpoint_id}",
+"summary": "Update an endpoint",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"endpoint_id* (path) string: ID of the endpoint to update. (UUID format)"
+],
+"body": {
+"disable_auth": "boolean: Disable the authentication on the endpoint."
+},
+"returns": "object{id,url,public_network,private_network,disable_auth}"
+},
+{
+"id": "scaleway/inference:DeleteEndpoint",
+"method": "DELETE",
+"path": "/inference/v1/regions/{region}/endpoints/{endpoint_id}",
+"summary": "Delete an endpoint",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"endpoint_id* (path) string: ID of the endpoint to delete. (UUID format)"
+]
+},
+{
+"id": "scaleway/inference:ListModels",
+"method": "GET",
+"path": "/inference/v1/regions/{region}/models",
+"summary": "List models",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"order_by (query) enum display_rank_asc|created_at_asc|created_at_desc|name_asc|name_desc: Order in which to return results.",
+"page (query) integer: Page number to return.",
+"page_size (query) integer: Maximum number of models to return per page.",
+"project_id (query) string: Filter by Project ID. (UUID format)",
+"organization_id (query) string: Filter by Organization ID. (UUID format)",
+"name (query) string: Filter by model name.",
+"tags (query) array<string>: Filter by tags."
+],
+"returns": "object{models,total_count}"
+},
+{
+"id": "scaleway/inference:CreateModel",
+"method": "POST",
+"path": "/inference/v1/regions/{region}/models",
+"summary": "Import a model",
+"params": [
+"region* (path) enum fr-par: The region you want to target"
+],
+"body": {
+"name*": "string: Name of the model.",
+"project_id*": "string: ID of the Project to import the model in. (UUID format)",
+"source*": {
+"_": "object{url,secret}: Where to import the model from.",
+"url": "string",
+"secret": "string: Precisely one of secret can be set."
+}
+},
+"returns": "object{id,name,project_id,tags,status,description,error_message,has_eula,created_at,updated_at,region,nodes_support…}"
+},
+{
+"id": "scaleway/inference:GetModel",
+"method": "GET",
+"path": "/inference/v1/regions/{region}/models/{model_id}",
+"summary": "Get a model",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"model_id* (path) string: ID of the model to get. (UUID format)"
+],
+"returns": "object{id,name,project_id,tags,status,description,error_message,has_eula,created_at,updated_at,region,nodes_support…}"
+},
+{
+"id": "scaleway/inference:DeleteModel",
+"method": "DELETE",
+"path": "/inference/v1/regions/{region}/models/{model_id}",
+"summary": "Delete a model",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"model_id* (path) string: ID of the model to delete. (UUID format)"
+]
+},
+{
+"id": "scaleway/inference:GetModelEula",
+"method": "GET",
+"path": "/inference/v1/regions/{region}/models/{model_id}/eula",
+"summary": "Get a model EULA",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"model_id* (path) string: ID of the model to get the Eula for. (UUID format)"
+],
+"returns": "object{content}"
+},
+{
+"id": "scaleway/inference:ListNodeTypes",
+"method": "GET",
+"path": "/inference/v1/regions/{region}/node-types",
+"summary": "List available node types",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"page (query) integer: Page number to return.",
+"page_size (query) integer: Maximum number of node types to return per page.",
+"include_disabled_types* (query) boolean: Include disabled node types in the response."
+],
+"returns": "object{node_types,total_count}"
+},
+{
+"id": "scaleway/inference:VerifyModel",
+"method": "POST",
+"path": "/inference/v1/regions/{region}/verify-model",
+"summary": "Verify a model",
+"params": [
+"region* (path) enum fr-par: The region you want to target"
+],
+"body": {
+"source*": {
+"_": "object{url,secret}: Where to verify the model from.",
+"url": "string",
+"secret": "string: Precisely one of secret can be set."
+}
+},
+"returns": "object{nodes,size_bytes}"
+},
+{
+"id": "scaleway/generative-apis:createResponse",
+"method": "POST",
+"path": "/{project_id}/v1/responses",
+"summary": "Create a response",
+"params": [
+"project_id* (path) string"
+],
+"body": {
+"input": {
+"_": "array<object{role,content​,status,type}>: String or list of inputs to provide to the model to generate a response.",
+"role*": "enum system|developer|user|assistant: Role providing the content input.",
+"content​": "array<object{type,text,detail,image_url,file_data,file_url}>: List of input contents of different `type`, each compatible with different fields: `input_text`: Requires `te…",
+"status": "enum in_progress|completed|incomplete: Status of the response.",
+"type": "string: Type of the content input."
+},
+"model*": "string: Unique identifier of the model.",
+"max_output_tokens": "integer: Maximum number of output tokens that can be generated for a `completion`.",
+"parallel_tool_calls": "boolean: Defines whether the model can call multiple tools.",
+"instructions": "string: System message added to the model's context.",
+"reasoning": {
+"_": "object{effort}: Configuration parameters for reasoning models.",
+"effort": "enum low|medium|high: Reasoning effort level to generate the response. `minimal` is currently not supported."
+},
+"store": "boolean: Defines whether to store the input content for future requests. `store` is currently not supported and always…",
+"stream": "boolean: Defines whether the model's response can be streamed to the client using server-sent events.",
+"temperature": "number: Value between `0` and `2` which increases randomness in token generation (e.g. encourages content \"creativity…",
+"text": {
+"_": "object{format}: Configuration of the response format, either plain text or JSON structured data.",
+"format": "object{type,name,description,schema,strict}: Output format specification."
+},
+"tools": {
+"_": "array<object{type,name,description,parameters,strict}>: List of tools the model can call, such as functions.",
+"type*": "enum function: Type of tool object, always set to `function`.",
+"name*": "string: Name of the function to be called.",
+"description": "string: Description of the function.",
+"parameters": "object: Parameters of the function, described as a JSON schema object.",
+"strict": "boolean: Defines whether to enforce strict schema adherence when generating a function call."
+},
+"tool_choice": "enum none|auto|required: Defines whether a model can call tools, and if so, and which ones. `none`: model will not call any tools, and…",
+"top_logprobs": "integer: Number of most likely tokens to return for each token generated, along with their generation log probability.",
+"top_p": "number: Value between `0` and `1` which increases the proportion of token vocabulary considered during generation (`0…",
+"truncation": "string: Truncation configuration for the model response."
+},
+"returns": "object{id,object,created_at,status,model,output,text,usage}"
+},
+{
+"id": "scaleway/generative-apis:createChatCompletion",
+"method": "POST",
+"path": "/{project_id}/v1/chat/completions",
+"summary": "Create a chat completion",
+"params": [
+"project_id* (path) string"
+],
+"body": {
+"model*": "string: Unique identifier of the model, such as `llama-3.3-70b-instruct` or `mistral-small-3.2-24b-instruct-2506`.",
+"messages*": {
+"_": "array<object{role,content,content​,tool_calls,tool_call_id}>: Array of messages representing the conversation history.",
+"role*": "enum system|user|assistant|tool: Role of the message's author.",
+"content": "string: Content of a message as string.",
+"content​": "array<object{type,text,image_url,input_audio}>: Content of a message as array of content parts.",
+"tool_calls": "array<object{id,type,function}>: List of tool calls required by the model.",
+"tool_call_id": "string: UUID of the tool call."
+},
+"max_completion_tokens": "integer: Maximum number of output tokens that can be generated for a `completion`.",
+"max_tokens": "integer: Use `max_completion_tokens` instead.",
+"frequency_penalty": "number: Value which influences the likelihood of generating tokens based on their frequency in the existing text.",
+"logit_bias": "object: List of token IDs with associated bias integer values ranging from `-100` to `100`.",
+"logprobs": "boolean: Defines whether to return log probabilities of each output token.",
+"n": "integer: Number of chat completion choices to generate for a given input.",
+"parallel_tool_calls": "boolean: Defines whether the model can call multiple tools.",
+"presence_penalty": "number: Value which influences the probability of generating tokens that have already appeared in the text.",
+"reasoning_effort": "enum none|low|medium|high: Reasoning effort level to generate the response.",
+"response_format": {
+"_": "object{type,json_schema}: Output format specification.",
+"type": "enum text|json_schema|json_object: Type of response object.",
+"json_schema": "object: Schema the response object should follow in `JSON` format."
+},
+"seed": "integer: Value which controls the randomness of the output to ensure determinism.",
+"stop": "string: String, or array of strings, that when encountered in the generated text will stop the model from generating …",
+"stream": "boolean: Defines whether the model's response can be streamed to the client using server-sent events.",
+"stream_options": {
+"_": "object{include_usage}: An object containing parameters that modify the behavior of stream responses.",
+"include_usage": "boolean: Defines whether a usage field is included in a stream."
+},
+"temperature": "number: Value between `0` and `2` which increases randomness in token generation (e.g. encourages content \"creativity…",
+"tools": {
+"_": "array<object{type,function}>: List of tools the model can call, such as functions.",
+"type*": "enum function: Type of tool object, always set to `function`.",
+"function*": "object{description,name,parameters,strict}"
+},
+"tool_choice": "enum none|auto|required: Defines whether a model can call tools, and if so, and which ones. `none`: model will not call any tools, and…",
+"top_logprobs": "integer: Number of most likely tokens to return for each token generated, along with their generation log probability.",
+"top_p": "number: Value between `0` and `1` which increases the proportion of token vocabulary considered during generation (`0…"
+},
+"returns": "object{id,object,created,model,choices,usage}"
+},
+{
+"id": "scaleway/generative-apis:createEmbedding",
+"method": "POST",
+"path": "/{project_id}/v1/embeddings",
+"summary": "Create an embedding",
+"params": [
+"project_id* (path) string"
+],
+"body": {
+"input*": "string: String or Array of strings to represent as embedding vector.",
+"model*": "string: Unique identifier of the model, such as `bge-multilingual-gemma2`.",
+"encoding_format": "enum float|base64: Format of the embedding representation.",
+"dimensions": "integer: Number of `dimensions` to use for the embedding vector representation."
+},
+"returns": "object{id,object,created,model,data,usage}"
+},
+{
+"id": "scaleway/generative-apis:createRerank",
+"method": "POST",
+"path": "/{project_id}/v1/rerank",
+"summary": "Create a reranking",
+"params": [
+"project_id* (path) string"
+],
+"body": {
+"query*": "string: Query requiring relevant documents to provide a better answer.",
+"documents*": "array<string>: Array of document contents in string format.",
+"model*": "string: Unique identifier of the model, such as `qwen3-embedding-8b`.",
+"top_n": "integer: Number of most relevant documents to retrieve."
+},
+"returns": "object{id,model,results,usage}"
+},
+{
+"id": "scaleway/generative-apis:createAudioTranscription",
+"method": "POST",
+"path": "/{project_id}/v1/audio/transcriptions",
+"summary": "Create an audio transcription",
+"params": [
+"project_id* (path) string"
+],
+"body": {
+"file*": "object: Audio file object to transcribe.",
+"model*": "string: Unique identifier of the model, such as `whisper-large-v3`.",
+"language": "string: Language of the audio input, following ISO-639-1 format such as `en` for English.",
+"prompt": "string: Additional content used to guide the model during transcription.",
+"response_format": "string: Output format structure.",
+"stream": "boolean: Defines whether the model's response can be streamed to the client using server-sent events.",
+"temperature": "number: Value between `0` and `2` which increases randomness in token generation (e.g. encourages content \"creativity…"
+},
+"returns": "object{text,usage}"
+},
+{
+"id": "scaleway/generative-apis:listBatch",
+"method": "GET",
+"path": "/{project_id}/v1/batches",
+"summary": "List batches",
+"params": [
+"project_id* (path) string",
+"after (query) string: Pagination cursor which value should be a batch UUID. When response consists of…",
+"limit (query) integer: Maximum number of batches to retrieve."
+],
+"returns": "object{object,data,first_id,last_id,has_more}"
+},
+{
+"id": "scaleway/generative-apis:createBatch",
+"method": "POST",
+"path": "/{project_id}/v1/batches",
+"summary": "Create a batch",
+"params": [
+"project_id* (path) string"
+],
+"body": {
+"completion_window*": "any: Time range during which the batch should be processed.",
+"endpoint*": "any: Path to use to process requests in the batch.",
+"input_file_id*": "any: URL of the file in Scaleway Object Storage.",
+"output_expires_after": "any: Expiration rules for the output and error files generated by the batch."
+},
+"returns": "object{id,object,endpoint,model,errors,input_file_id,completion_window,status,output_file_id,error_file_id,created_at,in_progress_at…}"
+},
+{
+"id": "scaleway/generative-apis:getBatch",
+"method": "GET",
+"path": "/{project_id}/v1/batches/{batch_id}",
+"summary": "Get a batch",
+"params": [
+"project_id* (path) string",
+"batch_id* (path) string: UUID of the batch."
+],
+"returns": "object{id,object,endpoint,model,errors,input_file_id,completion_window,status,output_file_id,error_file_id,created_at,in_progress_at…}"
+},
+{
+"id": "scaleway/generative-apis:deleteBatch",
+"method": "DELETE",
+"path": "/{project_id}/v1/batches/{batch_id}",
+"summary": "Delete a batch",
+"params": [
+"project_id* (path) string",
+"batch_id* (path) string: UUID of the batch."
+],
+"returns": "object{id,object,endpoint,model,errors,input_file_id,completion_window,status,output_file_id,error_file_id,created_at,in_progress_at…}"
+},
+{
+"id": "scaleway/generative-apis:cancelBatch",
+"method": "POST",
+"path": "/{project_id}/v1/batches/{batch_id}/cancel",
+"summary": "Cancel a batch",
+"params": [
+"project_id* (path) string",
+"batch_id* (path) string: UUID of the batch."
+],
+"returns": "object{id,object,endpoint,model,errors,input_file_id,completion_window,status,output_file_id,error_file_id,created_at,in_progress_at…}"
+},
+{
+"id": "scaleway/generative-apis:listModels",
+"method": "GET",
+"path": "/v1/models",
+"summary": "List models",
+"params": [],
+"returns": "object{object,data}"
+},
+{
+"id": "scaleway/file-storage:ListAttachments",
+"method": "GET",
+"path": "/file/v1alpha1/regions/{region}/attachments",
+"summary": "List filesystems attachments",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"filesystem_id (query) string: UUID of the File Storage volume. (UUID format)",
+"resource_id (query) string: Filter by resource ID. (UUID format)",
+"resource_type (query) enum unknown_resource_type|instance_server: Filter by resource type.",
+"zone (query) string: Filter by resource zone.",
+"page (query) integer: Page number (starting at 1).",
+"page_size (query) integer: Number of entries per page (default: 20, max: 100)."
+],
+"returns": "object{attachments,total_count}"
+},
+{
+"id": "scaleway/file-storage:ListFileSystemTypes",
+"method": "GET",
+"path": "/file/v1alpha1/regions/{region}/filesystem-types",
+"summary": "List filesystems types",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"page (query) integer: Page number (starts at 1).",
+"page_size (query) integer: Number of entries per page (default: 50, max: 100)."
+],
+"returns": "object{filesystem_types,total_count}"
+},
+{
+"id": "scaleway/file-storage:ListFileSystems",
+"method": "GET",
+"path": "/file/v1alpha1/regions/{region}/filesystems",
+"summary": "List all filesystems",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"order_by (query) enum created_at_asc|created_at_desc|name_asc|name_desc: Criteria to use when ordering the list.",
+"project_id (query) string: Filter by project ID.",
+"organization_id (query) string: Filter by organization ID.",
+"page (query) integer: Page number (starting at 1).",
+"page_size (query) integer: Number of entries per page (default: 20, max: 100).",
+"name (query) string: Filter the returned filesystems by their names.",
+"filesystem_type (query) string: Type of the filesystem.",
+"tags (query) array<string>: Filter by tags.",
+"filesystem_ids (query) array<string>: Filter by filesystem IDs."
+],
+"returns": "object{filesystems,total_count}"
+},
+{
+"id": "scaleway/file-storage:CreateFileSystem",
+"method": "POST",
+"path": "/file/v1alpha1/regions/{region}/filesystems",
+"summary": "Create a new filesystem",
+"params": [
+"region* (path) enum fr-par: The region you want to target"
+],
+"body": {
+"name*": "string: Name of the filesystem.",
+"project_id*": "string: UUID of the project the filesystem belongs to. (UUID format)",
+"size": "integer: Deprecated: use `from_empty.size` instead.",
+"from_empty": "object{size} | null: Specify the size of the new filesystem if creating a new one from scratch.",
+"from_snapshot": "object{size,snapshot_id} | null: Specify the snapshot ID of the original snapshot to create the filesystem from.",
+"type": "string: Type of the filesystem.",
+"tags": "array<string>: List of tags assigned to the filesystem."
+},
+"returns": "object{id,name,size,status,project_id,organization_id,tags,number_of_attachments,region,created_at,updated_at,filesystem_type_id…}"
+},
+{
+"id": "scaleway/file-storage:GetFileSystem",
+"method": "GET",
+"path": "/file/v1alpha1/regions/{region}/filesystems/{filesystem_id}",
+"summary": "Get filesystem details",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"filesystem_id* (path) string: UUID of the filesystem. (UUID format)"
+],
+"returns": "object{id,name,size,status,project_id,organization_id,tags,number_of_attachments,region,created_at,updated_at,filesystem_type_id…}"
+},
+{
+"id": "scaleway/file-storage:UpdateFileSystem",
+"method": "PATCH",
+"path": "/file/v1alpha1/regions/{region}/filesystems/{filesystem_id}",
+"summary": "Update filesystem properties",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"filesystem_id* (path) string: UUID of the filesystem. (UUID format)"
+],
+"body": {
+"name": "string: When defined, is the new name of the filesystem.",
+"size": "integer: Optional field for increasing the size of the filesystem (must be larger than the current size).",
+"tags": "array<any>: List of tags assigned to the filesystem."
+},
+"returns": "object{id,name,size,status,project_id,organization_id,tags,number_of_attachments,region,created_at,updated_at,filesystem_type_id…}"
+},
+{
+"id": "scaleway/file-storage:DeleteFileSystem",
+"method": "DELETE",
+"path": "/file/v1alpha1/regions/{region}/filesystems/{filesystem_id}",
+"summary": "Delete a detached filesystem",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"filesystem_id* (path) string: UUID of the filesystem. (UUID format)"
+]
+},
+{
+"id": "scaleway/file-storage:ListSnapshots",
+"method": "GET",
+"path": "/file/v1alpha1/regions/{region}/snapshots",
+"summary": "List all snapshots",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"order_by (query) enum created_at_asc|created_at_desc|name_asc|name_desc: Criteria to use when ordering the list.",
+"page (query) integer: Page number (starting at 1).",
+"page_size (query) integer: Number of entries per page (default: 20, max: 100).",
+"name (query) string: Filter the returned snapshots by their names.",
+"tags (query) array<string>: Filter by tags.",
+"filesystem_id (query) string: Filter the returned snapshots by the ID of the original filesystem.",
+"snapshot_ids (query) array<string>: Filter by snapshot IDs.",
+"project_id (query) string: Filter by project ID. One of project_id, organization_id is required.",
+"organization_id (query) string: Filter by organization ID. One of project_id, organization_id is required."
+],
+"returns": "object{snapshots,total_count}"
+},
+{
+"id": "scaleway/file-storage:CreateSnapshot",
+"method": "POST",
+"path": "/file/v1alpha1/regions/{region}/snapshots",
+"summary": "Create a snapshot of a filesystem",
+"params": [
+"region* (path) enum fr-par: The region you want to target"
+],
+"body": {
+"filesystem_id*": "string: UUID of the filesystem to snapshot. (UUID format)",
+"name*": "string: Name of the snapshot.",
+"project_id*": "string: UUID of the project to which the filesystem and the snapshot belong. (UUID format)",
+"tags": "array<string>: List of tags assigned to the snapshot."
+},
+"returns": "object{id,name,parent_filesystem,size,status,project_id,organization_id,tags,created_at,updated_at,region,srn}"
+},
+{
+"id": "scaleway/file-storage:GetSnapshot",
+"method": "GET",
+"path": "/file/v1alpha1/regions/{region}/snapshots/{snapshot_id}",
+"summary": "Get snapshot details",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"snapshot_id* (path) string: UUID of the snapshot. (UUID format)"
+],
+"returns": "object{id,name,parent_filesystem,size,status,project_id,organization_id,tags,created_at,updated_at,region,srn}"
+},
+{
+"id": "scaleway/file-storage:UpdateSnapshot",
+"method": "PATCH",
+"path": "/file/v1alpha1/regions/{region}/snapshots/{snapshot_id}",
+"summary": "Update snapshot properties",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"snapshot_id* (path) string: UUID of the snapshot. (UUID format)"
+],
+"body": {
+"name": "string: When defined, is the new name of the snapshot.",
+"tags": "array<any>: List of tags assigned to the snapshot."
+},
+"returns": "object{id,name,parent_filesystem,size,status,project_id,organization_id,tags,created_at,updated_at,region,srn}"
+},
+{
+"id": "scaleway/file-storage:DeleteSnapshot",
+"method": "DELETE",
+"path": "/file/v1alpha1/regions/{region}/snapshots/{snapshot_id}",
+"summary": "Delete a snapshot",
+"params": [
+"region* (path) enum fr-par: The region you want to target",
+"snapshot_id* (path) string: UUID of the snapshot. (UUID format)"
+],
+"returns": "object{id,name,parent_filesystem,size,status,project_id,organization_id,tags,created_at,updated_at,region,srn}"
+}
+]

@@ -7,7 +7,7 @@ import json
 import pytest
 
 from frontier import agent as agent_mod
-from frontier import apidocs, llm, tools
+from frontier import catalog, http, infra, llm, tools
 from frontier.config import load_config
 
 
@@ -128,37 +128,36 @@ def test_anthropic_format(cfg, monkeypatch):
     assert r.content == "ok"
 
 
-# ---------------------------------------------------------------- docs
+# ---------------------------------------------------------------- catalog
 
 
-def test_docs_index_and_show():
-    ids = {o["id"] for o in apidocs.index()}
-    assert "scaleway/instance:CreateServer" in ids and "runpod/rest-v1:CreatePod" in ids
-    assert "runpod/mcp:create-pod" in ids
-    assert apidocs.search("create server", limit=1).startswith("scaleway/instance:CreateServer")
-    s = json.loads(apidocs.show("scaleway/instance:CreateServer"))
-    assert s["path"] == "/instance/v1/zones/{zone}/servers"
-    assert "commercial_type" in json.dumps(s["requestBody"])  # $refs resolved
-    assert "Product Catalog" in apidocs.show("scaleway/guide")
-    assert "mcp.runpod.io" in apidocs.show("runpod/guide")
+def test_catalog_signatures():
+    ids = catalog.by_id()
+    assert "scaleway/instance:CreateServer" in ids and "runpod/mcp:create-pod" in ids
+    assert catalog.search("create server", limit=1).startswith("scaleway/instance:CreateServer")
+    e = json.loads(catalog.show("scaleway/instance:CreateServer"))
+    assert e["path"] == "/instance/v1/zones/{zone}/servers" and "commercial_type*" in e["body"]
+    pod = json.loads(catalog.show("runpod/mcp:create-pod"))
+    assert "gpu" in pod["args"]["body*"] and "image" in pod["args"]["body*"]
+    assert "list-pods" in catalog.read_only_mcp_tools() and "create-pod" not in catalog.read_only_mcp_tools()
+    assert "Product Catalog" in catalog.show("scaleway/guide")
+    assert len(json.dumps(catalog.entries())) < 400_000  # compact signatures, not the full docs
 
 
-# ---------------------------------------------------------------- tools
+# ---------------------------------------------------------------- guards
 
 
 def test_spend_guard(run, monkeypatch):
     called = []
-    monkeypatch.setattr(tools, "_http", lambda *a, **k: (called.append(a) or (200, "{}")))
+    monkeypatch.setattr(http, "request", lambda *a, **k: (called.append(a) or (200, "{}")))
     ctx = agent_mod.Ctx(run, None)
     assert tools.t_scaleway(ctx, "POST", "/instance/v1/zones/{zone}/servers", {}).startswith("refused")
-    assert tools.t_runpod(ctx, "DELETE", "/pods/x").startswith("refused")
     assert tools.t_runpod_mcp(ctx, "create-pod", {}).startswith("refused")
+    assert infra.scw_create_instance(ctx, "x", "L4-1-24G").startswith("refused")
+    assert infra.rp_create_pod(ctx, "x", "NVIDIA A40").startswith("refused")
+    assert infra.rp_delete_pod(ctx, "foreign").startswith("refused")
+    assert infra.scw_delete_instance(ctx, "foreign").startswith("refused")
     assert not called
-    tools.t_scaleway(ctx, "GET", "/instance/v1/zones/{zone}/servers")
-    assert "/zones/fr-par" in called[-1][1] or "/zones/" in called[-1][1]
-    run.allow_spend = True
-    tools.t_runpod(ctx, "DELETE", "/pods/x")
-    assert called[-1][0] == "DELETE"
 
 
 def test_workspace_confinement(run):
@@ -218,7 +217,105 @@ def test_depth_and_agent_limits(cfg, tmp_path):
 
 
 def test_role_presets_load():
-    for name in ("worker", "reviewer", "cloud-ops", "scout"):
+    for name in ("worker", "reviewer", "infra", "scout"):
         r = agent_mod.load_role(name)
         assert r["tier"] in llm.TIERS and r["reasoning"] in llm.LEVELS and r["instructions"]
-    assert agent_mod.load_role("reviewer")["tools"] == ["shell", "read_file", "api_docs", "http_request"]
+    assert agent_mod.load_role("reviewer")["tools"] == ["shell", "read_file", "http_request"]
+
+
+def test_only_the_infra_role_holds_cloud_tools(run, monkeypatch):
+    main = agent_mod.Agent(run, "openai", "frontier", "high")
+    assert not set(tools.INFRA_TOOLS) & set(main.tools)
+    seen = []
+
+    def fake_run_task(self, task):
+        seen.append(list(self.tools))
+        return "ok"
+
+    monkeypatch.setattr(agent_mod.Agent, "run_task", fake_run_task)
+    agent_mod.t_spawn_agent(agent_mod.Ctx(run, main), task="t", role="infra")
+    agent_mod.t_spawn_agent(agent_mod.Ctx(run, main), task="t", tools=["scw_create_instance", "shell"])
+    infra_tools, plain = seen
+    assert "scw_create_instance" in infra_tools and "rp_exec" in infra_tools and "spawn_agent" not in infra_tools
+    assert plain == ["shell"]
+    cloud_agent = agent_mod.Agent(run, "openai", "light", "low", tools=["infra"])
+    assert "Cloud infrastructure" in cloud_agent.messages[0]["content"]
+
+
+# ---------------------------------------------------------------- infra flows (mocked APIs)
+
+
+class FakeScaleway:
+    def __init__(self):
+        self.calls, self.server_alive, self.volume_alive = [], True, True
+
+    def __call__(self, method, path, body=None, query=None, content_type="", ok404=False):
+        self.calls.append((method, path))
+        if path.endswith("/products/servers"):
+            return {"servers": {"L4-1-24G": {"gpu": 1, "gpu_info": {"gpu_name": "L4", "gpu_memory": 24 * 2**30},
+                                             "ncpus": 8, "ram": 48 * 2**30}}, "total_count": 1}
+        if path.endswith("/availability"):
+            return {"servers": {"L4-1-24G": {"availability": "available"}}, "total_count": 1}
+        if "public-catalog" in path:
+            return {"products": [{"product": "L4-1-24G", "status": "general_availability",
+                                  "unit_of_measure": {"unit": "minute", "size": 1},
+                                  "price": {"retail_price": {"units": 0, "nanos": 13125000}}}], "total_count": 1}
+        if "local-images" in path:
+            return {"local_images": [{"id": "img", "compatible_commercial_types": ["L4-1-24G"]}]}
+        srv = {"id": "srv", "name": "n", "commercial_type": "L4-1-24G", "state": "running", "zone": "fr-par-2",
+               "volumes": {"0": {"id": "vol", "volume_type": "sbs_volume"}}, "public_ips": [{"id": "ip", "address": "1.2.3.4"}]}
+        if method == "POST" and path.endswith("/servers"):
+            return {"server": srv}
+        if method == "GET" and "/servers/srv" in path:
+            return {"server": srv} if self.server_alive else None
+        if path.endswith("/action") and body == {"action": "terminate"}:
+            self.server_alive = False
+            return {}
+        if "/block/" in path and method == "GET":
+            return {"status": "available", "references": []} if self.volume_alive else None
+        if "/block/" in path and method == "DELETE":
+            self.volume_alive = False
+            return {}
+        if "/ips/" in path and method == "GET":
+            return {"ip": {"server": None}}
+        return {}
+
+
+def test_scaleway_create_then_cleanup(run, monkeypatch):
+    fake = FakeScaleway()
+    monkeypatch.setattr(infra, "scw", fake)
+    monkeypatch.setattr(infra, "POLL_S", 0)
+    run.allow_spend = True
+    ctx = agent_mod.Ctx(run, None)
+    assert json.loads(infra.scw_offers(ctx))["offers"][0]["eur_per_hour"] == 0.7875  # per-minute price converted
+    out = json.loads(infra.scw_create_instance(ctx, "n", "L4-1-24G", cloud_init="#!/bin/bash\necho hi"))
+    assert out["id"] == "srv" and out["public_ips"] == ["1.2.3.4"]
+    assert ("PATCH", "/instance/v1/zones/fr-par-2/servers/srv/user_data/cloud-init") in fake.calls
+    assert run.alive()[0]["eur_per_hour"] == 0.7875
+    res = infra.cleanup(run)
+    assert res[0]["server"] == "deleted" and res[0]["volumes_deleted"] == ["vol"] and res[0]["ips_deleted"] == ["ip"]
+    assert not run.alive()
+    assert json.loads((run.log_dir / "resources.json").read_text())[0]["state"] == "deleted"
+
+
+def test_runpod_create_exec_delete(run, monkeypatch):
+    calls = []
+
+    def fake_mcp(tool, args=None):
+        calls.append((tool, args))
+        if tool == "list-gpu-types":
+            return {"gpus": [{"id": "NVIDIA A40", "memory": 48, "price": {"secure": 0.59}, "availability": "LOW"}]}
+        if tool == "create-pod":
+            return {"id": "pod1"}
+        return {"ok": True}
+
+    monkeypatch.setattr(infra, "mcp_json", fake_mcp)
+    run.allow_spend = True
+    ctx = agent_mod.Ctx(run, None)
+    out = json.loads(infra.rp_create_pod(ctx, "n", "NVIDIA A40", gpu_count=2, command="python train.py"))
+    assert out["id"] == "pod1" and out["usd_per_hour_gpu_only"] == 1.18
+    body = calls[-1][1]["body"]
+    assert body["gpu"] == {"id": "NVIDIA A40", "count": 2} and "python train.py" in body["args"]
+    infra.rp_exec(ctx, "pod1", "nvidia-smi")
+    assert calls[-1] == ("exec-pod", {"id": "pod1", "body": {"command": ["sh", "-c", "nvidia-smi"], "timeoutSeconds": 20}})
+    assert json.loads(infra.rp_delete_pod(ctx, "pod1"))["state"] == "deleted" and not run.alive()

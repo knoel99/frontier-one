@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 from . import llm
 from .config import ROOT
-from .tools import DEFAULT_TOOLS, REGISTRY, Tool, _obj
+from .tools import DEFAULT_TOOLS, INFRA_TOOLS, REGISTRY, Tool, _obj
 
 PROMPTS = ROOT / "prompts"
 ROLES = ROOT / "roles"
@@ -32,6 +32,7 @@ class Run:
     log_dir: pathlib.Path | None = None
     tokens: int = 0
     agents: int = 0
+    resources: list = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self):
@@ -55,6 +56,30 @@ class Run:
 
     def over_budget(self) -> bool:
         return self.tokens >= self.limits.get("max_tokens_per_run", 10**12)
+
+    # ledger of the cloud resources created by any agent of the run
+    def _save_resources(self) -> None:
+        (self.log_dir / "resources.json").write_text(json.dumps(self.resources, indent=1) + "\n")
+
+    def record(self, resource: dict) -> None:
+        with self._lock:
+            self.resources.append({**resource, "state": "alive", "created": dt.datetime.now().isoformat(timespec="seconds")})
+            self._save_resources()
+        self.log(event="resource_created", **resource)
+
+    def mark(self, resource_id: str, state: str) -> None:
+        with self._lock:
+            for r in self.resources:
+                if r["id"] == resource_id:
+                    r["state"] = state
+            self._save_resources()
+        self.log(event="resource_" + state, id=resource_id)
+
+    def owns(self, resource_id: str) -> bool:
+        return any(r["id"] == resource_id for r in self.resources)
+
+    def alive(self) -> list[dict]:
+        return [r for r in self.resources if r.get("state") != "deleted"]
 
     def take_agent_slot(self) -> bool:
         with self._lock:
@@ -113,6 +138,16 @@ def roles_summary() -> str:
     return "\n".join(out)
 
 
+def expand_tools(names) -> list[str]:
+    """Tool names, where the group name "infra" stands for all the cloud tools."""
+    out: list[str] = []
+    for n in names:
+        for t in (INFRA_TOOLS if n == "infra" else [n]):
+            if t not in out:
+                out.append(t)
+    return out
+
+
 # ---------------------------------------------------------------- agent
 
 
@@ -136,7 +171,7 @@ class Agent:
         self.parent = parent
         self.id = f"{name}-{uuid.uuid4().hex[:6]}"
         self.max_turns = min(int(max_turns or 10**9), run.limits.get("max_turns", 40))
-        names = list(tools or DEFAULT_TOOLS)
+        names = expand_tools(tools or DEFAULT_TOOLS)
         if depth >= run.limits.get("max_depth", 2):
             names = [n for n in names if n != "spawn_agent"]
         self.tools: dict[str, Tool] = {n: REGISTRY[n] for n in names if n in REGISTRY}
@@ -148,8 +183,10 @@ class Agent:
         parts = [_fill(base,
             model=self.spec.label(), tier=self.spec.tier, depth=self.depth,
             max_depth=self.run.limits.get("max_depth", 2), workspace=self.run.workspace,
-            spend="allowed" if self.run.allow_spend else "NOT allowed (read-only cloud calls)",
             tools=", ".join(self.tools), date=dt.date.today().isoformat())]
+        if any(t in INFRA_TOOLS for t in self.tools):
+            parts.append(_fill((PROMPTS / "cloud.md").read_text(),
+                               spend="allowed" if self.run.allow_spend else "NOT allowed in this run (read-only calls only)"))
         if "spawn_agent" in self.tools:
             parts.append(_fill((PROMPTS / "subagents.md").read_text(),
                 providers=", ".join(self.run.cfg["providers"]), provider=self.spec.provider, roles=roles_summary()))
@@ -217,11 +254,13 @@ def t_spawn_agent(ctx: Ctx, task: str, tier: str = "", reasoning: str = "", prov
     tier = tier or r.get("tier") or "standard"
     reasoning = reasoning or r.get("reasoning") or "medium"
     provider = provider or r.get("provider") or parent.spec.provider
-    tools = tools or r.get("tools") or None
+    # A role's own tool list is granted as defined in roles/ (e.g. only the infra role holds the cloud tools);
+    # tools named in the call are limited to the parent's tools plus the role's.
+    role_tools = expand_tools(r.get("tools") or [])
     if tools:
-        tools = [t for t in tools if t in parent.tools or t == "spawn_agent"]  # never more than the parent has
+        tools = [t for t in expand_tools(tools) if t in parent.tools or t in role_tools or t == "spawn_agent"]
     else:
-        tools = list(parent.tools)
+        tools = role_tools or [t for t in parent.tools if t not in INFRA_TOOLS]
     if not ctx.run.take_agent_slot():
         return "refused: the run already started its maximum number of sub-agents (limits.max_agents)"
     child = Agent(ctx.run, provider, tier, reasoning, tools=tools, instructions=r.get("instructions", ""),

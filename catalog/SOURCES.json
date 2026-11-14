@@ -1,0 +1,72 @@
+{
+ "built": "2026-11-14",
+ "scaleway/instance": {
+  "url": "https://www.scaleway.com/en/developers/api/instance/v1/schema.yml",
+  "version": "v1",
+  "purpose": "CPU and GPU virtual machines: servers, types, images, volumes, IPs, security groups, user data"
+ },
+ "scaleway/block": {
+  "url": "https://www.scaleway.com/en/developers/api/block/v1/schema.yml",
+  "version": "v1",
+  "purpose": "Block Storage volumes and snapshots attached to Instances"
+ },
+ "scaleway/marketplace": {
+  "url": "https://www.scaleway.com/en/developers/api/marketplace/v2/schema.yml",
+  "version": "v2",
+  "purpose": "OS images: image id for a zone and commercial type"
+ },
+ "scaleway/billing": {
+  "url": "https://www.scaleway.com/en/developers/api/billing/v2beta1/schema.yml",
+  "version": "v2beta1",
+  "purpose": "consumption and invoices"
+ },
+ "scaleway/iam": {
+  "url": "https://www.scaleway.com/en/developers/api/iam/v1alpha1/schema.yml",
+  "version": "v1alpha1",
+  "purpose": "API keys, applications, policies, SSH keys"
+ },
+ "scaleway/vpc": {
+  "url": "https://www.scaleway.com/en/developers/api/vpc/v2/schema.yml",
+  "version": "v2",
+  "purpose": "VPCs and private networks"
+ },
+ "scaleway/ipam": {
+  "url": "https://www.scaleway.com/en/developers/api/ipam/v1/schema.yml",
+  "version": "v1",
+  "purpose": "IP addresses"
+ },
+ "scaleway/secret-manager": {
+  "url": "https://www.scaleway.com/en/developers/api/secret-manager/v1beta1/schema.yml",
+  "version": "v1beta1",
+  "purpose": "secrets"
+ },
+ "scaleway/registry": {
+  "url": "https://www.scaleway.com/en/developers/api/registry/v1/schema.yml",
+  "version": "v1",
+  "purpose": "container registry namespaces and images"
+ },
+ "scaleway/serverless-jobs": {
+  "url": "https://www.scaleway.com/en/developers/api/serverless-jobs/v1alpha1/schema.yml",
+  "version": "v1alpha1",
+  "purpose": "batch jobs on containers (CPU), billed per second"
+ },
+ "scaleway/inference": {
+  "url": "https://www.scaleway.com/en/developers/api/inference/v1/schema.yml",
+  "version": "v1",
+  "purpose": "dedicated model deployments"
+ },
+ "scaleway/generative-apis": {
+  "url": "https://www.scaleway.com/en/developers/api/generative-apis/v1/schema.yml",
+  "version": "v1",
+  "purpose": "serverless OpenAI-compatible LLM endpoints"
+ },
+ "scaleway/file-storage": {
+  "url": "https://www.scaleway.com/en/developers/api/file-storage/v1alpha1/schema.yml",
+  "version": "v1alpha1",
+  "purpose": "file systems shared between Instances"
+ },
+ "runpod/mcp": {
+  "url": "https://mcp.runpod.io/",
+  "tools": 125
+ }
+}

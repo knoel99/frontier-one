@@ -1,7 +1,8 @@
 # Scaleway: quick guide for agents
 
-Written for this framework on 2026-11-14 and checked with read-only calls that day. The full reference is the
-OpenAPI specs next to this file (`api_docs action=search doc=scaleway/...`).
+Written for this framework on 2026-11-14 and checked with read-only calls that day. The ready-made functions
+(`scw_offers`, `scw_create_instance`, `scw_instance`, `scw_list_instances`, `scw_delete_instance`) implement the
+flows below; this guide is for what they do not cover. Signatures of every operation: `api_docs doc=scaleway/...`.
 
 ## Calls
 
