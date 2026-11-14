@@ -1,0 +1,135 @@
+# How the mission launcher runs each harness headless: install, command, environment, LLM routing.
+# goal: the harness's own goal command when it works headless; the launcher then opens each session with it
+# (its own session loop stays the outer limit). Codex, Grok and agy have /goal only interactively.
+# Placeholders: {prompt} {model} {effort} {max_turns} {workspace} {state} {key} {gateway} {frontier} {provider_model}.
+# effort: "level" = the abstract level (low..max) as is; "provider" = the provider's value from providers.toml.
+# Commands and environments of the vendor harnesses were run headless on 2026-11-13 by the previous campaign
+# (old/race/PROVIDERS-TESTED.md); the others come from the harnesses' docs (docs/HARNESSES.md). Check a new version
+# with `python3 -m frontier mission start <file> --prepare-only` and a short session before a real mission.
+#
+# Metering: `route` (environment variables) and `route_args` (arguments inserted before the prompt) send the
+# harness's own LLM traffic through the local gateway that charges the mission's LLM budget, at
+# {gateway}/<provider>/<the provider's usual base path>; both empty when the harness cannot be routed (its main-thread spend is then read from its own usage report when it
+# gives one, see `usage`).
+
+[claude]
+install = "npm install -g @anthropic-ai/claude-code"
+command = ["claude", "-p", "{prompt}", "--model", "{model}", "--effort", "{effort}", "--permission-mode", "bypassPermissions", "--output-format", "stream-json", "--verbose"]
+effort = "level"
+env = { ANTHROPIC_API_KEY = "{key}", MCP_TOOL_TIMEOUT = "3600000", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1" }
+route = { ANTHROPIC_BASE_URL = "{gateway}/anthropic" }
+wire = "anthropic"
+usage = "json:total_cost_usd"
+goal = "/goal"   # headless goal loop, judged after each turn (code.claude.com/docs/en/goal)
+
+[claude.providers.zhipu]   # Z.ai's Anthropic-compatible endpoint (run with Claude Code on 2026-11-13)
+env = { ANTHROPIC_AUTH_TOKEN = "{key}", ANTHROPIC_DEFAULT_OPUS_MODEL = "glm-5.3", ANTHROPIC_DEFAULT_SONNET_MODEL = "glm-5.3", ANTHROPIC_DEFAULT_HAIKU_MODEL = "glm-5.3-flash", API_TIMEOUT_MS = "3000000", MCP_TOOL_TIMEOUT = "3600000" }
+route = { ANTHROPIC_BASE_URL = "{gateway}/zhipu/api/anthropic" }
+default_base_url = { ANTHROPIC_BASE_URL = "https://api.z.ai/api/anthropic" }
+
+[codex]
+install = "npm install -g @openai/codex"
+setup = "printenv OPENAI_API_KEY | codex login --with-api-key"
+command = ["codex", "exec", "--trust", "--add-dir", "{state}", "-m", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "--sandbox", "workspace-write", "-c", "sandbox_workspace_write.network_access=true", "--json", "{prompt}"]
+effort = "provider"
+env = { OPENAI_API_KEY = "{key}" }
+route = {}
+# Codex ignores OPENAI_BASE_URL for its built-in provider: a custom provider pointing at the gateway (checked
+# 2026-11-14 with Codex 0.169.0: the gateway metered the session).
+route_args = ["-c", "model_providers.frontier.name=\"frontier-gateway\"", "-c", "model_providers.frontier.base_url=\"{gateway}/openai/v1\"", "-c", "model_providers.frontier.env_key=\"OPENAI_API_KEY\"", "-c", "model_providers.frontier.wire_api=\"responses\"", "-c", "model_providers.frontier.supports_websockets=false", "-c", "model_provider=\"frontier\""]
+wire = "openai-responses"
+usage = "jsonl:turn.completed"
+
+[antigravity]
+install = "curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --skip-aliases"
+setup = "mkdir -p ~/.gemini/antigravity-cli && [ -f ~/.gemini/antigravity-cli/settings.json ] || echo '{\"modelProvider\": \"gemini\"}' > ~/.gemini/antigravity-cli/settings.json"
+command = ["agy", "-p", "{prompt}", "--model", "{model}", "--effort", "{effort}", "--output-format", "json", "--dangerously-skip-permissions"]
+effort = "provider"
+env = { GEMINI_API_KEY = "{key}" }
+route = { GOOGLE_GEMINI_BASE_URL = "{gateway}/google" }   # antigravity.google/docs/settings; wire method UNCONFIRMED
+wire = "gemini"
+usage = "json-usage"
+
+[gemini]
+install = "npm install -g @google/gemini-cli"
+command = ["gemini", "-p", "{prompt}", "-m", "{model}", "--approval-mode=yolo", "--output-format", "json"]
+effort = "provider"
+env = { GEMINI_API_KEY = "{key}" }
+route = { GOOGLE_GEMINI_BASE_URL = "{gateway}/google" }
+wire = "gemini"
+usage = "json-usage"
+
+[grok]
+install = "curl -fsSL https://x.ai/cli/install.sh | bash"
+command = ["grok", "-p", "{prompt}", "-m", "{model}", "--effort", "{effort}", "--max-turns", "{max_turns}", "--always-approve", "--output-format", "json", "--no-auto-update"]
+effort = "provider"
+env = { XAI_API_KEY = "{key}" }
+# GROK_XAI_API_BASE_URL = "{gateway}/xai/v1" would route it, but Grok Build documents TLS-only connections: a plain
+# http gateway is UNCONFIRMED. Until checked, its spend comes from its usage report or the provider-side cap.
+route = {}
+wire = "openai-chat"
+usage = "json-usage"
+
+[kimi]
+install = "npm install -g @moonshot-ai/kimi-code"
+command = ["kimi", "-p", "{prompt}", "--output-format", "stream-json"]
+effort = "provider"
+env = { KIMI_MODEL_NAME = "{model}", KIMI_MODEL_THINKING_EFFORT = "{effort}", KIMI_MODEL_API_KEY = "{key}", KIMI_MODEL_PROVIDER_TYPE = "kimi", KIMI_CODE_TRUST_WORKSPACE = "1" }
+route = { KIMI_MODEL_BASE_URL = "{gateway}/moonshot/v1" }
+default_base_url = { KIMI_MODEL_BASE_URL = "https://api.moonshot.ai/v1" }
+wire = "openai-chat"
+usage = ""
+goal = "/goal"   # exit codes 0 completed, 3 blocked, 6 paused (kimi-code-cli slash commands)
+
+[qwen]
+install = "npm install -g @qwen-code/qwen-code"
+command = ["qwen", "-p", "{prompt}", "-m", "{model}", "--yolo", "-o", "json", "--max-session-turns", "{max_turns}"]
+effort = "provider"
+env = { OPENAI_API_KEY = "{key}", OPENAI_MODEL = "{model}", QWEN_CODE_SUPPRESS_YOLO_WARNING = "1" }
+route = { OPENAI_BASE_URL = "{gateway}/alibaba/compatible-mode/v1" }
+default_base_url = { OPENAI_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" }
+wire = "openai-chat"
+usage = "json-usage"
+goal = "/goal"   # enforced goalTokenBudget / goalMaxTurns (qwen-code-docs features/goals)
+
+[vibe]
+install = "uv tool install mistral-vibe"
+command = ["vibe", "-p", "{prompt}", "--model", "{model}", "--auto-approve", "--max-turns", "{max_turns}", "--output", "json"]
+effort = "provider"
+env = { MISTRAL_API_KEY = "{key}" }
+# Vibe routes only through [[providers]] api_base in ~/.vibe/config.toml (docs.mistral.ai/vibe configuration
+# reference): not written by the launcher, to leave the user's config alone.
+route = {}
+wire = "openai-chat"
+usage = "json-usage"
+
+[dsh]
+install = "npm install -g @deepseek-ai/dsh"
+command = ["dsh", "--profile", "headless", "--json", "--approval-policy", "never", "--patch", "{workspace}/.dsh/frontier.patch.yml", "{prompt}"]
+effort = "provider"
+env = { DEEPSEEK_API_KEY = "{key}", DSH_MODEL = "{model}", DSH_REASONING_EFFORT = "{effort}" }
+route = { DEEPSEEK_BASE_URL = "{gateway}/deepseek/anthropic" }   # dsh speaks Anthropic Messages to DeepSeek
+wire = "openai-chat"
+usage = ""
+
+[opencode]
+# The mission's opencode.json declares a provider `frontier` pointing at the gateway (frontier/harnesses.py).
+# Package names and `run` flags from opencode.ai/docs (2026-11-14); UNCONFIRMED until a first session.
+install = "npm install -g opencode-ai"
+command = ["opencode", "run", "--auto", "--format", "json", "-m", "frontier/{model}", "{prompt}"]
+effort = "provider"
+env = {}
+route = { FRONTIER_GATEWAY = "{gateway}" }
+wire = "provider"
+usage = "json-usage"
+
+[hermes]
+# HERMES_HOME points at a configuration of the mission (state/hermes/config.yaml: model on the gateway, MCP server).
+# Flags from hermes-agent.nousresearch.com/docs (2026-11-14); UNCONFIRMED until a first session.
+install = "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"
+command = ["hermes", "chat", "-q", "{prompt}", "--yolo", "--api-key", "{key}"]
+effort = "provider"
+env = { HERMES_HOME = "{state}/hermes" }
+route = { FRONTIER_GATEWAY = "{gateway}" }
+wire = "provider"
+usage = "json-usage"

@@ -1,0 +1,571 @@
+{
+ "schema_version": 1,
+ "diagram_type": "sequence",
+ "meta": {
+  "title": "One harness session in detail",
+  "locale": "en",
+  "quality_profile": "showcase",
+  "output": "docs/diagrams/session.html",
+  "legend": {
+   "entries": {
+    "emphasis": {
+     "label": "main call"
+    },
+    "return": {
+     "label": "reply"
+    },
+    "security": {
+     "label": "budget or stop check, cleanup"
+    },
+    "dashed": {
+     "label": "write to a ledger"
+    },
+    "default": {
+     "label": "read or other call"
+    }
+   }
+  },
+  "repository": {
+   "url": "https://github.com/knoel99/frontier-one",
+   "provider": "github",
+   "link_mode": "web",
+   "revision": "6d76c7e4913cd746b3729a969157ae9a1a1e940b"
+  }
+ },
+ "participants": [
+  {
+   "id": "launcher",
+   "type": "backend",
+   "label": "Launcher",
+   "sublabel": "launcher.py",
+   "sources": [
+    {
+     "path": "frontier/launcher.py",
+     "line": 248,
+     "end_line": 276,
+     "label": "run_one: session, usage fallback"
+    },
+    {
+     "path": "frontier/launcher.py",
+     "line": 331,
+     "end_line": 366,
+     "label": "loop, commit, finally"
+    }
+   ]
+  },
+  {
+   "id": "workspace",
+   "type": "database",
+   "label": "Workspace",
+   "sublabel": "git repo files",
+   "sources": [
+    {
+     "path": "frontier/mission.py",
+     "line": 4,
+     "end_line": 7,
+     "label": "workspace layout"
+    },
+    {
+     "path": "frontier/mission.py",
+     "line": 329,
+     "end_line": 334,
+     "label": "TOOLS, MISSION, AGENTS.md"
+    }
+   ]
+  },
+  {
+   "id": "harness",
+   "type": "frontend",
+   "label": "Harness CLI",
+   "sublabel": "codex exec",
+   "sources": [
+    {
+     "path": "config/harnesses.toml",
+     "line": 30,
+     "end_line": 41,
+     "label": "codex command, route_args"
+    },
+    {
+     "path": "frontier/launcher.py",
+     "line": 26,
+     "end_line": 33,
+     "label": "session prompts"
+    }
+   ]
+  },
+  {
+   "id": "gateway",
+   "type": "backend",
+   "label": "Gateway",
+   "sublabel": "launcher thread",
+   "sources": [
+    {
+     "path": "frontier/gateway.py",
+     "line": 204,
+     "end_line": 226,
+     "label": "_proxy: reserve, 402, release"
+    },
+    {
+     "path": "frontier/gateway.py",
+     "line": 228,
+     "end_line": 298,
+     "label": "_forward: stream, usage, charge"
+    }
+   ]
+  },
+  {
+   "id": "mcp",
+   "type": "backend",
+   "label": "MCP server",
+   "sublabel": "mcp.py + tools",
+   "sources": [
+    {
+     "path": "frontier/mcp.py",
+     "line": 121,
+     "end_line": 133,
+     "label": "Server.call -> REGISTRY"
+    },
+    {
+     "path": "frontier/infra.py",
+     "line": 111,
+     "end_line": 153,
+     "label": "scw_create_instance"
+    },
+    {
+     "path": "frontier/agent.py",
+     "line": 228,
+     "end_line": 318,
+     "label": "spawn_agent loop"
+    }
+   ]
+  },
+  {
+   "id": "state",
+   "type": "security",
+   "label": "State dir",
+   "sublabel": "ledgers",
+   "sources": [
+    {
+     "path": "frontier/budget.py",
+     "line": 159,
+     "end_line": 232,
+     "label": "charge_llm, reserve, release"
+    },
+    {
+     "path": "frontier/budget.py",
+     "line": 266,
+     "end_line": 291,
+     "label": "cloud_lock, cloud_allowed"
+    },
+    {
+     "path": "frontier/agent.py",
+     "line": 95,
+     "end_line": 98,
+     "label": "Run.record"
+    }
+   ]
+  },
+  {
+   "id": "llm",
+   "type": "cloud",
+   "label": "LLM provider",
+   "sublabel": "api.openai.com",
+   "sources": [
+    {
+     "path": "config/providers.toml",
+     "line": 25,
+     "end_line": 28,
+     "label": "base_url"
+    },
+    {
+     "path": "frontier/llm.py",
+     "line": 137,
+     "end_line": 155,
+     "label": "direct POST"
+    }
+   ]
+  },
+  {
+   "id": "scw",
+   "type": "cloud",
+   "label": "Scaleway",
+   "sublabel": "api.scaleway.com",
+   "sources": [
+    {
+     "path": "frontier/http.py",
+     "line": 48,
+     "end_line": 67,
+     "label": "scw_raw, scw"
+    }
+   ]
+  }
+ ],
+ "segments": [
+  {
+   "from": 162,
+   "to": 506,
+   "label": "Session start"
+  },
+  {
+   "from": 530,
+   "to": 806,
+   "label": "Model call via the gateway"
+  },
+  {
+   "from": 830,
+   "to": 1242,
+   "label": "Tool call scw_create_instance"
+  },
+  {
+   "from": 1266,
+   "to": 1580,
+   "label": "spawn_agent: sub-agent loop"
+  },
+  {
+   "from": 1604,
+   "to": 1899,
+   "label": "deliver"
+  },
+  {
+   "from": 1923,
+   "to": 2207,
+   "label": "Session end"
+  }
+ ],
+ "messages": [
+  {
+   "id": "m01",
+   "from": "launcher",
+   "to": "harness",
+   "y": 176,
+   "label": "run_until(codex exec ...)",
+   "variant": "emphasis",
+   "note": "build_session: FRONTIER_STATE, bin/ on PATH, base URL on the gateway"
+  },
+  {
+   "id": "m02",
+   "from": "harness",
+   "to": "workspace",
+   "y": 277,
+   "label": "read AGENTS.md",
+   "variant": "default"
+  },
+  {
+   "id": "m03",
+   "from": "harness",
+   "to": "workspace",
+   "y": 307,
+   "label": "read MISSION.md, TOOLS.md",
+   "variant": "default",
+   "note": "the first prompt asks for them"
+  },
+  {
+   "id": "m04",
+   "from": "harness",
+   "to": "mcp",
+   "y": 375,
+   "label": "start bin/frontier-mcp",
+   "variant": "emphasis",
+   "note": "named by .codex/config.toml; stdio"
+  },
+  {
+   "id": "m05",
+   "from": "mcp",
+   "to": "state",
+   "y": 454,
+   "label": "read mission.json",
+   "variant": "default",
+   "note": "settings; its watchdog starts"
+  },
+  {
+   "id": "m06",
+   "from": "harness",
+   "to": "gateway",
+   "y": 544,
+   "label": "POST /openai/v1/responses",
+   "variant": "emphasis"
+  },
+  {
+   "id": "m07",
+   "from": "gateway",
+   "to": "state",
+   "y": 574,
+   "label": "reserve worst case",
+   "variant": "security",
+   "note": "no room under the cap: 402, nothing forwarded"
+  },
+  {
+   "id": "m08",
+   "from": "gateway",
+   "to": "llm",
+   "y": 653,
+   "label": "forward unchanged",
+   "variant": "emphasis"
+  },
+  {
+   "id": "m09",
+   "from": "llm",
+   "to": "gateway",
+   "y": 683,
+   "label": "stream with usage",
+   "variant": "return"
+  },
+  {
+   "id": "m10",
+   "from": "gateway",
+   "to": "harness",
+   "y": 713,
+   "label": "stream back",
+   "variant": "return"
+  },
+  {
+   "id": "m11",
+   "from": "gateway",
+   "to": "state",
+   "y": 743,
+   "label": "charge_llm, then release",
+   "variant": "dashed",
+   "note": "llm.jsonl, source gateway, hash-chained"
+  },
+  {
+   "id": "m12",
+   "from": "harness",
+   "to": "mcp",
+   "y": 844,
+   "label": "tools/call scw_create_instance",
+   "variant": "emphasis",
+   "note": "mcp.py -> tools.REGISTRY -> infra.py"
+  },
+  {
+   "id": "m13",
+   "from": "mcp",
+   "to": "scw",
+   "y": 923,
+   "label": "GET image and price",
+   "variant": "default"
+  },
+  {
+   "id": "m14",
+   "from": "mcp",
+   "to": "state",
+   "y": 953,
+   "label": "cloud_lock, cloud_allowed",
+   "variant": "security",
+   "note": "refused if price x max_hours overruns the cap"
+  },
+  {
+   "id": "m15",
+   "from": "mcp",
+   "to": "scw",
+   "y": 1032,
+   "label": "POST /instance/v1/.../servers",
+   "variant": "emphasis"
+  },
+  {
+   "id": "m16",
+   "from": "scw",
+   "to": "mcp",
+   "y": 1062,
+   "label": "server id",
+   "variant": "return"
+  },
+  {
+   "id": "m17",
+   "from": "mcp",
+   "to": "state",
+   "y": 1092,
+   "label": "Run.record",
+   "variant": "dashed",
+   "note": "resources.json, events.jsonl"
+  },
+  {
+   "id": "m18",
+   "from": "mcp",
+   "to": "scw",
+   "y": 1160,
+   "label": "poweron, poll",
+   "variant": "default"
+  },
+  {
+   "id": "m19",
+   "from": "mcp",
+   "to": "harness",
+   "y": 1190,
+   "label": "id, IPs, price",
+   "variant": "return",
+   "note": "mcp_call logged in events.jsonl"
+  },
+  {
+   "id": "m20",
+   "from": "harness",
+   "to": "mcp",
+   "y": 1280,
+   "label": "tools/call spawn_agent",
+   "variant": "emphasis",
+   "note": "agent.py reads prompts/*.md, roles/*.md"
+  },
+  {
+   "id": "m21",
+   "from": "mcp",
+   "to": "state",
+   "y": 1359,
+   "label": "reserve worst case",
+   "variant": "security"
+  },
+  {
+   "id": "m22",
+   "from": "mcp",
+   "to": "llm",
+   "y": 1389,
+   "label": "llm.chat, direct POST",
+   "variant": "emphasis",
+   "note": "not through the gateway"
+  },
+  {
+   "id": "m23",
+   "from": "llm",
+   "to": "mcp",
+   "y": 1457,
+   "label": "reply with usage",
+   "variant": "return"
+  },
+  {
+   "id": "m24",
+   "from": "mcp",
+   "to": "state",
+   "y": 1487,
+   "label": "release, charge_llm",
+   "variant": "dashed",
+   "note": "llm.jsonl; loop until no tool call"
+  },
+  {
+   "id": "m25",
+   "from": "mcp",
+   "to": "harness",
+   "y": 1566,
+   "label": "final answer, usage",
+   "variant": "return"
+  },
+  {
+   "id": "m26",
+   "from": "harness",
+   "to": "mcp",
+   "y": 1618,
+   "label": "tools/call deliver",
+   "variant": "emphasis"
+  },
+  {
+   "id": "m27",
+   "from": "mcp",
+   "to": "workspace",
+   "y": 1648,
+   "label": "check DELIVERY, COMPLIANCE, DECISIONS",
+   "variant": "default",
+   "note": "missing: refused unless force=true"
+  },
+  {
+   "id": "m28",
+   "from": "mcp",
+   "to": "scw",
+   "y": 1727,
+   "label": "infra.cleanup",
+   "variant": "security",
+   "note": "delete what is still alive"
+  },
+  {
+   "id": "m29",
+   "from": "mcp",
+   "to": "workspace",
+   "y": 1795,
+   "label": "write COSTS.md",
+   "variant": "default"
+  },
+  {
+   "id": "m30",
+   "from": "mcp",
+   "to": "state",
+   "y": 1825,
+   "label": "delivery.json, spend frozen",
+   "variant": "dashed"
+  },
+  {
+   "id": "m31",
+   "from": "mcp",
+   "to": "workspace",
+   "y": 1855,
+   "label": "git commit, tag delivery",
+   "variant": "default"
+  },
+  {
+   "id": "m32",
+   "from": "mcp",
+   "to": "harness",
+   "y": 1885,
+   "label": "delivery record",
+   "variant": "return"
+  },
+  {
+   "id": "m33",
+   "from": "harness",
+   "to": "launcher",
+   "y": 1937,
+   "label": "exit",
+   "variant": "return"
+  },
+  {
+   "id": "m34",
+   "from": "launcher",
+   "to": "state",
+   "y": 1967,
+   "label": "metered? else usage report",
+   "variant": "dashed",
+   "note": "else usage_from_report on sessions/NN.log"
+  },
+  {
+   "id": "m35",
+   "from": "launcher",
+   "to": "workspace",
+   "y": 2046,
+   "label": "commit Session n",
+   "variant": "default"
+  },
+  {
+   "id": "m36",
+   "from": "launcher",
+   "to": "state",
+   "y": 2076,
+   "label": "_stop_reason: delivered",
+   "variant": "security",
+   "note": "next loop turn finds delivery.json"
+  },
+  {
+   "id": "m37",
+   "from": "launcher",
+   "to": "workspace",
+   "y": 2155,
+   "label": "commit Delivery, tag",
+   "variant": "emphasis",
+   "note": "finally of launcher.start"
+  }
+ ],
+ "cards": [
+  {
+   "dot": "emerald",
+   "title": "Two metering paths",
+   "items": [
+    "The harness's own model calls go through the gateway thread of the launcher (source gateway in llm.jsonl)",
+    "spawn_agent sub-agents call the provider directly from the MCP process (source spawn_agent)",
+    "Both reserve the worst case first, so parallel calls cannot overrun the LLM cap"
+   ]
+  },
+  {
+   "dot": "rose",
+   "title": "Caps",
+   "items": [
+    "LLM: 402 from the gateway, a stopped sub-agent from agent.py",
+    "Cloud: creation refused under cloud_lock when the budget would overrun",
+    "After deliver: spend frozen, a small grace for the harness to finish its turn"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,83 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Race dashboard</title>
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--ink:#1d1d1b;--mute:#6b6b66;--line:#e3e2dc;--acc:#0f766e;--warn:#b45309;--bad:#b91c1c}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--card:#1f1f1d;--ink:#ecebe6;--mute:#9a998f;--line:#33332f;--acc:#2dd4bf;--warn:#f59e0b;--bad:#f87171}}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
+main{max-width:1280px;margin:auto;padding:16px}
+h1{font-size:20px;margin:4px 0 2px}.mute{color:var(--mute)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px;margin:12px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.card h2{font-size:16px;margin:0 0 4px}.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:13px}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:2px 0 6px}.bar i{display:block;height:100%;background:var(--acc)}
+.bar.warn i{background:var(--warn)}.bar.bad i{background:var(--bad)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}td,th{padding:3px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.tag{font-size:11px;padding:1px 6px;border-radius:9px;border:1px solid var(--line);white-space:nowrap}
+.feed td:nth-child(1){white-space:nowrap;color:var(--mute)}.feed{max-height:560px;overflow:auto;display:block}
+svg{width:100%;height:60px}.ok{color:var(--acc)}.ko{color:var(--bad)}
+</style></head><body><main>
+<h1>Race dashboard</h1><div class="mute" id="meta"></div>
+<div class="grid" id="teams"></div>
+<div class="card" style="margin-bottom:12px"><h2>Activity timeline</h2>
+<div class="mute">Group by <select id="gby"><option value="provider">provider</option><option value="team">team</option>
+<option value="kind">kind (aggregated)</option></select>
+window <select id="gwin"><option value="0">all</option><option value="21600">last 6 h</option><option value="3600">last hour</option>
+<option value="900">last 15 min</option></select> · bars: harness sessions, sub-agents, cloud machines; hover for details</div>
+<div id="gantt" style="overflow-x:auto"></div></div>
+<div class="card" style="margin-bottom:12px"><h2>Sub-agents (latest first)</h2>
+<div class="mute" id="subsum"></div><div style="overflow:auto"><table><thead><tr><th>start</th><th>team</th><th>agent</th>
+<th>model</th><th>effort</th><th>time</th><th>calls</th><th>tools</th><th>in (cached)</th><th>out (reasoning)</th><th>USD</th>
+<th>status</th><th>task</th></tr></thead><tbody id="subs"></tbody></table></div></div>
+<div class="card"><h2>All actions (latest first)</h2><table class="feed"><tbody id="feed"></tbody></table></div>
+</main><script>
+const fmt=(x,d=4)=>x==null?'–':Number(x).toFixed(d), esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function bar(v,cap){if(cap==null||!cap)return '';const p=Math.min(100,100*v/cap);return `<div class="bar ${p>90?'bad':p>70?'warn':''}"><i style="width:${p}%"></i></div>`}
+function spark(series,cap){if(!series.length)return '';const t0=Date.parse(series[0][0]),t1=Math.max(Date.parse(series[series.length-1][0]),t0+1);
+ const ymax=Math.max(cap||0,series[series.length-1][1])||1;const pts=series.map(([t,v])=>`${(100*(Date.parse(t)-t0)/(t1-t0)).toFixed(1)},${(60-58*v/ymax).toFixed(1)}`).join(' ');
+ return `<svg viewBox="0 0 100 60" preserveAspectRatio="none"><polyline fill="none" stroke="currentColor" stroke-width="1.2" vector-effect="non-scaling-stroke" points="${pts}"/></svg>`}
+function team(t){const s=t.status,l=s.llm,c=s.cloud,tk=t.tokens;
+ const state=t.delivered?'<span class="tag ok">delivered</span>':t.running?`<span class="tag">session ${t.running.n} running</span>`:'<span class="tag">idle</span>';
+ const integ=Object.values(s.ledgers_intact||{}).every(v=>v===true)?'<span class="ok">ledgers intact</span>':'<span class="ko">LEDGER TAMPERED</span>';
+ const alive=t.alive.map(r=>`<tr><td>${esc(r.provider)}</td><td>${esc(r.type||'')}</td><td>${fmt(r.price_h,3)}/h</td><td>${r.hours} / ${r.max_hours} h</td></tr>`).join('');
+ const jobs=t.jobs.map(a=>`<div class="mute">${esc(a.text)}</div>`).join('');
+ const models=Object.entries(l.by_model).map(([m,v])=>`<tr><td>${esc(m)}</td><td>${v.calls}</td><td>${v.input}</td><td>${v.output}</td><td>${fmt(v.usd)}</td></tr>`).join('');
+ return `<div class="card"><h2>${esc(t.name)} ${state}</h2><div class="mute">${esc(t.harness)} · ${esc(t.provider)} · ${esc(t.tier)}/${esc(t.reasoning)} · ${integ}</div>
+ <div class="kv"><span>LLM</span><span>${fmt(l.spent_usd)} / ${l.cap_usd??'–'} USD ${l.in_flight_usd?`(+${fmt(l.in_flight_usd)} in flight)`:''}</span></div>${bar(l.spent_usd,l.cap_usd)}
+ <div class="kv"><span>Scaleway</span><span>${fmt(c.scaleway.spent,3)} / ${c.scaleway.cap??'–'} EUR (committed ${fmt(c.scaleway.committed,3)})</span></div>${bar(c.scaleway.spent+c.scaleway.committed,c.scaleway.cap)}
+ <div class="kv"><span>Runpod</span><span>${fmt(c.runpod.spent,3)} / ${c.runpod.cap??'–'} USD (committed ${fmt(c.runpod.committed,3)})</span></div>${bar(c.runpod.spent+c.runpod.committed,c.runpod.cap)}
+ <div class="kv"><span>Tokens</span><span>${tk.input} in (${tk.cached} cached) · ${tk.output} out (${tk.reasoning} reasoning)</span>
+ <span>Time</span><span>${t.delivered?`delivered after ${t.delivered.elapsed_hours} h`:`${s.elapsed_hours??'–'} h elapsed · ${s.hours_left??'–'} h left`}</span></div>
+ <div class="mute">Cumulative LLM cost</div>${spark(t.series,l.cap_usd)}
+ <details><summary>By model and source</summary><table><tr><th>model</th><th>calls</th><th>in</th><th>out</th><th>USD</th></tr>${models}</table>
+ <div class="mute">${Object.entries(l.by_source).map(([k,v])=>esc(k)+': '+fmt(v)).join(' · ')}</div></details>
+ <details ${alive?'open':''}><summary>Running now: ${t.alive.length} machine(s)</summary><table>${alive}</table>${jobs}</details>
+ <details><summary>Latest actions</summary><table>${t.actions.slice(-25).reverse().map(a=>`<tr><td><span class="tag">${esc(a.kind)}</span></td><td>${esc(a.text)}</td></tr>`).join('')}</table></details></div>`}
+async function load(){const d=window.__STATE__||await (await fetch('api/state')).json();
+ document.getElementById('meta').textContent=`${d.teams.length} team(s) · ${d.root} · updated ${d.time}`;
+ document.getElementById('teams').innerHTML=d.teams.map(team).join('');
+ document.getElementById('feed').innerHTML=d.feed.map(a=>`<tr><td>${esc(a.t.slice(11,19))}</td><td><b>${esc(a.team)}</b></td><td><span class="tag">${esc(a.kind)}</span></td><td>${esc(a.text)}</td></tr>`).join('');subs(d);window.__D__=d;gantt(d);}
+const PAL=['#0f766e','#b45309','#7c3aed','#be123c','#1d4ed8','#4d7c0f','#a21caf','#0e7490','#9a3412'];
+function gantt(d){const acts=d.activities||[],by=document.getElementById('gby').value,now=Date.parse(d.time);
+ const el=document.getElementById('gantt');if(!acts.length){el.innerHTML='<div class="mute">no activity yet</div>';return}
+ const win=+document.getElementById('gwin').value*1000,t0=win?now-win:Math.min(...acts.map(a=>Date.parse(a.start))),t1=Math.max(now,...acts.map(a=>a.end?Date.parse(a.end):now)),span=Math.max(t1-t0,1000);
+ const colorKey=by==='team'?'kind':'team',keys=[...new Set(acts.map(a=>a[colorKey]))],col=k=>PAL[keys.indexOf(k)%PAL.length];
+ const rows={};for(const a of acts){if((a.end?Date.parse(a.end):now)<t0)continue;const r=by==='team'?`${a.team} · ${a.kind}`:by==='kind'?a.kind:a.provider;(rows[r]=rows[r]||[]).push(a)}
+ const names=Object.keys(rows).sort(),W=1100,L=170,RH=26,H=names.length*RH+30,x=t=>L+(W-L-10)*(t-t0)/span;
+ let svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:700px;height:${H}px;font-size:11px">`;
+ for(let i=0;i<=6;i++){const tt=t0+span*i/6,xx=x(tt);svg+=`<line x1="${xx}" x2="${xx}" y1="0" y2="${H-18}" stroke="var(--line)"/><text x="${xx}" y="${H-4}" fill="var(--mute)" text-anchor="middle">${new Date(tt).toISOString().slice(5,16).replace('T',' ')}</text>`}
+ names.forEach((n,i)=>{const y=i*RH;svg+=`<text x="4" y="${y+17}" fill="var(--ink)">${esc(n)}</text>`;
+  for(const a of rows[n]){const s=x(Math.max(Date.parse(a.start),t0)),e=x(a.end?Date.parse(a.end):now),w=Math.max(e-s,3);
+   svg+=`<rect x="${s}" y="${y+5}" width="${w}" height="${RH-10}" rx="3" fill="${col(a[colorKey])}" opacity="${a.end?0.85:1}"${a.end?'':' stroke="var(--ink)" stroke-dasharray="3 2"'}><title>${esc(a.team)} · ${esc(a.kind)} · ${esc(a.label)}\n${esc(a.start)} → ${esc(a.end||'running')}\n${esc(a.detail||'')}</title></rect>`}});
+ svg+='</svg>';el.innerHTML=svg+'<div class="mute">'+keys.map(k=>`<span style="color:${col(k)}">■</span> ${esc(k)}`).join(' &nbsp; ')+' &nbsp; (dashed: running)</div>'}
+function dur(s){if(s==null)return '–';return s<90?s+' s':s<5400?Math.round(s/60)+' min':(s/3600).toFixed(1)+' h'}
+function subs(d){const rows=d.subagents||[];const tot=rows.reduce((a,r)=>a+(r.usd||0),0);
+ document.getElementById('subsum').textContent=`${rows.filter(r=>r.kind==='spawn_agent').length} spawn_agent run(s), ${fmt(tot)} USD; `+
+  `${rows.filter(r=>r.kind==='native').length} native harness sub-agent(s) (their cost is in the harness's traffic)`;
+ document.getElementById('subs').innerHTML=rows.map(r=>`<tr title="${esc(r.answer||'')}"><td>${esc((r.start||'').slice(11,19))}</td><td>${esc(r.team)}</td>`+
+  `<td>${esc(r.agent)}${r.parent&&r.parent!=='harness'?`<div class="mute">← ${esc(r.parent)}</div>`:''}</td><td>${esc(r.model)}</td><td>${esc(r.effort||'')}</td>`+
+  `<td>${dur(r.seconds)}</td><td>${r.calls??'–'}</td><td>${r.tool_calls??'–'}</td><td>${r.input??'–'}${r.cached?` (${r.cached})`:''}</td>`+
+  `<td>${r.output??'–'}${r.reasoning?` (${r.reasoning})`:''}</td><td>${r.usd==null?'–':fmt(r.usd)}</td>`+
+  `<td><span class="tag ${r.status==='done'?'ok':''}">${esc(r.status)}</span></td><td>${esc(r.task)}</td></tr>`).join('');}
+for(const id of ['gby','gwin'])document.getElementById(id).onchange=()=>window.__D__&&gantt(window.__D__);
+load();if(!window.__STATE__)setInterval(load,5000);
+</script></body></html>

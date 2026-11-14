@@ -1,0 +1,14 @@
+{
+  "mcp": {
+    "frontier": {
+      "type": "local",
+      "command": [
+        "python3",
+        "-m",
+        "frontier.mcp"
+      ],
+      "enabled": true,
+      "timeout": 3600000
+    }
+  }
+}

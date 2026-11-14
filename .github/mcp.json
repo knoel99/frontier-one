@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "frontier": {
+      "type": "local",
+      "command": "python3",
+      "args": [
+        "-m",
+        "frontier.mcp"
+      ],
+      "tools": [
+        "*"
+      ]
+    }
+  }
+}

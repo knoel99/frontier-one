@@ -1,26 +1,17 @@
-# Tests of the race tools against a checkout of the target repository (tools/target.py), and ruff.
 name: tests
 on:
   push:
-    branches: [master]
+    branches: [master, main]
   pull_request:
 jobs:
-  tests:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: knoel99/milady-2027
-          path: target
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Tools
-        run: python -m pip install pytest==9.2.0 ruff==0.17.4
-      - name: Lint
-        run: python -m ruff check tools tests
-      - name: Tests
-        env:
-          FRONTIER_TARGET: ${{ github.workspace }}/target
-        run: python -m pytest -q tests
+      - run: pip install pytest ruff
+      - run: python -m ruff check .
+      - run: python -m pytest -q
+      - run: python tools/sync_harnesses.py --check

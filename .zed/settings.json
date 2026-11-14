@@ -1,0 +1,12 @@
+{
+  "context_servers": {
+    "frontier": {
+      "command": "python3",
+      "args": [
+        "-m",
+        "frontier.mcp"
+      ],
+      "env": {}
+    }
+  }
+}

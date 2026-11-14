@@ -1,0 +1,6 @@
+#!/bin/sh
+# Start the Frontier MCP server from anywhere: harness configs of a mission workspace call this file by its
+# absolute path, so they need neither a working directory nor environment settings.
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
+exec "${FRONTIER_PYTHON:-python3}" -m frontier.mcp "$@"

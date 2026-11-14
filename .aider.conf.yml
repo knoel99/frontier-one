@@ -1,0 +1,3 @@
+# Aider reads no instruction file by itself.
+read:
+  - AGENTS.md

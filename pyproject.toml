@@ -1,16 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "frontier-one"
-version = "0.1.0"
-description = "Control plane of a science hackathon run by AI agents"
+name = "frontier"
+version = "0.2.0"
+description = "Provider-agnostic API agents that start API sub-agents, with offline cloud API docs"
 requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+publish = ["huggingface_hub>=1.0"]
+dev = ["pytest", "ruff", "pyyaml"]
+
+[project.scripts]
+frontier = "frontier.__main__:main"
+frontier-mcp = "frontier.mcp:main"
+
+[tool.setuptools]
+packages = ["frontier"]
+
+[tool.setuptools.package-data]
+frontier = ["dashboard.html"]
 
 [tool.ruff]
-line-length = 130
+line-length = 140
 target-version = "py311"
+extend-exclude = ["old"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-ignore = ["E402", "E731", "I001"]
+ignore = ["E402", "E731", "I001", "E741"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

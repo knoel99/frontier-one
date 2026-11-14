@@ -1,0 +1,560 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "A Frontier One race: N teams, one subject, the same caps",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/race.html",
+    "repository": {
+      "url": "https://github.com/knoel99/frontier-one",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "7100fc25a52e734bf3017687d05c160da30f4ceb"
+    }
+  },
+  "lanes": [
+    {
+      "id": "owner",
+      "label": "Owner"
+    },
+    {
+      "id": "launcher",
+      "label": "Launcher (one per team)"
+    },
+    {
+      "id": "team",
+      "label": "Team: harness and its AI (N in parallel)"
+    },
+    {
+      "id": "frontier",
+      "label": "Frontier tools and ledgers"
+    },
+    {
+      "id": "outside",
+      "label": "Outside services"
+    }
+  ],
+  "phases": [
+    {
+      "id": "setup",
+      "label": "Setup",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "race",
+      "label": "Race: until deliver, deadline or budget",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "delivery",
+      "label": "Delivery",
+      "fromCol": 4,
+      "toCol": 4,
+      "variant": "dashed"
+    },
+    {
+      "id": "judging",
+      "label": "Judging",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "security"
+    }
+  ],
+  "mainPath": [
+    "missions",
+    "prepare",
+    "sessions",
+    "main",
+    "deliver",
+    "stop",
+    "judge"
+  ],
+  "nodes": [
+    {
+      "id": "missions",
+      "lane": "owner",
+      "col": 0,
+      "type": "external",
+      "icon": "person",
+      "label": "Mission file per team",
+      "sublabel": "harness, keys, budgets, subject",
+      "tag": "same subject and caps",
+      "sources": [
+        {
+          "path": "config/mission.example.toml",
+          "line": 1,
+          "end_line": 41,
+          "label": "mission inputs"
+        }
+      ]
+    },
+    {
+      "id": "prepare",
+      "lane": "launcher",
+      "col": 1,
+      "type": "backend",
+      "label": "Prepare workspace",
+      "sublabel": "MISSION.md, TOOLS.md, harness files",
+      "tag": "key checked",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 248,
+          "end_line": 304,
+          "label": "prepare()"
+        },
+        {
+          "path": "frontier/harnesses.py",
+          "line": 152,
+          "end_line": 244,
+          "label": "files for the harness"
+        }
+      ]
+    },
+    {
+      "id": "sessions",
+      "lane": "launcher",
+      "col": 2,
+      "type": "backend",
+      "icon": "clock",
+      "label": "Session loop",
+      "sublabel": "headless harness, restarted",
+      "tag": "commit per session",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 217,
+          "end_line": 241,
+          "label": "session loop"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 194,
+          "end_line": 202,
+          "label": "starts the gateway"
+        }
+      ]
+    },
+    {
+      "id": "stop",
+      "lane": "launcher",
+      "col": 4,
+      "type": "security",
+      "icon": "stop",
+      "label": "Stop and clean up",
+      "sublabel": "delivered, deadline or budget",
+      "tag": "leftovers deleted",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 268,
+          "end_line": 278,
+          "label": "stop reasons"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 243,
+          "end_line": 256,
+          "label": "cleanup, final commit"
+        }
+      ]
+    },
+    {
+      "id": "main",
+      "lane": "team",
+      "col": 2,
+      "type": "backend",
+      "icon": "active",
+      "label": "Main thread",
+      "sublabel": "vendor harness or OpenCode",
+      "tag": "its own strategy",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 32,
+          "end_line": 34,
+          "label": "harness per provider"
+        },
+        {
+          "path": "prompts/mission.md",
+          "line": 36,
+          "end_line": 40,
+          "label": "the strategy is the AI's"
+        }
+      ]
+    },
+    {
+      "id": "deliver",
+      "lane": "team",
+      "col": 4,
+      "type": "security",
+      "icon": "flag",
+      "label": "deliver",
+      "sublabel": "DELIVERY, COMPLIANCE, DECISIONS",
+      "tag": "clock and spend frozen",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 339,
+          "end_line": 366,
+          "label": "deliver()"
+        },
+        {
+          "path": "prompts/mission.md",
+          "line": 42,
+          "end_line": 64,
+          "label": "deliverables"
+        }
+      ]
+    },
+    {
+      "id": "mcp",
+      "lane": "frontier",
+      "col": 2,
+      "type": "messagebus",
+      "label": "MCP server frontier",
+      "sublabel": "the tools listed in TOOLS.md",
+      "sources": [
+        {
+          "path": "frontier/mcp.py",
+          "line": 102,
+          "end_line": 118,
+          "label": "tool list"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 142,
+          "end_line": 182,
+          "label": "TOOLS.md inventory"
+        }
+      ]
+    },
+    {
+      "id": "subagents",
+      "lane": "frontier",
+      "col": 3,
+      "type": "backend",
+      "yOffset": -44,
+      "label": "Sub-agents",
+      "sublabel": "any model, tier, effort, mode",
+      "tag": "spawn_agent",
+      "sources": [
+        {
+          "path": "frontier/agent.py",
+          "line": 293,
+          "end_line": 318,
+          "label": "spawn_agent"
+        },
+        {
+          "path": "frontier/llm.py",
+          "line": 60,
+          "end_line": 112,
+          "label": "tier, effort, mode"
+        }
+      ]
+    },
+    {
+      "id": "cloudfns",
+      "lane": "frontier",
+      "col": 3,
+      "type": "backend",
+      "yOffset": 44,
+      "label": "Cloud functions",
+      "sublabel": "offers, create, exec, delete",
+      "tag": "max_hours, watchdog",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 109,
+          "end_line": 149,
+          "label": "create an Instance"
+        },
+        {
+          "path": "frontier/infra.py",
+          "line": 232,
+          "end_line": 264,
+          "label": "create a pod"
+        },
+        {
+          "path": "frontier/infra.py",
+          "line": 332,
+          "end_line": 356,
+          "label": "watchdog"
+        }
+      ]
+    },
+    {
+      "id": "gateway",
+      "lane": "team",
+      "col": 1,
+      "type": "security",
+      "label": "Metering gateway",
+      "sublabel": "the harness's LLM calls, charged",
+      "tag": "402 at the cap",
+      "sources": [
+        {
+          "path": "frontier/gateway.py",
+          "line": 171,
+          "end_line": 194,
+          "label": "reserve, forward, 402"
+        },
+        {
+          "path": "frontier/gateway.py",
+          "line": 54,
+          "end_line": 98,
+          "label": "usage of 4 wire formats"
+        }
+      ]
+    },
+    {
+      "id": "ledgers",
+      "lane": "frontier",
+      "col": 4,
+      "type": "database",
+      "label": "Ledgers",
+      "sublabel": "LLM, cloud, events; hash-chained",
+      "tag": "outside the workspace",
+      "sources": [
+        {
+          "path": "frontier/budget.py",
+          "line": 44,
+          "end_line": 62,
+          "label": "hash chain"
+        },
+        {
+          "path": "frontier/budget.py",
+          "line": 197,
+          "end_line": 227,
+          "label": "reservations, hard cap"
+        },
+        {
+          "path": "frontier/budget.py",
+          "line": 265,
+          "end_line": 279,
+          "label": "cloud cap"
+        }
+      ]
+    },
+    {
+      "id": "llm",
+      "lane": "outside",
+      "col": 1,
+      "type": "cloud",
+      "label": "LLM provider API",
+      "sublabel": "the team's key",
+      "sources": [
+        {
+          "path": "config/providers.toml",
+          "line": 25,
+          "end_line": 33,
+          "label": "a provider entry"
+        }
+      ]
+    },
+    {
+      "id": "hub",
+      "lane": "outside",
+      "col": 2,
+      "type": "cloud",
+      "label": "Hugging Face Hub",
+      "sublabel": "models and data, with cards",
+      "sources": [
+        {
+          "path": "frontier/hf.py",
+          "line": 61,
+          "end_line": 91,
+          "label": "hf_publish"
+        }
+      ]
+    },
+    {
+      "id": "compute",
+      "lane": "outside",
+      "col": 3,
+      "type": "cloud",
+      "label": "Scaleway, Runpod",
+      "sublabel": "GPU and CPU machines",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 59,
+          "end_line": 94,
+          "label": "Scaleway offers"
+        },
+        {
+          "path": "frontier/infra.py",
+          "line": 212,
+          "end_line": 229,
+          "label": "Runpod offers"
+        }
+      ]
+    },
+    {
+      "id": "judge",
+      "lane": "owner",
+      "col": 5,
+      "type": "external",
+      "icon": "flag",
+      "label": "Compare teams",
+      "sublabel": "quality, cost, time, compliance",
+      "tag": "judge not built yet",
+      "sources": [
+        {
+          "path": "prompts/mission.md",
+          "line": 11,
+          "end_line": 20,
+          "label": "evaluation criteria"
+        },
+        {
+          "path": "docs/STANDARDS.md",
+          "line": 67,
+          "end_line": 69,
+          "label": "judge not built"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-missions-prepare",
+      "from": "missions",
+      "to": "prepare",
+      "label": "N in parallel",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-prepare-sessions",
+      "from": "prepare",
+      "to": "sessions",
+      "label": "workspace ready",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-sessions-main",
+      "from": "sessions",
+      "to": "main",
+      "label": "read MISSION, TOOLS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-main-deliver",
+      "from": "main",
+      "to": "deliver",
+      "label": "deliverables ready",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-deliver-stop",
+      "from": "deliver",
+      "to": "stop",
+      "label": "delivery.json",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-stop-judge",
+      "from": "stop",
+      "to": "judge",
+      "label": "repository, COSTS.md",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-main-mcp",
+      "from": "main",
+      "to": "mcp",
+      "label": "tool calls"
+    },
+    {
+      "id": "e-main-gateway",
+      "from": "main",
+      "to": "gateway",
+      "label": "own model calls"
+    },
+    {
+      "id": "e-gateway-llm",
+      "from": "gateway",
+      "to": "llm",
+      "label": "priced, capped",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "e-mcp-subagents",
+      "from": "mcp",
+      "to": "subagents",
+      "label": "spawn_agent"
+    },
+    {
+      "id": "e-mcp-cloudfns",
+      "from": "mcp",
+      "to": "cloudfns",
+      "label": "scw_*, rp_*"
+    },
+    {
+      "id": "e-mcp-hub",
+      "from": "mcp",
+      "to": "hub",
+      "label": "hf_publish"
+    },
+    {
+      "id": "e-subagents-ledgers",
+      "from": "subagents",
+      "to": "ledgers",
+      "label": "charged per call",
+      "variant": "dashed"
+    },
+    {
+      "id": "e-cloudfns-compute",
+      "from": "cloudfns",
+      "to": "compute",
+      "label": "create with max_hours"
+    },
+    {
+      "id": "e-cloudfns-ledgers",
+      "from": "cloudfns",
+      "to": "ledgers",
+      "label": "price x hours",
+      "variant": "dashed"
+    },
+    {
+      "id": "e-ledgers-deliver",
+      "from": "ledgers",
+      "to": "deliver",
+      "label": "COSTS.md",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Same start for every team",
+      "items": [
+        "One mission file per team: same subject, budgets and deadline",
+        "Each team its provider's key and harness (OpenCode when the provider has none)",
+        "The AI chooses its strategy: models, efforts, modes, sub-agents, machines"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Hard caps",
+      "items": [
+        "LLM: every call reserves its worst case; the gateway answers 402 at the cap",
+        "Cloud: price x max_hours reserved at creation; a watchdog deletes overruns",
+        "Ledgers are written by the framework only, outside the AI's workspace"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "What is compared",
+      "items": [
+        "Scientific quality, on the evidence in each repository",
+        "Cost (LLM + cloud, from the ledgers) and time (start to deliver)",
+        "Compliance with the subject: COMPLIANCE.md, departures justified",
+        "No judge in the framework yet: the owner compares, or a judge is to build"
+      ]
+    }
+  ]
+}

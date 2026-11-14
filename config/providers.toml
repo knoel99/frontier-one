@@ -1,0 +1,150 @@
+# Providers, models and reasoning levels: the only provider-specific part of the framework.
+#
+# An agent is (provider, tier, reasoning). Tiers and levels are abstract:
+#   tier      = "frontier" | "standard" | "light"     (best model, next one, smallest/cheapest)
+#   reasoning = "none" | "low" | "medium" | "high" | "max"
+# Each provider maps them to a model id and to the value of its own reasoning parameter.
+# A missing tier falls back to the nearest one (light -> standard -> frontier);
+# a missing level falls back to the nearest lower one, else the lowest one. `model_reasoning` overrides the
+# mapping for one model. reasoning = "none" also turns `thinking` off where the provider has that switch.
+#
+# style:  "openai-chat"  Chat Completions with tools (Mistral, DeepSeek, xAI, Moonshot, Qwen, GLM, ...)
+#         "openai-responses"  OpenAI Responses API
+#         "gemini"       native generateContent (key in x-goog-api-key)
+#         "anthropic"    native Messages API
+# key_env: variable holding the key. In a Claude Code cloud session the network proxy injects the key for the
+#          hosts it knows; the framework then sends the placeholder "proxy-injected" (see README).
+# effort_field: dotted path of the reasoning parameter in the request body.
+# extra:  merged into every request body (e.g. turning thinking on).
+#
+# Model ids were listed with each provider's /models endpoint on 2026-11-14; reasoning values come from the
+# previous campaign's tests (old/race/PROVIDERS-TESTED.md, 2026-11-13). `python -m frontier ping` re-checks them.
+
+default_provider = "openai"
+
+[providers.openai]
+style = "openai-responses"   # Chat Completions refuses function tools together with reasoning_effort on gpt-6*
+base_url = "https://api.openai.com/v1"
+key_env = "OPENAI_API_KEY"
+effort_field = "reasoning.effort"
+tiers = { frontier = "gpt-6-astra", standard = "gpt-6.1-sol", light = "gpt-6-luna" }
+reasoning = { none = "none", low = "low", medium = "medium", high = "high", max = "max" }
+# Speed and price modes (developers.openai.com/api/docs/guides/{flex-processing,fast-mode,ultrafast-mode}, read
+# 2026-11-14). The response's service_tier says which tier was served; the gateway prices what was served.
+[providers.openai.modes.flex]
+body = { service_tier = "flex" }
+price_x = 0.5
+note = "slower (beta); may answer 429 Resource Unavailable (not billed) when capacity is short; allow 15 min per call"
+[providers.openai.modes.fast]
+body = { service_tier = "priority" }
+price_x = 2.0
+models = ["gpt-6-astra", "gpt-6.1-sol"]
+note = "up to 2.5x faster, steadier latency (named priority before 2026-07-30); above 1M tokens/min growth is ramp-limited and excess requests are served, and billed, at standard"
+[providers.openai.modes.ultrafast]
+body = { service_tier = "ultrafast" }
+price_x = 6.0
+models = ["gpt-6-astra", "gpt-6.1-sol"]
+note = "fastest tier, separate rate limits; the docs disagree on who has access (UNCONFIRMED)"
+
+[providers.anthropic]
+style = "anthropic"
+base_url = "https://api.anthropic.com/v1"
+key_env = "ANTHROPIC_API_KEY"
+effort_field = "output_config.effort"
+tiers = { frontier = "claude-fable-5-2", standard = "claude-sonnet-5-5", light = "claude-haiku-5-5" }
+reasoning = { low = "low", medium = "medium", high = "high", max = "max" }
+extra = { thinking = { type = "adaptive" } }
+[providers.anthropic.modes.fast]
+body = { speed = "fast" }
+price_x = 2.0
+models = ["claude-fable-5-2"]
+note = "up to 2.5x output tokens per second, same time to first token; own rate limit; usage.speed reports it (platform.claude.com fast-mode, 2026-11-14)"
+
+[providers.google]
+style = "gemini"
+base_url = "https://generativelanguage.googleapis.com/v1beta"
+key_env = "GEMINI_API_KEY"
+effort_field = "generationConfig.thinkingConfig.thinkingLevel"
+tiers = { frontier = "gemini-4-carbon", standard = "gemini-4-argon", light = "gemini-3.8-flash" }
+reasoning = { low = "low", medium = "medium", high = "high", max = "high" }
+[providers.google.modes.flex]
+body = { service_tier = "flex" }
+price_x = 0.5
+note = "preview; synchronous but sheddable: 1-15 min latency, 503/429 when there is no capacity"
+[providers.google.modes.priority]
+body = { service_tier = "priority" }
+price_x = 1.8
+note = "preview; latency in seconds, never shed; over its dynamic limit served and billed at standard; needs billing tier 2 or 3"
+
+[providers.xai]
+style = "openai-chat"
+base_url = "https://api.x.ai/v1"
+key_env = "XAI_API_KEY"
+effort_field = "reasoning_effort"
+tiers = { frontier = "grok-4.7", light = "grok-4.3" }
+reasoning = { low = "low", medium = "medium", high = "high", max = "xhigh" }
+[providers.xai.modes.priority]
+body = { service_tier = "priority" }
+price_x = 2.0
+note = "lower latency under load; billed 2x only when the response says service_tier = priority (docs.x.ai priority-processing)"
+
+[providers.mistral]
+style = "openai-chat"
+base_url = "https://api.mistral.ai/v1"
+key_env = "MISTRAL_API_KEY"
+effort_field = "reasoning_effort"
+tiers = { frontier = "mistral-large-4", standard = "mistral-medium-3.5", light = "mistral-small-2603" }
+reasoning = { none = "none", low = "low", medium = "medium", high = "high", max = "high" }
+# Medium 3.5 and Small accept only none and high (API error 3051, 2026-11-14).
+model_reasoning = { "mistral-medium-3.5" = { none = "none", low = "none", medium = "high" }, "mistral-small-2603" = { none = "none", low = "none", medium = "high" } }
+
+[providers.deepseek]
+style = "openai-chat"
+base_url = "https://api.deepseek.com"
+key_env = "DEEPSEEK_API_KEY"
+effort_field = "reasoning_effort"
+# V4.1 Flash 1017 ranks above V4 Pro on the intelligence index used by the previous campaign.
+tiers = { frontier = "deepseek-flash", standard = "deepseek-v4-pro" }
+reasoning = { low = "low", medium = "high", high = "high", max = "max" }
+extra = { thinking = { type = "enabled" } }
+
+[providers.moonshot]
+style = "openai-chat"
+base_url = "https://api.moonshot.ai/v1"
+key_env = "MOONSHOT_API_KEY"
+effort_field = "reasoning_effort"
+tiers = { frontier = "kimi-k3.1-pro", light = "kimi-k3" }
+reasoning = { low = "low", medium = "high", high = "high", max = "max" }
+[providers.moonshot.modes.highspeed]
+model = { "kimi-k3.1-pro" = "kimi-k3.1-pro-highspeed" }
+note = "about 2-3x the speed at 2x the price (a separate model, priced in prices.toml)"
+
+[providers.alibaba]
+style = "openai-chat"
+base_url = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+key_env = "DASHSCOPE_API_KEY"
+effort_field = "reasoning_effort"
+tiers = { frontier = "qwen3.8-max-0902", standard = "qwen3.8-flash", light = "qwen3.8-27b" }
+reasoning = { low = "low", medium = "medium", high = "high", max = "xhigh" }
+
+[providers.zhipu]
+style = "openai-chat"
+base_url = "https://api.z.ai/api/paas/v4"
+key_env = "ZAI_API_KEY"
+effort_field = "reasoning_effort"
+tiers = { frontier = "glm-5.3", light = "glm-5.3-flash" }
+reasoning = { low = "low", medium = "medium", high = "high", max = "max" }
+extra = { thinking = { type = "enabled" } }
+
+# Limits shared by an agent and all the sub-agents it starts (one "run").
+[limits]
+max_depth = 2              # main agent = depth 0; a sub-agent at max_depth cannot spawn further
+max_agents = 12            # sub-agents per run
+max_turns = 40             # model turns per agent (a role or a spawn call can lower it)
+max_tokens_per_run = 3_000_000   # input + output tokens of the whole tree
+max_output_tokens = 16_000 # per model call
+tool_output_chars = 20_000 # longer tool outputs are truncated (head and tail kept)
+shell_timeout_s = 600
+[providers.zhipu.modes.flashx]
+model = { "glm-5.3-flash" = "glm-5.3-flashx" }
+note = "about 200 tokens/s, about 2.5x the price of glm-5.3-flash (a separate model, priced in prices.toml)"
