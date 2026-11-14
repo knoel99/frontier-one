@@ -163,6 +163,8 @@ max_agents = 12            # sub-agents per run
 max_turns = 40             # model turns per agent (a role or a spawn call can lower it)
 max_tokens_per_run = 3_000_000   # input + output tokens of the whole tree
 max_output_tokens = 16_000 # per model call
+max_reserved_output_tokens = 32_000  # gateway: output reserved per harness call at most (a call that outputs more
+                                    # goes over the cap by the difference, once)
 tool_output_chars = 20_000 # longer tool outputs are truncated (head and tail kept)
 shell_timeout_s = 600
 [providers.zhipu.modes.flashx]

@@ -352,8 +352,9 @@ def test_file_configured_harnesses_are_routed(tmp_path):
     info = mission.prepare(_mission(tmp_path, harness="opencode", provider="zhipu"), ping=False, offers=False)
     port = info["settings"]["gateway_port"]
     oc = json.loads((info["workspace"] / "opencode.json").read_text())
-    prov = oc["providers"]["frontier"]
-    assert prov["settings"]["baseURL"] == f"http://127.0.0.1:{port}/zhipu/api/paas/v4" and prov["env"] == ["ZAI_API_KEY"]
+    prov = oc["provider"]["frontier"]  # the format OpenCode 1.19.5 loads (its `providers` section was ignored)
+    assert prov["options"]["baseURL"] == f"http://127.0.0.1:{port}/zhipu/api/paas/v4"
+    assert prov["options"]["apiKey"] == "{env:ZAI_API_KEY}" and prov["npm"] == "@ai-sdk/openai-compatible"
     assert list(prov["models"]) == ["glm-5.3"] and oc["mcp"]["servers"]["frontier"]["command"][0].endswith("frontier-mcp")
     (tmp_path / "h").mkdir()
     info2 = mission.prepare(_mission(tmp_path / "h", harness="hermes", provider="openai"), ping=False, offers=False)

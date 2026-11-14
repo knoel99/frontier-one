@@ -158,9 +158,10 @@ Prices, models, speed modes, compute offers and budgets of the current mission: 
 """
 
 
-OPENCODE_PACKAGE = {"openai-chat": "@opencode/ai/providers/openai-compatible",
-                    "openai-responses": "@opencode/ai/providers/openai-compatible/responses",
-                    "anthropic": "@opencode/ai/providers/anthropic-compatible", "gemini": "@opencode/ai/providers/google"}
+# AI SDK packages of OpenCode's custom providers (`provider.<id>.npm`). openai-compatible checked live with OpenCode
+# 1.19.5 on 2026-11-14 (its newer `providers` section with `package` was ignored: "Model not found").
+OPENCODE_PACKAGE = {"openai-chat": "@ai-sdk/openai-compatible", "openai-responses": "@ai-sdk/openai",
+                    "anthropic": "@ai-sdk/anthropic", "gemini": "@ai-sdk/google"}
 
 
 def artifacts(mcp: McpCommand, which: list[str] | None = None, target: dict | None = None) -> dict[str, str]:
@@ -221,9 +222,10 @@ def artifacts(mcp: McpCommand, which: list[str] | None = None, target: dict | No
                 cfg = load_config()
                 style = cfg["providers"][target["provider"]]["style"]
                 port = int(target["gateway"].rsplit(":", 1)[1])
-                conf["providers"] = {"frontier": {
-                    "package": OPENCODE_PACKAGE.get(style, OPENCODE_PACKAGE["openai-chat"]), "env": [target["key_env"]],
-                    "settings": {"baseURL": base_url_for(port, target["provider"], cfg), "transport": "http"},
+                conf["provider"] = {"frontier": {
+                    "npm": OPENCODE_PACKAGE.get(style, OPENCODE_PACKAGE["openai-chat"]), "name": "Frontier gateway",
+                    "options": {"baseURL": base_url_for(port, target["provider"], cfg),
+                                "apiKey": "{env:" + target["key_env"] + "}"},
                     "models": {target["model"]: {}}}}
             out["opencode.json"] = _j(conf)
         elif key == "kilo":

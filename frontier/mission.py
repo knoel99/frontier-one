@@ -14,6 +14,7 @@ of the mission and written only by the framework: mission.json, budgets.json, ll
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
 import pathlib
@@ -321,7 +322,9 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     origin = credentials.load(m, cfg)  # every key under its standard name, from wherever the mission keeps it
     hf_env = credentials.services(cfg)["huggingface"].env
     old_settings = json.loads((state / "mission.json").read_text()) if (state / "mission.json").exists() else {}
-    settings = {"gateway_port": old_settings.get("gateway_port") or _free_port(), "name": m["mission"].get("name", "mission"),
+    # a port of its own per mission: missions prepared together would all find the same first free port
+    own = 20000 + int(hashlib.sha256(str(state.resolve()).encode()).hexdigest(), 16) % 20000
+    settings = {"gateway_port": old_settings.get("gateway_port") or _free_port(own), "name": m["mission"].get("name", "mission"),
                 "workspace": str(ws), "harness": m["harness"]["name"],
                 "provider": m.get("llm", {}).get("provider"), "providers": providers_of(m),
                 "tier": m["harness"].get("tier", "frontier"), "reasoning": m["harness"].get("reasoning", "high"),

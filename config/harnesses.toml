@@ -94,7 +94,7 @@ goal = "/goal"   # enforced goalTokenBudget / goalMaxTurns (qwen-code-docs featu
 
 [vibe]
 install = "uv tool install mistral-vibe"
-command = ["vibe", "-p", "{prompt}", "--model", "{model}", "--auto-approve", "--max-turns", "{max_turns}", "--output", "json"]
+command = ["vibe", "-p", "{prompt}", "--trust", "--model", "{model}", "--auto-approve", "--max-turns", "{max_turns}", "--output", "json"]  # --trust: else .vibe/ (MCP) is ignored (vibe 3.1.2)
 effort = "provider"
 env = { MISTRAL_API_KEY = "{key}" }
 # Vibe routes only through [[providers]] api_base in ~/.vibe/config.toml (docs.mistral.ai/vibe configuration
@@ -105,7 +105,7 @@ usage = "json-usage"
 
 [dsh]
 install = "npm install -g @deepseek-ai/dsh@latest"  # prereleases only: npm skips them without a tag (2026-11-14)
-command = ["dsh", "--profile", "headless", "--json", "--approval-policy", "never", "--patch", "{workspace}/.dsh/frontier.patch.yml", "{prompt}"]
+command = ["dsh", "--profile", "headless", "--patch", "{workspace}/.dsh/frontier.patch.yml", "--json", "--approval-policy", "never", "{prompt}"]  # launcher flags first (dsh 0.2.2-rc.1)
 effort = "provider"
 env = { DEEPSEEK_API_KEY = "{key}", DSH_MODEL = "{model}", DSH_REASONING_EFFORT = "{effort}" }
 route = { DEEPSEEK_BASE_URL = "{gateway}/deepseek/anthropic" }   # dsh speaks Anthropic Messages to DeepSeek

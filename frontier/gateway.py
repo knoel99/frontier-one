@@ -126,6 +126,9 @@ def worst_case(cfg: dict, provider: str, path: str, body: bytes) -> float:
         obj = {}
     out = (obj.get("max_output_tokens") or obj.get("max_completion_tokens") or obj.get("max_tokens")
            or (obj.get("generationConfig") or {}).get("maxOutputTokens") or DEFAULT_MAX_OUT)
+    # Some harnesses ask for the model's whole output window on every call (Kimi Code: 262,144 tokens); reserving that
+    # would let one call hold most of a small budget. The reservation is capped; the call is charged what it used.
+    out = min(int(out), int(cfg.get("limits", {}).get("max_reserved_output_tokens", DEFAULT_MAX_OUT)))
     model = model_of(body, path, None)
     return worst_case_usd(provider, model, len(body), int(out), requested_price_x(cfg, provider, obj, model))
 

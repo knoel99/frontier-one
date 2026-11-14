@@ -418,3 +418,11 @@ def test_extra_skills_are_copied_next_to_the_frontier_skill(tmp_path):
     ws = info["workspace"]
     assert (ws / ".agents/skills/drawing/SKILL.md").exists()  # beside .agents/skills/frontier (Codex)
     assert "`drawing`" in (ws / "TOOLS.md").read_text()
+
+
+def test_reservation_caps_a_huge_requested_output_window(cfg):
+    body = json.dumps({"model": "kimi-k3", "messages": [], "max_tokens": 262144}).encode()  # what Kimi Code sends
+    capped = gateway.worst_case(cfg, "moonshot", "/v1/chat/completions", body)
+    full = budget.worst_case_usd("moonshot", "kimi-k3", len(body), 262144)
+    limit = cfg["limits"]["max_reserved_output_tokens"]
+    assert capped == pytest.approx(budget.worst_case_usd("moonshot", "kimi-k3", len(body), limit)) and capped < full / 5
