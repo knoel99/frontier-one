@@ -155,7 +155,8 @@ def activities(name: str, settings: dict, events: list[dict], subs: list[dict], 
                     "start": t, "end": None, "detail": "running"})
     for r in subs:
         if r.get("start") and r["kind"] in ("spawn_agent", "main (API agent)"):
-            out.append({"team": name, "kind": "sub-agent" if r["kind"] == "spawn_agent" else "session", "provider": r["model"].split("/")[0], "label": r["agent"],
+            kind = "sub-agent" if r["kind"] == "spawn_agent" else "session"
+            out.append({"team": name, "kind": kind, "provider": r["model"].split("/")[0], "label": r["agent"],
                         "start": r["start"], "end": r["end"], "detail": f"{r['model']}@{r['effort']}, {r['usd']:.4f} USD"})
     for r in resources:
         price = r.get("eur_per_hour") or r.get("usd_per_hour")
