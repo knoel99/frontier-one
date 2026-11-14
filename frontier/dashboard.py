@@ -92,7 +92,8 @@ def subagents(events: list[dict], llm: list[dict], logs: list[pathlib.Path]) -> 
     for e in events:
         k, a = e.get("event"), e.get("agent")
         if k == "agent_start" and a and not a.startswith("harness"):
-            rows[a] = {"kind": "spawn_agent" if e.get("depth") else "main (API agent)", "agent": a, "parent": e.get("parent"), "depth": e.get("depth"),
+            kind = "spawn_agent" if e.get("depth") else "main (API agent)"
+            rows[a] = {"kind": kind, "agent": a, "parent": e.get("parent"), "depth": e.get("depth"),
                        "model": f"{e.get('provider')}/{e.get('model')}", "effort": e.get("reasoning"),
                        "effort_value": e.get("effort_value"), "start": e.get("t"), "end": None, "status": "running",
                        "task": _short(e.get("task", ""), 300), "calls": 0, "tool_calls": 0, "input": 0, "cached": 0,
