@@ -86,7 +86,7 @@ def test_watchdog_deletes_overdue_resources(tmp_path, cfg, monkeypatch):
     run.resources = [{"provider": "runpod", "id": "p1", "usd_per_hour": 1.0, "max_hours": 2, "created": old, "state": "alive"},
                      {"provider": "runpod", "id": "p2", "usd_per_hour": 1.0, "max_hours": 9, "created": old, "state": "alive"}]
     deleted = []
-    monkeypatch.setattr(infra, "mcp_json", lambda tool, args=None: deleted.append(args["id"]) or {})
+    monkeypatch.setattr(infra, "mcp_json", lambda tool, args=None: (tool == "delete-pod" and deleted.append(args["id"])) or {})
     out = infra.enforce(run)
     assert deleted == ["p1"] and out[0]["reason"] == "max_hours reached"
     assert [r["id"] for r in run.alive()] == ["p2"]
@@ -422,7 +422,10 @@ deny = ["github.com", "de.wikipedia.org"]
     info = mission.prepare(f, ping=False, offers=False)
     assert info["settings"]["sandbox"] == "openshell"
     conf = tomllib.loads((info["workspace"] / ".codex/config.toml").read_text())["mcp_servers"]["frontier"]
+    env_vars = conf.pop("env_vars")  # Codex passes a server only the variables it is told to
+    assert conf.pop("default_tools_approval_mode") == "approve"  # headless: a tool needing approval is refused
     assert conf == {"command": "/opt/frontier/bin/frontier-mcp", "args": ["--state", "/sandbox/state"], "tool_timeout_sec": 3600}
+    assert "HTTPS_PROXY" in env_vars and "ANTHROPIC_API_KEY" in env_vars and "RUNPOD_API_KEY" in env_vars
     box = sandbox.OpenShell(info, launcher.harness_conf("codex", "anthropic"), dry_run=True)
     warnings = box.write_files()
     assert any("github.com" in w for w in warnings) and any("wikipedia" in w for w in warnings)

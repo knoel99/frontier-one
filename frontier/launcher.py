@@ -361,6 +361,7 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
             (ws / "COSTS.md").write_text(mission.costs_markdown(st, run.budget.resources(), []))
             print("not delivered; COSTS.md written")
         else:
+            mission.final_costs(run, ws)  # what the harness spent after deliver, finishing its turn
             commit(ws, "Delivery", tag="delivery")
             print("delivered: " + (state / "delivery.json").read_text())
     return 0
@@ -385,6 +386,13 @@ def _stop_reason(run: Run) -> str:
     ok, why = run.budget.llm_allowed()
     if not ok:
         return why
+    # The gateway refuses a call when what is left does not cover its worst case, before the spend reaches the cap.
+    # A last session whose calls were refused, with nothing charged since, would only be refused again.
+    events = budget_mod.read_jsonl(state / "events.jsonl")
+    starts = [e for e in events if e.get("event") == "session_start"]
+    refused = [e for e in events if e.get("event") == "llm_refused" and starts and e.get("t", "") >= starts[-1].get("t", "")]
+    if refused and not any(e["t"] >= refused[-1]["t"] for e in run.budget.llm_entries()):
+        return f"LLM budget: the gateway refused the last session's calls ({refused[-1].get('why', '')[:160]})"
     return ""
 
 

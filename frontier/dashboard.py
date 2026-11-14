@@ -165,6 +165,25 @@ def activities(name: str, settings: dict, events: list[dict], subs: list[dict], 
     return [a for a in out if a["start"]]
 
 
+def runner_activity(d: pathlib.Path, resources: list[dict], at) -> list[dict]:
+    """Every machine of the mission, alive or deleted, with its cost so far and the end of its activity log
+    (state/runners/<id>.log: what was run on it and what it answered)."""
+    out = []
+    for r in resources:
+        created, ended = parse_time(r.get("created")), parse_time(r.get("deleted_at"))
+        hours = ((ended or at) - created).total_seconds() / 3600 if created else 0.0
+        price = r.get("eur_per_hour") or r.get("usd_per_hour") or 0
+        log = d / "runners" / f"{r['id']}.log"
+        text = log.read_text(errors="replace") if log.exists() else ""
+        out.append({"provider": r["provider"], "id": r["id"], "name": r.get("name"), "type": r.get("type"),
+                    "state": r.get("state"), "created": r.get("created"), "deleted": r.get("deleted_at"),
+                    "hours": round(hours, 3), "cost": round(price * hours, 4),
+                    "currency": "EUR" if r.get("eur_per_hour") is not None else "USD",
+                    "commands": sum(1 for ln in text.splitlines() if ln.startswith("=== ") and " exec" in ln),
+                    "log_tail": "\n".join(text.splitlines()[-30:])})
+    return out
+
+
 def team_state(d: pathlib.Path) -> dict:
     settings = json.loads((d / "mission.json").read_text())
     b = Budget(d)
@@ -205,12 +224,13 @@ def team_state(d: pathlib.Path) -> dict:
                       "price_h": r.get("eur_per_hour") or r.get("usd_per_hour"), "hours": round(hours, 2),
                       "max_hours": r.get("max_hours")})
     subs = subagents(events, llm, sessions)
+    runners = runner_activity(d, b.resources(), at)
     jobs = [a for a in actions if a["kind"] == "tool" and a["text"].startswith(("rp_exec", "scw_create", "rp_create"))]
     delivered = json.loads((d / "delivery.json").read_text()) if (d / "delivery.json").exists() else None
     return {"name": settings.get("name", d.name), "harness": settings.get("harness"), "provider": settings.get("provider"),
             "tier": settings.get("tier"), "reasoning": settings.get("reasoning"), "status": st, "tokens": tokens,
             "series": series, "alive": alive, "jobs": jobs[-10:], "running": running, "delivered": delivered,
-            "actions": actions[-120:], "subagents": subs,
+            "actions": actions[-120:], "subagents": subs, "runners": runners,
             "activities": activities(settings.get("name", d.name), settings, events, subs, b.resources())}
 
 

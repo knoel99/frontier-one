@@ -127,10 +127,11 @@ class Server:
             return roles_summary(), False
         try:
             out = str(REGISTRY[name].fn(Ctx(self.run, self.root), **args))
-        except Exception as e:  # noqa: BLE001
-            return f"error: {type(e).__name__}: {e}", True
-        self.run.log(event="mcp_call", tool=name, arguments=json.dumps(args)[:2000], output=out[:1000])
-        return out, out.startswith(("error", "refused"))
+        except Exception as e:  # noqa: BLE001 - a failed call is an answer for the harness, and a line in the log
+            out = f"error: {type(e).__name__}: {e}"
+        err = out.startswith(("error", "refused"))
+        self.run.log(event="mcp_call", tool=name, arguments=json.dumps(args)[:2000], output=out[:1000], error=err)
+        return out, err
 
     def handle(self, msg: dict) -> dict | None:
         method, mid = msg.get("method"), msg.get("id")

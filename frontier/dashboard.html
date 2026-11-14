@@ -51,6 +51,7 @@ function team(t){const s=t.status,l=s.llm,c=s.cloud,tk=t.tokens;
  <details><summary>By model and source</summary><table><tr><th>model</th><th>calls</th><th>in</th><th>out</th><th>USD</th></tr>${models}</table>
  <div class="mute">${Object.entries(l.by_source).map(([k,v])=>esc(k)+': '+fmt(v)).join(' · ')}</div></details>
  <details ${alive?'open':''}><summary>Running now: ${t.alive.length} machine(s)</summary><table>${alive}</table>${jobs}</details>
+ <details ${(t.runners||[]).length?'open':''}><summary>Runners: ${(t.runners||[]).length} machine(s), alive or deleted</summary><table><tr><th>machine</th><th>state</th><th>time</th><th>cost</th><th>commands</th></tr>${(t.runners||[]).map(r=>`<tr><td>${esc(r.provider)} ${esc(r.type||'')}<div class="mute">${esc(r.id)}</div></td><td>${esc(r.state||'')}</td><td>${r.hours} h</td><td>${fmt(r.cost,4)} ${r.currency}</td><td>${r.commands}</td></tr><tr><td colspan="5"><details><summary class="mute">activity log</summary><pre style="white-space:pre-wrap;max-height:240px;overflow:auto">${esc(r.log_tail)}</pre></details></td></tr>`).join('')}</table></details>
  <details><summary>Latest actions</summary><table>${t.actions.slice(-25).reverse().map(a=>`<tr><td><span class="tag">${esc(a.kind)}</span></td><td>${esc(a.text)}</td></tr>`).join('')}</table></details></div>`}
 async function load(){const d=window.__STATE__||await (await fetch('api/state')).json();
  document.getElementById('meta').textContent=`${d.teams.length} team(s) · ${d.root} · updated ${d.time}`;

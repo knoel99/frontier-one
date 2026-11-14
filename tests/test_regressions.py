@@ -9,6 +9,7 @@ import pathlib
 import subprocess
 import threading
 import time
+import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -297,3 +298,81 @@ def test_mcp_calls_run_concurrently(tmp_path, monkeypatch):
     release.set()
     t.join(5)
     assert '"id": 1' in out.getvalue()
+
+
+# ---------------------------------------------------------------- runner activity
+
+
+def test_runner_activity_is_kept_and_shown(tmp_path, cfg, monkeypatch):
+    from frontier import dashboard
+
+    state = tmp_path / "missions" / "t"
+    r = agent_mod.Run(cfg, workspace=tmp_path / "ws", log_dir=state, allow_spend=True)
+    (state / "mission.json").write_text(json.dumps({"name": "t"}))
+    answers = {"exec-pod": {"exitCode": 0, "durationMs": 12, "stdout": "pytest: 61 passed\n", "stderr": "warn\n"},
+               "stream-pod-logs": {"logs": ["boot ok", "job done"]}, "delete-pod": {}}
+    monkeypatch.setattr(infra, "mcp_json", lambda tool, args=None: answers[tool])
+    r.record({"provider": "runpod", "kind": "pod", "id": "p1", "type": "1x X", "usd_per_hour": 0.5, "max_hours": 1})
+    ctx = agent_mod.Ctx(r, None)
+    infra.rp_exec(ctx, "p1", "python -m pytest -q")
+    infra.rp_delete_pod(ctx, "p1")
+    log = (state / "runners" / "p1.log").read_text()
+    for part in ("exec (exit 0, 12 ms): python -m pytest -q", "pytest: 61 passed", "--- stderr", "warn",
+                 "logs before deletion", "job done", "deleted (deleted)"):
+        assert part in log, part
+    (runner,) = dashboard.snapshot(tmp_path / "missions")["teams"][0]["runners"]
+    assert runner["state"] == "deleted" and runner["commands"] == 1 and "job done" in runner["log_tail"]
+
+
+# ---------------------------------------------------------------- LLM cap seen by the launcher
+
+
+def test_launcher_stops_when_the_gateway_refused_the_last_session(tmp_path, cfg):
+    state = tmp_path / "state"
+    r = agent_mod.Run(cfg, workspace=tmp_path / "ws", log_dir=state)
+    r.budget.set_caps(llm_usd=0.000001)  # nothing spent, but no call fits in what is left
+    r.log(event="session_start", n=1)
+    gw = gateway.Gateway(("127.0.0.1", 0), r.budget, {"openai": ("http://127.0.0.1:9", "openai")}, cfg=cfg)
+    threading.Thread(target=gw.serve_forever, daemon=True).start()
+    req = urllib.request.Request(f"http://127.0.0.1:{gw.server_address[1]}/openai/v1/responses",
+                                 data=json.dumps({"model": "gpt-6-luna", "input": "hi"}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(req, timeout=10)
+    gw.shutdown()
+    assert e.value.code == 402
+    assert "LLM budget" in launcher._stop_reason(r)  # no session restarted only to be refused again
+
+
+# ---------------------------------------------------------------- found by the fresh verification of the live run
+
+
+def test_a_tool_that_raises_is_logged_as_an_error(tmp_path, monkeypatch):
+    from frontier.tools import REGISTRY
+
+    monkeypatch.setenv("FRONTIER_RUNS", str(tmp_path))
+    srv = mcp.Server()
+
+    def boom(ctx, **kw):
+        raise infra.APIError("Runpod create-pod: HTTP 422")
+
+    monkeypatch.setattr(REGISTRY["rp_pod"], "fn", boom)
+    out, err = srv.call("rp_pod", {"pod_id": "x"})
+    assert err and "422" in out
+    (e,) = [e for e in budget.read_jsonl(srv.run.log_dir / "events.jsonl") if e.get("event") == "mcp_call"]
+    assert e["tool"] == "rp_pod" and e["error"] is True and "422" in e["output"]
+
+
+def test_costs_include_what_was_spent_after_delivery(tmp_path, cfg):
+    info = mission.prepare(_mission(tmp_path), ping=False, offers=False)
+    ws = info["workspace"]
+    for f in mission.REQUIRED:
+        (ws / f).write_text("x\n")
+    r = agent_mod.Run(cfg, workspace=ws, log_dir=info["state"], settings=info["settings"], allow_spend=True)
+    r.budget.charge_llm("gateway", "harness", "openai", "gpt-6-luna", {"input": 1000, "output": 100})
+    mission.deliver(agent_mod.Ctx(r, None), summary="done")
+    r.budget.charge_llm("gateway", "harness", "openai", "gpt-6-luna", {"input": 2000, "output": 200})  # finishing its turn
+    rec = mission.final_costs(r, ws)
+    assert rec["final_llm_usd"] > rec["llm_usd"] and rec["llm_usd_after_delivery"] > 0
+    costs = (ws / "COSTS.md").read_text()
+    assert "after delivery" in costs and "of None" not in costs and "- scaleway: 0.0000 EUR of 3" in costs

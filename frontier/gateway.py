@@ -24,7 +24,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from .budget import Budget, worst_case_usd
+from .budget import Budget, append_chained, now, worst_case_usd
 from .config import load_config
 
 DEFAULT_MAX_OUT = 32000  # output tokens assumed for a call that sets no limit
@@ -217,7 +217,10 @@ class Handler(BaseHTTPRequestHandler):
         if is_llm_call:
             worst = worst_case(self.server.cfg, provider, rest, body)
             rid, why = self.server.budget.reserve(worst, f"gateway {rest[:60]}")
-            if rid is None:
+            if rid is None:  # recorded, so that the launcher does not restart a session only to be refused again
+                append_chained(self.server.budget.dir / "events.jsonl", {
+                    "t": now().isoformat(timespec="seconds"), "event": "llm_refused", "agent": self.server.agent,
+                    "why": why})
                 return self._send_json(402, {"error": {"type": "budget_exhausted", "code": "budget_exhausted", "message": why}})
             body = self._with_stream_usage(rest, body)
         try:

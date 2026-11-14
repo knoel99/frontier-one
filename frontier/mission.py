@@ -398,10 +398,26 @@ def deliver(ctx, summary: str = "", force: bool = False) -> str:
     return json.dumps(rec, indent=1)
 
 
+def final_costs(run, ws: pathlib.Path) -> dict:
+    """After the last session of a delivered mission: COSTS.md and delivery.json with the final spend, including what
+    the harness spent after deliver while finishing its turn."""
+    state = run.log_dir
+    st = run.budget.status()
+    pubs = json.loads((state / "publications.json").read_text()) if (state / "publications.json").exists() else []
+    (ws / "COSTS.md").write_text(costs_markdown(st, run.budget.resources(), pubs))
+    rec = json.loads((state / "delivery.json").read_text())
+    rec.update(final_llm_usd=st["llm"]["spent_usd"], llm_usd_after_delivery=st["llm"].get("after_delivery_usd", 0),
+               final_runpod_usd=st["cloud"]["runpod"]["spent"], final_scaleway_eur=st["cloud"]["scaleway"]["spent"])
+    (state / "delivery.json").write_text(json.dumps(rec, indent=1) + "\n")
+    return rec
+
+
 def costs_markdown(st: dict, resources: list[dict], pubs: list[dict]) -> str:
     lines = ["# Costs", "", f"Written by the framework from its ledgers at {st['time']} (`.frontier/`).", "",
              "## LLM", "", f"Spent {st['llm']['spent_usd']:.4f} USD of {st['llm']['cap_usd']} USD"
-             + (" (some prices estimated)" if st["llm"].get("estimated") else "") + ".", "",
+             + (" (some prices estimated)" if st["llm"].get("estimated") else "")
+             + (f", of which {st['llm']['after_delivery_usd']:.4f} USD after delivery (the harness finishing its turn)"
+                if st["llm"].get("after_delivery_usd") else "") + ".", "",
              *([f"Not included: the spend of {len(un)} harness session(s) the framework could not meter ("
                 + "; ".join(f"session {u['n']}: {u['note']}" for u in un) + ").", ""]
                if (un := st["llm"].get("unmetered_sessions")) else []),
@@ -410,7 +426,9 @@ def costs_markdown(st: dict, resources: list[dict], pubs: list[dict]) -> str:
         lines.append(f"| {k} | {v['calls']} | {v['input']} | {v['output']} | {v['usd']:.4f} |")
     lines += ["", "## Cloud", ""]
     for prov, c in st["cloud"].items():
-        lines.append(f"- {prov}: {c['spent']:.4f} {c['currency']} of {c['cap']} {c['currency']}.")
+        lines.append(f"- {prov}: not used." if c["cap"] is None and not c["spent"] else
+                     f"- {prov}: {c['spent']:.4f} {c['currency']} of {c['cap'] if c['cap'] is not None else 'no cap'} "
+                     f"{c['currency']}.")
     lines += ["", "| provider | resource | id | type | price/h | max h | created | deleted |", "|---|---|---|---|---:|---:|---|---|"]
     for r in resources:
         price = r.get("eur_per_hour") or r.get("usd_per_hour")
