@@ -12,7 +12,7 @@ The AI decides its own strategy: models, reasoning levels, speed modes, sub-agen
 gives the main thread a complete inventory of its tools (`TOOLS.md`), enforces the budgets, measures cost and time,
 and checks the deliverables (report, code, models or data on the Hub, a compliance matrix of the subject's
 instructions, a decision log). Evaluation: scientific quality, cost control, delivery time, compliance with the
-subject (departures justified). The previous race framework is kept in [`old/`](old/).
+subject (departures justified). The previous race framework is in git history: [`old/` at 7223bd6](https://github.com/knoel99/frontier-one/tree/7223bd6f39eaddce278457a0d0d32f3598f600b3/old).
 
 A race is N such missions run in parallel, one per provider and harness, on the same subject with the same caps:
 

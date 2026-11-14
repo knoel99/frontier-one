@@ -19,7 +19,7 @@
 # extra:  merged into every request body (e.g. turning thinking on).
 #
 # Model ids were listed with each provider's /models endpoint on 2026-11-14; reasoning values come from the
-# previous campaign's tests (old/race/PROVIDERS-TESTED.md, 2026-11-13). `python -m frontier ping` re-checks them.
+# previous campaign's tests (old/race/PROVIDERS-TESTED.md at commit 7223bd6, 2026-11-13). `python -m frontier ping` re-checks them.
 
 default_provider = "openai"
 

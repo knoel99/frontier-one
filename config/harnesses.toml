@@ -4,7 +4,7 @@
 # Placeholders: {prompt} {model} {effort} {max_turns} {workspace} {state} {key} {gateway} {frontier} {provider_model}.
 # effort: "level" = the abstract level (low..max) as is; "provider" = the provider's value from providers.toml.
 # Commands and environments of the vendor harnesses were run headless on 2026-11-13 by the previous campaign
-# (old/race/PROVIDERS-TESTED.md); the others come from the harnesses' docs (docs/HARNESSES.md). Check a new version
+# (old/race/PROVIDERS-TESTED.md at commit 7223bd6, in git history); the others come from the harnesses' docs (docs/HARNESSES.md). Check a new version
 # with `python3 -m frontier mission start <file> --prepare-only` and a short session before a real mission.
 #
 # Metering: `route` (environment variables) and `route_args` (arguments inserted before the prompt) send the

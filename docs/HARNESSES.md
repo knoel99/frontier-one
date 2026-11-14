@@ -58,7 +58,7 @@ per call, on the model API, charged to the mission's budget.
 
 `config/harnesses.toml` holds for each harness its install and setup commands, its headless command, its
 environment, how its own LLM traffic is routed through the metering gateway, and how it reports usage. The vendor
-commands ran headless on 2026-11-13 in the previous campaign (`old/race/PROVIDERS-TESTED.md`). A provider without its
+commands ran headless on 2026-11-13 in the previous campaign (`old/race/PROVIDERS-TESTED.md` at commit 7223bd6, in git history). A provider without its
 own harness gets OpenCode. Run `mission start --prepare-only` and one short session before relying on a recipe.
 
 | Harness | Routed through the gateway by | Checked | Fallback when not metered |
