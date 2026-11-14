@@ -75,6 +75,8 @@ def build_session(info: dict, h: dict, prompt: str, gateway: str | None) -> tupl
         env.update({k: str(v) for k, v in _fill(h["route"], values).items()})
     else:
         env.update({k: str(v) for k, v in _fill(h.get("default_base_url", {}), values).items()})
+    if info.get("egress"):  # no sandbox and hosts to block: every request of the harness goes through the filter
+        env.update({k: info["egress"] for k in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy")})
     env["FRONTIER_STATE"] = str(info["state"])
     env["PATH"] = f"{ROOT / 'bin'}{os.pathsep}{env.get('PATH', '')}"
     cmd = _fill(h["command"], values)
@@ -326,6 +328,13 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
         if box:  # inside the try: a failed setup still deletes what it created
             box.setup()
         else:
+            deny = info["mission"].get("network", {}).get("deny", [])
+            if deny:  # without a sandbox, the deny list is applied by an outbound filter (frontier/egress.py)
+                from .egress import start as start_egress
+
+                eg = start_egress(state, deny)
+                info["egress"] = eg.url
+                print(f"outbound filter {eg.url}, blocking {', '.join(deny)}")
             gw, gateway = open_gateway(state, s, h)
             harness_setup(info, h, gateway, run)
         for n in range(1, sessions + 1):

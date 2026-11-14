@@ -376,3 +376,45 @@ def test_costs_include_what_was_spent_after_delivery(tmp_path, cfg):
     assert rec["final_llm_usd"] > rec["llm_usd"] and rec["llm_usd_after_delivery"] > 0
     costs = (ws / "COSTS.md").read_text()
     assert "after delivery" in costs and "of None" not in costs and "- scaleway: 0.0000 EUR of 3" in costs
+
+
+# ---------------------------------------------------------------- race without a sandbox: outbound filter, extra skills
+
+
+def test_outbound_filter_blocks_denied_hosts_and_logs_every_host(tmp_path, monkeypatch):
+    from frontier import egress
+
+    for v in ("NO_PROXY", "no_proxy"):  # 127.0.0.1 stands for an allowed site: it must go through the filter
+        monkeypatch.delenv(v, raising=False)
+
+    assert egress.denied("knoel99.github.io", ["knoel99.github.io"]) and egress.denied("a.b.example.org", ["*.example.org"])
+    assert not egress.denied("scheng2024.github.io", ["knoel99.github.io"]) and not egress.denied("github.io", ["knoel99.github.io"])
+    up = ThreadingHTTPServer(("127.0.0.1", 0), _NoUsage)  # stands for any allowed site
+    threading.Thread(target=up.serve_forever, daemon=True).start()
+    e = egress.Egress(tmp_path, ["knoel99.github.io"])
+    threading.Thread(target=e.serve_forever, daemon=True).start()
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({"http": e.url}))
+    with pytest.raises(urllib.error.HTTPError) as err:
+        opener.open("http://knoel99.github.io/milady-2027/", timeout=10)
+    assert err.value.code == 403
+    ok = opener.open(urllib.request.Request(f"http://127.0.0.1:{up.server_address[1]}/x", data=b"{}"), timeout=10).read()
+    e.shutdown()
+    up.shutdown()
+    assert b"output" in ok
+    log = [ev for ev in budget.read_jsonl(tmp_path / "events.jsonl") if ev.get("event") == "egress"]
+    assert {(ev["host"], ev["allowed"]) for ev in log} == {("knoel99.github.io", False), ("127.0.0.1", True)}
+
+
+def test_extra_skills_are_copied_next_to_the_frontier_skill(tmp_path):
+    src = tmp_path / "skillrepo"
+    (src / "skills" / "drawing").mkdir(parents=True)
+    (src / "skills" / "drawing" / "SKILL.md").write_text("---\nname: drawing\n---\n")
+    for cmd in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "s"]):
+        subprocess.run(["git", "-C", str(src), *cmd], check=True)
+    rev = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    f = _mission(tmp_path)
+    f.write_text(f.read_text() + f'\n[[skills]]\nrepo = "{src}"\nrev = "{rev}"\npath = "skills/drawing"\n')
+    info = mission.prepare(f, ping=False, offers=False)
+    ws = info["workspace"]
+    assert (ws / ".agents/skills/drawing/SKILL.md").exists()  # beside .agents/skills/frontier (Codex)
+    assert "`drawing`" in (ws / "TOOLS.md").read_text()

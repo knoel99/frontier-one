@@ -41,7 +41,7 @@ wire = "openai-responses"
 usage = "jsonl:turn.completed"
 
 [antigravity]
-install = "curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --skip-aliases"
+install = "curl -fsSL https://antigravity.google/cli/install.sh | bash"  # --skip-aliases refused since (checked 2026-11-14)
 setup = "mkdir -p ~/.gemini/antigravity-cli && [ -f ~/.gemini/antigravity-cli/settings.json ] || echo '{\"modelProvider\": \"gemini\"}' > ~/.gemini/antigravity-cli/settings.json"
 command = ["agy", "-p", "{prompt}", "--model", "{model}", "--effort", "{effort}", "--output-format", "json", "--dangerously-skip-permissions"]
 effort = "provider"
@@ -104,7 +104,7 @@ wire = "openai-chat"
 usage = "json-usage"
 
 [dsh]
-install = "npm install -g @deepseek-ai/dsh"
+install = "npm install -g @deepseek-ai/dsh@latest"  # prereleases only: npm skips them without a tag (2026-11-14)
 command = ["dsh", "--profile", "headless", "--json", "--approval-policy", "never", "--patch", "{workspace}/.dsh/frontier.patch.yml", "{prompt}"]
 effort = "provider"
 env = { DEEPSEEK_API_KEY = "{key}", DSH_MODEL = "{model}", DSH_REASONING_EFFORT = "{effort}" }

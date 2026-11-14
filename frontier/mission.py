@@ -156,6 +156,29 @@ def _main_model(cfg: dict, m: dict) -> str:
         return "?"
 
 
+def install_skills(skills: list[dict], state: pathlib.Path, ws: pathlib.Path, files: dict) -> list[str]:
+    """Extra Agent Skills given by the mission (`[[skills]]` repo, rev, path), fetched at their pinned revision on the
+    host and copied next to the frontier skill, into every skills folder the harness reads."""
+    roots = sorted({str(pathlib.PurePosixPath(rel).parent.parent) for rel in files if rel.endswith("/frontier/SKILL.md")})
+    roots = roots or [".agents/skills"]
+    names = []
+    for sk in skills:
+        name = pathlib.PurePosixPath(sk["path"]).name
+        src = state / "skills" / name
+        if not (src / ".git").exists():
+            src.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["git", "init", "-q", str(src)], check=True)
+            subprocess.run(["git", "-C", str(src), "remote", "add", "origin", sk["repo"]], check=True)
+        subprocess.run(["git", "-C", str(src), "fetch", "-q", "--depth", "1", "origin", sk["rev"]], check=True)
+        subprocess.run(["git", "-C", str(src), "checkout", "-q", "FETCH_HEAD"], check=True)
+        if not (src / sk["path"] / "SKILL.md").exists():
+            raise FileNotFoundError(f"skill {sk['repo']}@{sk['rev']}: no SKILL.md in {sk['path']}")
+        for root in roots:
+            shutil.copytree(src / sk["path"], ws / root / name, dirs_exist_ok=True)
+        names.append(name)
+    return names
+
+
 def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict], offers: bool = True) -> str:
     h = HARNESSES[m["harness"]["name"]]
     caps = ctx.run.budget.caps
@@ -172,6 +195,9 @@ def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict]
         "sub-agents, skills) are yours as well. The speed modes of its provider (under Models below) apply to its "
         "own calls too when it sends the mode's request field; the metering gateway bills the tier each response says "
         "was served." + (f" Note: {h.notes}." if h.notes else ""), "",
+        *(["## Extra skills", "", "Agent Skills given by the mission, in the skills folder of your harness: "
+            + ", ".join(f"`{pathlib.PurePosixPath(s['path']).name}` ({s['repo']} at {s['rev'][:7]})" for s in m["skills"])
+            + ".", ""] if m.get("skills") else []),
         "## Frontier tools", "",
         "Served by the `frontier` MCP server of this workspace. Without MCP, the same tools run from the shell: "
         f"`{_paths(m, ctx.run.log_dir)[0]}/bin/frontier call <tool> '<json>' --state {_paths(m, ctx.run.log_dir)[1]}` "
@@ -324,10 +350,12 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
               "key_env": cfg["providers"][settings["provider"]]["key_env"]}
     if m["harness"]["name"] == "hermes":
         _hermes_home(state, cfg, target, mcp)
-    for rel, content in artifacts(mcp, [m["harness"]["name"]], target).items():
+    files = artifacts(mcp, [m["harness"]["name"]], target)
+    for rel, content in files.items():
         p = ws / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content)
+    install_skills(m.get("skills", []), state, ws, files)
     gi = ws / ".gitignore"
     lines = gi.read_text().splitlines() if gi.exists() else []
     for pat in ["__pycache__/", ".env"]:
