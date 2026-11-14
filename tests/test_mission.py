@@ -440,3 +440,19 @@ deny = ["github.com", "de.wikipedia.org"]
     assert box.session_command(2)[-3:] == ["session", "/sandbox/state", "2"]
     box.teardown()
     assert box.commands[-1][:3] == ["openshell", "provider", "delete"]
+
+
+def test_dashboard_activities_for_the_gantt():
+    from frontier import dashboard
+
+    events = [{"t": "2026-11-14T10:00:00+00:00", "event": "session_start", "n": 1},
+              {"t": "2026-11-14T10:30:00+00:00", "event": "session_end", "n": 1, "code": 0},
+              {"t": "2026-11-14T10:31:00+00:00", "event": "session_start", "n": 2}]
+    subs = [{"kind": "spawn_agent", "agent": "sub-1", "model": "zhipu/glm-5.3-flash", "effort": "low", "usd": 0.01,
+             "start": "2026-11-14T10:05:00+00:00", "end": "2026-11-14T10:06:00+00:00"}]
+    res = [{"provider": "runpod", "id": "p1", "name": "train", "type": "1x A40", "usd_per_hour": 0.59,
+            "created": "2026-11-14T10:10:00+00:00", "state": "alive"}]
+    acts = dashboard.activities("t", {"provider": "openai"}, events, subs, res)
+    kinds = {(a["kind"], a["provider"], a["end"] is None) for a in acts}
+    assert kinds == {("session", "openai", False), ("session", "openai", True), ("sub-agent", "zhipu", False),
+                     ("machine", "runpod", True)}

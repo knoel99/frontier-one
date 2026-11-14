@@ -140,6 +140,30 @@ def subagents(events: list[dict], llm: list[dict], logs: list[pathlib.Path]) -> 
     return out
 
 
+def activities(name: str, settings: dict, events: list[dict], subs: list[dict], resources: list[dict]) -> list[dict]:
+    """Bars of the Gantt chart: harness sessions (main thread), spawn_agent runs, cloud machines; end None = running."""
+    out = []
+    start = {}
+    for e in events:
+        if e.get("event") == "session_start":
+            start[e.get("n")] = e.get("t")
+        elif e.get("event") == "session_end" and e.get("n") in start:
+            out.append({"team": name, "kind": "session", "provider": settings.get("provider"), "label": f"session {e['n']}",
+                        "start": start.pop(e["n"]), "end": e.get("t"), "detail": f"exit {e.get('code')}"})
+    for n, t in start.items():
+        out.append({"team": name, "kind": "session", "provider": settings.get("provider"), "label": f"session {n}",
+                    "start": t, "end": None, "detail": "running"})
+    for r in subs:
+        if r.get("start") and r["kind"] in ("spawn_agent", "main (API agent)"):
+            out.append({"team": name, "kind": "sub-agent" if r["kind"] == "spawn_agent" else "session", "provider": r["model"].split("/")[0], "label": r["agent"],
+                        "start": r["start"], "end": r["end"], "detail": f"{r['model']}@{r['effort']}, {r['usd']:.4f} USD"})
+    for r in resources:
+        price = r.get("eur_per_hour") or r.get("usd_per_hour")
+        out.append({"team": name, "kind": "machine", "provider": r["provider"], "label": r.get("name") or r["id"],
+                    "start": r.get("created"), "end": r.get("deleted_at"), "detail": f"{r.get('type')}, {price}/h"})
+    return [a for a in out if a["start"]]
+
+
 def team_state(d: pathlib.Path) -> dict:
     settings = json.loads((d / "mission.json").read_text())
     b = Budget(d)
@@ -179,12 +203,14 @@ def team_state(d: pathlib.Path) -> dict:
         alive.append({"provider": r["provider"], "id": r["id"], "type": r.get("type"), "name": r.get("name"),
                       "price_h": r.get("eur_per_hour") or r.get("usd_per_hour"), "hours": round(hours, 2),
                       "max_hours": r.get("max_hours")})
+    subs = subagents(events, llm, sessions)
     jobs = [a for a in actions if a["kind"] == "tool" and a["text"].startswith(("rp_exec", "scw_create", "rp_create"))]
     delivered = json.loads((d / "delivery.json").read_text()) if (d / "delivery.json").exists() else None
     return {"name": settings.get("name", d.name), "harness": settings.get("harness"), "provider": settings.get("provider"),
             "tier": settings.get("tier"), "reasoning": settings.get("reasoning"), "status": st, "tokens": tokens,
             "series": series, "alive": alive, "jobs": jobs[-10:], "running": running, "delivered": delivered,
-            "actions": actions[-120:], "subagents": subagents(events, llm, sessions)}
+            "actions": actions[-120:], "subagents": subs,
+            "activities": activities(settings.get("name", d.name), settings, events, subs, b.resources())}
 
 
 def snapshot(root: pathlib.Path) -> dict:
@@ -194,7 +220,7 @@ def snapshot(root: pathlib.Path) -> dict:
     history = sorted(({**r, "team": t["name"]} for t in teams for r in t["subagents"]),
                      key=lambda r: r.get("start") or "", reverse=True)
     return {"time": now().isoformat(timespec="seconds"), "root": str(root), "teams": teams, "feed": feed[::-1],
-            "subagents": history}
+            "subagents": history, "activities": [a for t in teams for a in t["activities"]]}
 
 
 PAGE = (pathlib.Path(__file__).with_name("dashboard.html")).read_text()
