@@ -25,11 +25,12 @@ def cfg():
 # ---------------------------------------------------------------- budget
 
 
-def test_llm_cost_uses_cache_and_mode_prices():
-    pr = budget.prices()["gpt-6.1-sol"]
-    usd, exact = budget.llm_cost("openai", "gpt-6.1-sol", {"input": 1_000_000, "cached": 400_000, "output": 100_000})
+def test_llm_cost_uses_cache_and_mode_prices(cfg):
+    std = cfg["providers"]["openai"]["tiers"]["standard"]
+    pr = budget.prices()[std]
+    usd, exact = budget.llm_cost("openai", std, {"input": 1_000_000, "cached": 400_000, "output": 100_000})
     assert exact and usd == pytest.approx((600_000 * pr["input"] + 400_000 * pr["cache_read"] + 100_000 * pr["output"]) / 1e6)
-    usd2, _ = budget.llm_cost("openai", "gpt-6.1-sol", {"input": 1000, "output": 0}, price_x=2.0)
+    usd2, _ = budget.llm_cost("openai", std, {"input": 1000, "output": 0}, price_x=2.0)
     assert usd2 == pytest.approx(2 * 1000 * pr["input"] / 1e6)
     _, exact = budget.llm_cost("openai", "not-a-model", {"input": 1})
     assert not exact  # unknown model: priced as the provider's most expensive one
@@ -39,7 +40,7 @@ def test_llm_cap_is_hard(tmp_path):
     b = budget.Budget(tmp_path)
     b.set_caps(llm_usd=0.01)
     assert b.llm_allowed()[0]
-    b.charge_llm("t", "a", "openai", "gpt-6.1-sol", {"input": 1000, "output": 1000})  # 0.012 USD
+    b.charge_llm("t", "a", "openai", "gpt-6-astra", {"input": 1000, "output": 1000})  # 0.06 USD
     ok, why = b.llm_allowed()
     assert not ok and "cap" in why
     b2 = budget.Budget(tmp_path / "b2")

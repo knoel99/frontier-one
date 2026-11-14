@@ -34,7 +34,9 @@ def test_every_provider_resolves_every_tier_and_level(cfg):
 
 
 def test_tier_fallback_and_model_override(cfg):
-    assert llm.resolve(cfg, "xai", "standard", "low").model == cfg["providers"]["xai"]["tiers"]["light"]
+    two = {**cfg, "providers": {**cfg["providers"], "xai": {**cfg["providers"]["xai"], "tiers": {"frontier": "big", "light": "small"}}}}
+    assert llm.resolve(two, "xai", "standard", "low").model == "small"  # a missing tier falls back to the nearest one
+    assert llm.resolve(cfg, "xai", "light", "low").model == cfg["providers"]["xai"]["tiers"]["frontier"]
     s = llm.resolve(cfg, "mistral", "light", "low")
     assert s.model == "mistral-small-2603" and s.effort_value == "none"
     assert llm.resolve(cfg, "mistral", "frontier", "low").effort_value == "low"

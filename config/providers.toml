@@ -28,7 +28,7 @@ style = "openai-responses"   # Chat Completions refuses function tools together 
 base_url = "https://api.openai.com/v1"
 key_env = "OPENAI_API_KEY"
 effort_field = "reasoning.effort"
-tiers = { frontier = "gpt-6-astra", standard = "gpt-6.1-sol", light = "gpt-6-luna" }
+tiers = { frontier = "gpt-6-astra", standard = "gpt-6.1-terra", light = "gpt-6-luna" }
 reasoning = { none = "none", low = "low", medium = "medium", high = "high", max = "max" }
 # Speed and price modes (developers.openai.com/api/docs/guides/{flex-processing,fast-mode,ultrafast-mode}, read
 # 2026-11-14). The response's service_tier says which tier was served; the gateway prices what was served.
@@ -66,7 +66,7 @@ style = "gemini"
 base_url = "https://generativelanguage.googleapis.com/v1beta"
 key_env = "GEMINI_API_KEY"
 effort_field = "generationConfig.thinkingConfig.thinkingLevel"
-tiers = { frontier = "gemini-4-carbon", standard = "gemini-4-argon", light = "gemini-3.8-flash" }
+tiers = { frontier = "gemini-4-carbon", standard = "gemini-4-argon", light = "gemini-4-hydrogen" }
 reasoning = { low = "low", medium = "medium", high = "high", max = "high" }
 [providers.google.modes.flex]
 body = { service_tier = "flex" }
@@ -82,7 +82,7 @@ style = "openai-chat"
 base_url = "https://api.x.ai/v1"
 key_env = "XAI_API_KEY"
 effort_field = "reasoning_effort"
-tiers = { frontier = "grok-4.7", light = "grok-4.3" }
+tiers = { frontier = "grok-4.7" }  # the latest version on every tier
 reasoning = { low = "low", medium = "medium", high = "high", max = "xhigh" }
 [providers.xai.modes.priority]
 body = { service_tier = "priority" }
