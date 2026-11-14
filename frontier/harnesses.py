@@ -144,8 +144,14 @@ Prices, models, speed modes, compute offers and budgets of the current mission: 
 """
 
 
-def artifacts(mcp: McpCommand, which: list[str] | None = None) -> dict[str, str]:
-    """{relative path: content} for the given harnesses (default: all)."""
+OPENCODE_PACKAGE = {"openai-chat": "@opencode/ai/providers/openai-compatible",
+                    "openai-responses": "@opencode/ai/providers/openai-compatible/responses",
+                    "anthropic": "@opencode/ai/providers/anthropic-compatible", "gemini": "@opencode/ai/providers/google"}
+
+
+def artifacts(mcp: McpCommand, which: list[str] | None = None, target: dict | None = None) -> dict[str, str]:
+    """{relative path: content} for the given harnesses (default: all). `target` (a mission: provider, model,
+    gateway, key_env) adds what routes a harness's own model calls through the metering gateway."""
     names = which or list(HARNESSES)
     keys: list[str] = []
     for n in names:
@@ -189,8 +195,20 @@ def artifacts(mcp: McpCommand, which: list[str] | None = None) -> dict[str, str]
         elif key == "cursor_mcp":
             out[".cursor/mcp.json"] = _j({"mcpServers": {"frontier": {"type": "stdio", **server}}})
         elif key == "opencode":
-            out["opencode.json"] = _j({"$schema": "https://opencode.ai/config.json",
-                                       "mcp": {"servers": {"frontier": {"type": "local", "command": mcp.argv}}}})
+            conf = {"$schema": "https://opencode.ai/config.json",
+                    "mcp": {"servers": {"frontier": {"type": "local", "command": mcp.argv}}}}
+            if target:
+                from .config import load_config
+                from .gateway import base_url_for
+
+                cfg = load_config()
+                style = cfg["providers"][target["provider"]]["style"]
+                port = int(target["gateway"].rsplit(":", 1)[1])
+                conf["providers"] = {"frontier": {
+                    "package": OPENCODE_PACKAGE.get(style, OPENCODE_PACKAGE["openai-chat"]), "env": [target["key_env"]],
+                    "settings": {"baseURL": base_url_for(port, target["provider"], cfg), "transport": "http"},
+                    "models": {target["model"]: {}}}}
+            out["opencode.json"] = _j(conf)
         elif key == "kilo":
             out[".kilo/kilo.json"] = _j({"mcp": {"frontier": {"type": "local", "command": mcp.argv, "enabled": True,
                                                               "timeout": 3600000}}})

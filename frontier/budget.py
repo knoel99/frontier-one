@@ -22,6 +22,7 @@ from .config import ROOT
 
 PRICES = ROOT / "config" / "prices.toml"
 RESERVATION_TTL_S = 7200  # a reservation older than this belongs to a call that died
+POST_DELIVERY_GRACE_USD = 0.25  # LLM spend allowed after `deliver`, so the harness can close its turn
 CLOUD_CURRENCY = {"scaleway": ("scaleway_eur", "EUR", "eur_per_hour"), "runpod": ("runpod_usd", "USD", "usd_per_hour")}
 
 
@@ -98,9 +99,25 @@ def price_of(provider: str, model: str) -> tuple[dict, bool]:
     return max(same, key=lambda v: (v.get("output") or 0) + (v.get("input") or 0)), False
 
 
-def llm_cost(provider: str, model: str, usage: dict, price_x: float = 1.0) -> tuple[float, bool]:
+def time_factor(pr: dict, at: dt.datetime | None = None) -> float:
+    """Off-peak discount of a provider whose price depends on the hour (DeepSeek): offpeak_x outside the peak_utc
+    windows of weekdays."""
+    if not pr.get("offpeak_x") or not pr.get("peak_utc"):
+        return 1.0
+    at = (at or now()).astimezone(dt.UTC)
+    if at.weekday() < 5:
+        hm = at.strftime("%H:%M")
+        for w in pr["peak_utc"]:
+            a, b = w.split("-")
+            if a <= hm < b:
+                return 1.0
+    return float(pr["offpeak_x"])
+
+
+def llm_cost(provider: str, model: str, usage: dict, price_x: float = 1.0, at: dt.datetime | None = None) -> tuple[float, bool]:
     """USD of one call. usage: input (all prompt tokens, cached included), cached, cache_write, output."""
     pr, exact = price_of(provider, model)
+    price_x = price_x * time_factor(pr, at)
     inp = usage.get("input", 0) or 0
     cached = min(usage.get("cached", 0) or 0, inp)
     write = min(usage.get("cache_write", 0) or 0, inp - cached)
@@ -194,8 +211,12 @@ class Budget:
 
     def _fits(self, extra: float) -> tuple[bool, str]:
         caps = self.caps
-        if caps.get("frozen"):
-            return False, "the mission is delivered: spend is frozen"
+        if caps.get("frozen"):  # after delivery: a small grace lets the harness finish its turn, spend still recorded
+            after = self.llm_spent() - caps.get("frozen_llm_usd", 0)
+            grace = caps.get("grace_usd", POST_DELIVERY_GRACE_USD)
+            if after + extra > grace:
+                return False, "the mission is delivered: spend is frozen"
+            return True, ""
         cap = caps.get("llm_usd")
         if cap is None:
             return True, ""

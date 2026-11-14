@@ -66,6 +66,7 @@ def build_session(info: dict, h: dict, prompt: str, gateway: str | None) -> tupl
               "state": info["state"], "key": os.environ.get(key_env) or llm.PROXY_PLACEHOLDER, "frontier": ROOT,
               "provider_model": f"{provider}/{spec.model}", "gateway": gateway or ""}
     env = dict(os.environ)
+    env.setdefault(key_env, values["key"])  # the provider's own variable, for harnesses that read it themselves
     env.update({k: str(v) for k, v in _fill(h.get("env", {}), values).items()})
     if gateway and h.get("route"):
         env.update({k: str(v) for k, v in _fill(h["route"], values).items()})
@@ -73,7 +74,15 @@ def build_session(info: dict, h: dict, prompt: str, gateway: str | None) -> tupl
         env.update({k: str(v) for k, v in _fill(h.get("default_base_url", {}), values).items()})
     env["FRONTIER_STATE"] = str(info["state"])
     env["PATH"] = f"{ROOT / 'bin'}{os.pathsep}{env.get('PATH', '')}"
-    return _fill(h["command"], values), env
+    cmd = _fill(h["command"], values)
+    if gateway and h.get("route_args"):
+        extra = _fill(h["route_args"], values)
+        cmd = cmd[:-1] + extra + cmd[-1:] if h["command"][-1] == "{prompt}" else cmd + extra
+    return cmd, env
+
+
+def routable(h: dict) -> bool:
+    return bool(h.get("route") or h.get("route_args"))
 
 
 def usage_from_report(h: dict, out: str) -> tuple[float | None, dict]:
@@ -92,6 +101,25 @@ def usage_from_report(h: dict, out: str) -> tuple[float | None, dict]:
                 continue
             if v is not None:
                 return float(v), {}
+    if kind == "json-usage":  # the last JSON object of the output that carries token counts or a cost
+        found: dict = {}
+        cost = None
+        for line in lines:
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            u, c = _scan_usage(obj)
+            if u:
+                found = u
+            if c is not None:
+                cost = c
+        if not found and len(lines) > 1:  # a single pretty-printed JSON document
+            try:
+                found, cost = _scan_usage(json.loads(out))
+            except json.JSONDecodeError:
+                pass
+        return cost, found
     if kind.startswith("jsonl:"):
         etype = kind.split(":", 1)[1]
         tot = {"input": 0, "cached": 0, "cache_write": 0, "output": 0, "reasoning": 0}
@@ -111,6 +139,35 @@ def usage_from_report(h: dict, out: str) -> tuple[float | None, dict]:
         if tot["input"] or tot["output"]:
             return None, tot
     return None, {}
+
+
+_IN = ("input_tokens", "prompt_tokens", "inputTokens", "promptTokenCount")
+_OUT = ("output_tokens", "completion_tokens", "outputTokens", "candidatesTokenCount")
+_CACHED = ("cache_read_tokens", "cached_input_tokens", "cached_tokens", "cache_read_input_tokens", "cachedContentTokenCount")
+_THINK = ("thinking_tokens", "reasoning_output_tokens", "reasoning_tokens", "thoughtsTokenCount")
+_COST = ("total_cost_usd", "cost_usd", "total_cost")
+
+
+def _scan_usage(obj) -> tuple[dict, float | None]:
+    """Find token counts and a USD cost anywhere in a harness's JSON report (formats differ per harness)."""
+    best: dict = {}
+    cost = None
+    stack = [obj]
+    while stack:
+        o = stack.pop()
+        if isinstance(o, dict):
+            if cost is None:
+                cost = next((float(o[k]) for k in _COST if isinstance(o.get(k), (int, float))), None)
+            i = next((o[k] for k in _IN if isinstance(o.get(k), int)), None)
+            out = next((o[k] for k in _OUT if isinstance(o.get(k), int)), None)
+            if i is not None and out is not None and i + out > best.get("input", 0) + best.get("output", 0):
+                think = next((o[k] for k in _THINK if isinstance(o.get(k), int)), 0)
+                best = {"input": i, "output": out + (think if "thinking_tokens" in o else 0), "reasoning": think,
+                        "cached": next((o[k] for k in _CACHED if isinstance(o.get(k), int)), 0)}
+            stack.extend(o.values())
+        elif isinstance(o, list):
+            stack.extend(o)
+    return best, cost
 
 
 def _watchdog(run: Run, stop: threading.Event) -> None:
@@ -135,10 +192,14 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
     cfg = load_config()
     run = Run(cfg, workspace=ws, allow_spend=True, run_id=state.name, log_dir=state, settings=s)
     gw = gateway = None
-    if h.get("route"):
-        gw = serve(str(state), 0, agent=f"harness:{s['harness']}")
+    if routable(h):
+        try:
+            gw = serve(str(state), s.get("gateway_port", 0), agent=f"harness:{s['harness']}")
+        except OSError:  # the port chosen at preparation is taken: harnesses configured by file will miss the gateway
+            gw = serve(str(state), 0, agent=f"harness:{s['harness']}")
+            print(f"warning: port {s.get('gateway_port')} busy, gateway on {gw.server_address[1]}")
         gateway = f"http://127.0.0.1:{gw.server_address[1]}"
-        print(f"metering gateway {gateway}: " + ", ".join(f"{k}={v}" for k, v in _fill(h["route"], {"gateway": gateway}).items()))
+        print(f"metering gateway {gateway}")
     else:
         print("this harness cannot be routed through the gateway: its main-thread spend comes from its own usage "
               "report when it gives one (config/harnesses.toml `usage`)")

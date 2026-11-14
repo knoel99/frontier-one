@@ -81,8 +81,13 @@ def _models_section(cfg: dict, providers: list[str], pings: dict) -> str:
             spec = llm.resolve(cfg, prov, tier, "medium")
             pr = prices.get(spec.model, {})
             fallback = "" if tier in p["tiers"] else " (nearest tier)"
+            extra = []
+            if pr.get("offpeak_x"):
+                extra.append(f"× {pr['offpeak_x']} outside {', '.join(pr.get('peak_utc', []))} UTC on weekdays")
+            if pr.get("note"):
+                extra.append(pr["note"])
             out.append(f"| {tier} | `{spec.model}`{fallback} | {pr.get('input', '?')} | {pr.get('cache_read', '-')} | "
-                       f"{pr.get('output', '?')} |")
+                       f"{pr.get('output', '?')}" + (f" ({'; '.join(extra)})" if extra else "") + " |")
         values = ", ".join(f"{lvl} → `{llm.resolve(cfg, prov, 'frontier', lvl).effort_value}`" for lvl in llm.LEVELS)
         out.append("")
         out.append(f"Reasoning levels (value sent to the API): {values}.")
@@ -153,8 +158,10 @@ def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict]
         f"`{ROOT / 'bin' / 'frontier'} call <tool> '<json>' --state {ctx.run.log_dir}` (`call list` lists them).", "",
         "| tool | what it does |", "|---|---|", tools, "",
         "## Models (for `spawn_agent`)", "",
-        "Prices: list prices in USD per million tokens (config/prices.toml: OpenRouter's public list of the providers' "
-        "prices). Reasoning tokens are billed as output tokens. Cached input applies to a repeated prompt prefix.", "",
+        "Prices: list prices in USD per million tokens (config/prices.toml: the provider's own price where read, else "
+        "OpenRouter's public list). Reasoning tokens are billed as output tokens. Cached input applies to a repeated "
+        "prompt prefix. A speed mode multiplies the price and is billed as the tier the response says was served. "
+        "Providers' batch APIs (about half price, results within 24 h) are not available through `spawn_agent`.", "",
         _models_section(cfg, providers_of(m), pings),
         "## Compute (snapshot)", "",
         (_offers_section(ctx) if offers else "Not read at preparation time: call `scw_offers` and `rp_offers`."),
@@ -259,7 +266,9 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
                llm_usd=m.get("llm", {}).get("budget_usd"), scaleway_eur=m.get("scaleway", {}).get("budget_eur"),
                runpod_usd=m.get("runpod", {}).get("budget_usd"))
     hf = m.get("huggingface", {})
-    settings = {"name": m["mission"].get("name"), "workspace": str(ws), "harness": m["harness"]["name"],
+    old_settings = json.loads((state / "mission.json").read_text()) if (state / "mission.json").exists() else {}
+    settings = {"gateway_port": old_settings.get("gateway_port") or _free_port(), "name": m["mission"].get("name"),
+                "workspace": str(ws), "harness": m["harness"]["name"],
                 "provider": m.get("llm", {}).get("provider"), "providers": providers_of(m),
                 "tier": m["harness"].get("tier", "frontier"), "reasoning": m["harness"].get("reasoning", "high"),
                 "allow_spend": True, "allow_publish": bool(os.environ.get(hf.get("token_env", "HF_TOKEN"))),
@@ -276,7 +285,12 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     (ws / "MISSION.md").write_text(mission_brief(m, b.caps, subject))
     (ws / "AGENTS.md").write_text(AGENTS_MD.format(frontier=ROOT / "bin" / "frontier", state=state))
     mcp = McpCommand(command=str(ROOT / "bin" / "frontier-mcp"), args=["--state", str(state)])
-    for rel, content in artifacts(mcp, [m["harness"]["name"]]).items():
+    gateway = f"http://127.0.0.1:{settings['gateway_port']}"
+    target = {"provider": settings["provider"], "model": _main_model(cfg, m), "gateway": gateway,
+              "key_env": m.get("llm", {}).get("key_env") or cfg["providers"][settings["provider"]]["key_env"]}
+    if m["harness"]["name"] == "hermes":
+        _hermes_home(state, cfg, target, mcp)
+    for rel, content in artifacts(mcp, [m["harness"]["name"]], target).items():
         p = ws / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content)
@@ -288,6 +302,35 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     gi.write_text("\n".join(lines) + "\n")
     run.log(event="mission_prepared", settings=settings, pings=pings)
     return {"mission": m, "workspace": ws, "state": state, "settings": settings, "pings": pings}
+
+
+def _free_port(start: int = 8787) -> int:
+    import socket
+
+    for port in range(start, start + 200):
+        with socket.socket() as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    return 0
+
+
+def _hermes_home(state: pathlib.Path, cfg: dict, target: dict, mcp: McpCommand) -> None:
+    """Hermes reads MCP servers and its model from HERMES_HOME/config.yaml only: a home of the mission's own."""
+    from .gateway import base_url_for
+
+    port = int(target["gateway"].rsplit(":", 1)[1])
+    style = cfg["providers"][target["provider"]]["style"]
+    api_mode = {"anthropic": "anthropic_messages", "openai-responses": "codex_responses"}.get(style, "chat_completions")
+    home = state / "hermes"
+    home.mkdir(parents=True, exist_ok=True)
+    args = ", ".join(json.dumps(a) for a in mcp.args)
+    (home / "config.yaml").write_text(
+        "model:\n  provider: custom\n"
+        f"  default: {target['model']}\n  base_url: {base_url_for(port, target['provider'], cfg)}\n  api_mode: {api_mode}\n"
+        f"mcp_servers:\n  frontier:\n    command: {json.dumps(mcp.command)}\n    args: [{args}]\n    timeout: 3600\n")
 
 
 # ---------------------------------------------------------------- delivery (a tool of the mission)
@@ -315,7 +358,7 @@ def deliver(ctx, summary: str = "", force: bool = False) -> str:
            "missing": missing, "publications": [p["url"] for p in pubs], "cleanup": cleaned, "summary": summary}
     (ws / "COSTS.md").write_text(costs_markdown(st, ctx.run.budget.resources(), pubs))
     done.write_text(json.dumps(rec, indent=1) + "\n")
-    ctx.run.budget.set_caps(frozen=True)
+    ctx.run.budget.set_caps(frozen=True, frozen_llm_usd=st["llm"]["spent_usd"])
     subprocess.run(["git", "-C", str(ws), "add", "-A"], check=False)
     subprocess.run(["git", "-C", str(ws), "commit", "-q", "-m", f"Delivery\n\n{summary}".strip()], check=False)
     subprocess.run(["git", "-C", str(ws), "tag", "-f", "delivery"], check=False, capture_output=True)

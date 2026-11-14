@@ -82,6 +82,13 @@ def usage_of(obj) -> dict:
                 out["output"] = u.get("output_tokens") or 0
     if isinstance(u, dict) and isinstance(u.get("cost"), (int, float)):  # OpenRouter reports the cost itself
         out["cost_usd"] = float(u["cost"])
+    if isinstance(u, dict) and isinstance(u.get("cost_in_usd_ticks"), (int, float)):  # xAI: 1 tick = 1e-10 USD
+        out["cost_usd"] = u["cost_in_usd_ticks"] * 1e-10
+    served = obj.get("service_tier") or (u.get("service_tier") if isinstance(u, dict) else None)
+    if isinstance(u, dict) and u.get("speed"):  # Anthropic fast mode
+        served = u["speed"]
+    if served:
+        out["served_tier"] = served
     um = obj.get("usageMetadata")
     if isinstance(um, dict):  # Gemini (cumulative in a stream)
         out["input"] = um.get("promptTokenCount") or 0
@@ -92,9 +99,22 @@ def usage_of(obj) -> dict:
 
 
 def merge(total: dict, part: dict) -> None:
-    """Stream events repeat or accumulate counts: keep the largest value of each field."""
+    """Stream events repeat or accumulate counts: keep the largest value of each field (the last text value)."""
     for k, v in part.items():
-        total[k] = max(total.get(k, 0), v or 0)
+        total[k] = v if isinstance(v, str) else max(total.get(k, 0), v or 0)
+
+
+def mode_of(provider_conf: dict, served: str) -> tuple[str, float]:
+    """The configured mode whose request body asks for the tier the response says was served, and its price
+    multiplier; ("", 1.0) for the standard tier."""
+    if not served or served in ("default", "standard", "auto", "standard_only"):
+        return "", 1.0
+    aliases = {"fast": {"fast", "priority"}, "priority": {"fast", "priority"}}
+    for name, m in provider_conf.get("modes", {}).items():
+        wanted = {str(v) for v in m.get("body", {}).values()}
+        if wanted & aliases.get(served, {served}):
+            return name, float(m.get("price_x", 1.0))
+    return served, 1.0
 
 
 def model_of(req_body: bytes, path: str, resp_obj: dict | None) -> str:
@@ -160,7 +180,8 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
         is_llm_call = self.command == "POST" and any(k in rest for k in ("/chat/completions", "/responses", "/messages",
-                                                                           ":generateContent", ":streamGenerateContent"))
+                                                                           ":generateContent", ":streamGenerateContent",
+                                                                           "/interactions"))
         rid = None
         if is_llm_call:
             rid, why = self.server.budget.reserve(self._worst_case(provider, rest, body), f"gateway {rest[:60]}")
@@ -239,23 +260,14 @@ class Handler(BaseHTTPRequestHandler):
                     pass
         if is_llm_call and usage:
             model = model_of(body, rest, last_obj if isinstance(last_obj, dict) else None)
+            served = usage.pop("served_tier", "") or resp.headers.get("x-gemini-service-tier", "")
             try:
-                tier = json.loads(body or b"{}").get("service_tier", "")
-            except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
-                tier = ""
-            mode = tier if tier not in ("", "auto", "default", None) else ""
-            px = self._mode_price_x(provider, mode)
+                conf = load_config()["providers"].get(provider, {})
+            except (OSError, KeyError):
+                conf = {}
+            mode, px = mode_of(conf, served)
             reported = usage.pop("cost_usd", None)
             self.server.budget.charge_llm("gateway", self.server.agent, provider, model, usage, mode, px, usd=reported)
-
-    def _mode_price_x(self, provider: str, mode: str) -> float:
-        if not mode:
-            return 1.0
-        try:
-            cfg = load_config()
-            return float(cfg["providers"][provider].get("modes", {}).get(mode, {}).get("price_x", 1.0))
-        except KeyError:
-            return 1.0
 
     @staticmethod
     def _with_stream_usage(path: str, body: bytes) -> bytes:

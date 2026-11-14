@@ -73,6 +73,16 @@ framework only.
 - `ping`: tool calls with a reasoning value work for every tier of openai, google, xai, mistral, deepseek,
   moonshot, alibaba, zhipu; anthropic is configured, not checked (no key in that session).
 - The gateway meters OpenAI Responses, Chat Completions (GLM) and Gemini, streamed and not, and answers 402 at the cap.
-- A real mission run with Codex CLI 0.169 on `gpt-6-luna`: it read the brief and the inventory, did the task, wrote
-  the deliverables and called `budget_status` and `deliver` (through the shell fallback) in 40 s.
-- Not yet run for real: creating and deleting cloud machines (tested against mocked APIs), Hugging Face uploads.
+- Real missions with Codex CLI 0.169 on `gpt-6-luna`: the AI read `MISSION.md` and `TOOLS.md`, did the task, wrote
+  the deliverables and called `budget_status` (through the MCP server) and `deliver`, in 30 to 40 s; its own model
+  calls went through the gateway (6 calls, $0.004) and the launcher committed and tagged the workspace.
+- Not yet run for real: other harnesses' recipes (from their docs, see docs/HARNESSES.md), creating and deleting
+  cloud machines (tested against mocked APIs), Hugging Face uploads.
+
+## Speed and price modes
+
+`spawn_agent(mode=…)` and the inventory list the documented ones (config/providers.toml, read 2026-11-14): OpenAI
+`flex` (×0.5, slower), `fast` (×2, up to 2.5× faster), `ultrafast` (×6); Anthropic `fast` (×2, Fable 5.2); Gemini
+`flex` (×0.5) and `priority` (×1.8); xAI `priority` (×2); Kimi `highspeed` and GLM `flashx` (faster sibling models).
+DeepSeek is half price outside its peak hours, which the budget applies by itself. The gateway bills the tier the
+response says was served (a request for a fast tier can be served at standard).

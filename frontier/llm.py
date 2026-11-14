@@ -81,15 +81,18 @@ def resolve(cfg: dict, provider: str, tier: str, reasoning: str, mode: str = "")
         value = next((rmap[lvl] for lvl in LEVELS if lvl in rmap), None)
     extra = json.loads(json.dumps(p.get("extra", {})))
     price_x = 1.0
+    model = tiers[used_tier]
     if mode and mode != "standard":
         modes = p.get("modes", {})
         if mode not in modes:
             raise LLMError(f"provider {provider} has no mode {mode!r}; modes: {', '.join(modes) or 'none'}")
         m = modes[mode]
-        if m.get("models") and tiers[used_tier] not in m["models"]:
-            raise LLMError(f"mode {mode!r} of {provider} applies to {', '.join(m['models'])}, not {tiers[used_tier]}")
+        allowed = m.get("models") or list(m.get("model", {}))
+        if allowed and model not in allowed:
+            raise LLMError(f"mode {mode!r} of {provider} applies to {', '.join(allowed)}, not {model}")
         _merge(extra, json.loads(json.dumps(m.get("body", {}))))
         price_x = float(m.get("price_x", 1.0))
+        model = m.get("model", {}).get(model, model)  # a speed variant that is a separate model
     else:
         mode = ""
     return ModelSpec(
@@ -97,7 +100,7 @@ def resolve(cfg: dict, provider: str, tier: str, reasoning: str, mode: str = "")
         style=p["style"],
         base_url=p["base_url"].rstrip("/"),
         key_env=p["key_env"],
-        model=tiers[used_tier],
+        model=model,
         tier=used_tier,
         reasoning=reasoning,
         effort_value=value,

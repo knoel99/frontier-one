@@ -77,7 +77,7 @@ def test_cloud_budget_counts_spent_committed_and_new(tmp_path):
     assert not ok and "runpod budget" in why
     assert not b.cloud_allowed("runpod", None, 1)[0]
     b.set_caps(frozen=True)
-    assert not b.cloud_allowed("runpod", 0.1, 1)[0] and not b.llm_allowed()[0]
+    assert not b.cloud_allowed("runpod", 0.1, 1)[0] and not b.llm_allowed(1.0)[0]  # beyond the post-delivery grace
 
 
 def test_watchdog_deletes_overdue_resources(tmp_path, cfg, monkeypatch):
@@ -251,7 +251,7 @@ def test_deliver_checks_freezes_and_reports(tmp_path, cfg, monkeypatch):
     run.budget.charge_llm("t", "a", "openai", "gpt-6-luna", {"input": 100, "output": 100})
     rec = json.loads(mission.deliver(ctx, "done"))
     assert rec["missing"] == [] and rec["llm_usd"] > 0 and (ws / "COSTS.md").exists()
-    assert not run.budget.llm_allowed()[0]  # frozen
+    assert not run.budget.llm_allowed(1.0)[0] and run.budget.llm_allowed(0.01)[0]  # frozen, small grace to close the turn
     assert mission.deliver(ctx).startswith("already delivered")
 
 
@@ -264,7 +264,8 @@ def test_harness_choice_and_launch_command(tmp_path, monkeypatch):
     cmd, env = launcher.build_session(info, h, "PROMPT", "http://127.0.0.1:9")
     assert cmd[:2] == ["codex", "exec"] and cmd[cmd.index("-m") + 1] == "gpt-6-astra"
     assert 'model_reasoning_effort="high"' in cmd
-    assert env["OPENAI_BASE_URL"] == "http://127.0.0.1:9/openai/v1" and env["OPENAI_API_KEY"] == "sk-test"
+    assert 'model_providers.frontier.base_url="http://127.0.0.1:9/openai/v1"' in cmd and cmd[-1] == "PROMPT"
+    assert 'model_provider="frontier"' in cmd and env["OPENAI_API_KEY"] == "sk-test"
     z = launcher.harness_conf("claude", "zhipu")
     assert z["route"]["ANTHROPIC_BASE_URL"] == "{gateway}/zhipu/api/anthropic" and "ANTHROPIC_AUTH_TOKEN" in z["env"]
 
@@ -322,3 +323,47 @@ def test_usage_reports_of_unrouted_harnesses():
     claude = json.dumps({"type": "result", "total_cost_usd": 0.42, "result": "done"})
     assert launcher.usage_from_report({"usage": "json:total_cost_usd"}, claude) == (0.42, {})
     assert launcher.usage_from_report({"usage": ""}, claude) == (None, {})
+
+
+def test_gateway_prices_the_tier_actually_served(cfg):
+    oa = cfg["providers"]["openai"]
+    assert gateway.mode_of(oa, "priority") == ("fast", 2.0)  # OpenAI reports priority for a fast request
+    assert gateway.mode_of(oa, "flex") == ("flex", 0.5)
+    assert gateway.mode_of(oa, "default") == ("", 1.0)  # downgraded: billed at standard
+    assert gateway.mode_of(cfg["providers"]["anthropic"], "fast") == ("fast", 2.0)
+    u = gateway.usage_of({"service_tier": "priority", "usage": {"prompt_tokens": 1, "completion_tokens": 1,
+                                                                "cost_in_usd_ticks": 25_000_000}})
+    assert u["served_tier"] == "priority" and u["cost_usd"] == pytest.approx(0.0025)
+    assert gateway.usage_of({"type": "message_delta", "usage": {"output_tokens": 3, "speed": "fast"}})["served_tier"] == "fast"
+
+
+def test_deepseek_off_peak_price():
+    pr = budget.prices()["deepseek-flash"]
+    peak = budget.dt.datetime(2026, 11, 16, 7, 30, tzinfo=budget.dt.UTC)  # Monday 07:30 UTC
+    off = budget.dt.datetime(2026, 11, 16, 12, 0, tzinfo=budget.dt.UTC)
+    weekend = budget.dt.datetime(2026, 11, 15, 7, 30, tzinfo=budget.dt.UTC)
+    assert budget.time_factor(pr, peak) == 1.0 and budget.time_factor(pr, off) == 0.5 and budget.time_factor(pr, weekend) == 0.5
+    usage = {"input": 1_000_000, "output": 0}
+    assert budget.llm_cost("deepseek", "deepseek-flash", usage, at=off)[0] == pytest.approx(0.15)
+
+
+def test_file_configured_harnesses_are_routed(tmp_path):
+    info = mission.prepare(_mission(tmp_path, harness="opencode", provider="zhipu"), ping=False, offers=False)
+    port = info["settings"]["gateway_port"]
+    oc = json.loads((info["workspace"] / "opencode.json").read_text())
+    prov = oc["providers"]["frontier"]
+    assert prov["settings"]["baseURL"] == f"http://127.0.0.1:{port}/zhipu/api/paas/v4" and prov["env"] == ["ZAI_API_KEY"]
+    assert list(prov["models"]) == ["glm-5.3"] and oc["mcp"]["servers"]["frontier"]["command"][0].endswith("frontier-mcp")
+    (tmp_path / "h").mkdir()
+    info2 = mission.prepare(_mission(tmp_path / "h", harness="hermes", provider="openai"), ping=False, offers=False)
+    conf = (info2["state"] / "hermes" / "config.yaml").read_text()
+    assert "api_mode: codex_responses" in conf and "/openai/v1" in conf and "frontier-mcp" in conf
+
+
+def test_generic_usage_report():
+    agy = json.dumps({"response": "ok", "usage": {"input_tokens": 120, "output_tokens": 30, "thinking_tokens": 50,
+                                                  "cache_read_tokens": 100}})
+    usd, u = launcher.usage_from_report({"usage": "json-usage"}, agy)
+    assert usd is None and u == {"input": 120, "output": 80, "reasoning": 50, "cached": 100}
+    qwen = json.dumps({"type": "result", "usage": {"prompt_tokens": 7, "completion_tokens": 3}, "stats": {}})
+    assert launcher.usage_from_report({"usage": "json-usage"}, qwen)[1]["input"] == 7

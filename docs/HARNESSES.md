@@ -56,7 +56,26 @@ per call, on the model API, charged to the mission's budget.
 
 ## Launching (missions)
 
-`config/harnesses.toml` holds for each harness its install command, its headless command, its environment, how its
-LLM traffic is routed through the metering gateway (`route`), and how it reports usage. The vendor commands ran
-headless on 2026-11-13 in the previous campaign (`old/race/PROVIDERS-TESTED.md`). A provider without its own harness
-gets OpenCode.
+`config/harnesses.toml` holds for each harness its install and setup commands, its headless command, its
+environment, how its own LLM traffic is routed through the metering gateway, and how it reports usage. The vendor
+commands ran headless on 2026-11-13 in the previous campaign (`old/race/PROVIDERS-TESTED.md`). A provider without its
+own harness gets OpenCode. Run `mission start --prepare-only` and one short session before relying on a recipe.
+
+| Harness | Routed through the gateway by | Checked | Fallback when not metered |
+|---|---|---|---|
+| Claude Code | `ANTHROPIC_BASE_URL` | docs (code.claude.com llm-gateway) | `total_cost_usd` of `--output-format json` |
+| Codex CLI | a custom provider passed with `-c model_providers.frontier.*` (Codex ignores `OPENAI_BASE_URL`; WebSockets off) | **run 2026-11-14**: a mission session metered, $0.004 | `turn.completed` usage of `--json` |
+| Antigravity CLI | `GOOGLE_GEMINI_BASE_URL` (wire method UNCONFIRMED) | docs | `usage` of `--output-format json` |
+| Gemini CLI | `GOOGLE_GEMINI_BASE_URL` | docs | `stats` of `--output-format json` |
+| Grok Build | not routed: TLS-only connections documented; `GROK_XAI_API_BASE_URL` would be the variable | docs | its JSON report (UNCONFIRMED) |
+| Kimi Code | `KIMI_MODEL_BASE_URL` (`KIMI_MODEL_PROVIDER_TYPE=kimi`) | docs | none documented |
+| Qwen Code | `OPENAI_BASE_URL` | docs | `usage` of the result message |
+| Mistral Vibe | not routed: only `[[providers]] api_base` in `~/.vibe/config.toml`, left to the user | docs | its JSON output |
+| DeepSeek dsh | `DEEPSEEK_BASE_URL` (Anthropic Messages) | docs | none documented |
+| OpenCode | a provider `frontier` in the mission's `opencode.json` (`baseURL`, `transport: http`) | docs, package names UNCONFIRMED | `--format json` |
+| Hermes Agent | `HERMES_HOME` = a mission home whose `config.yaml` puts the model on the gateway and declares the MCP server | docs, flags UNCONFIRMED | none documented |
+
+Traffic that no base URL catches (documented): Claude Code's fast-mode and WebFetch checks, Codex with a ChatGPT
+sign-in, agy and Grok with an account sign-in, dsh's search, fetch and telemetry. Harnesses' own cost figures are
+client-side estimates; the gateway prices calls itself and uses a server-side cost when the API gives one (xAI
+`cost_in_usd_ticks`, OpenRouter `usage.cost`).
