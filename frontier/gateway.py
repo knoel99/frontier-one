@@ -135,10 +135,11 @@ def model_of(req_body: bytes, path: str, resp_obj: dict | None) -> str:
 class Gateway(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, addr, budget: Budget, routes: dict[str, tuple[str, str]], agent: str = "harness"):
+    def __init__(self, addr, budget: Budget, routes: dict[str, tuple[str, str]], agent: str = "harness",
+                 cfg: dict | None = None):
         super().__init__(addr, Handler)
         self.budget, self.routes, self.agent = budget, routes, agent
-        self.lock = threading.Lock()
+        self.cfg = cfg if cfg is not None else load_config()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -181,7 +182,8 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length else b""
         is_llm_call = self.command == "POST" and any(k in rest for k in ("/chat/completions", "/responses", "/messages",
                                                                            ":generateContent", ":streamGenerateContent",
-                                                                           "/interactions"))
+                                                                           "/interactions")) \
+            and "count_tokens" not in rest and "input_tokens" not in rest
         rid = None
         if is_llm_call:
             rid, why = self.server.budget.reserve(self._worst_case(provider, rest, body), f"gateway {rest[:60]}")
@@ -232,8 +234,12 @@ class Handler(BaseHTTPRequestHandler):
                 chunk = resp.readline()
                 if not chunk:
                     break
-                self.wfile.write(chunk)
-                self.wfile.flush()
+                try:
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):  # the harness hung up: charge what was seen so far
+                    resp.close()
+                    break
                 if is_llm_call:
                     buf = chunk.strip()
                     if buf.startswith(b"data:"):
@@ -261,10 +267,7 @@ class Handler(BaseHTTPRequestHandler):
         if is_llm_call and usage:
             model = model_of(body, rest, last_obj if isinstance(last_obj, dict) else None)
             served = usage.pop("served_tier", "") or resp.headers.get("x-gemini-service-tier", "")
-            try:
-                conf = load_config()["providers"].get(provider, {})
-            except (OSError, KeyError):
-                conf = {}
+            conf = self.server.cfg.get("providers", {}).get(provider, {})
             mode, px = mode_of(conf, served)
             reported = usage.pop("cost_usd", None)
             self.server.budget.charge_llm("gateway", self.server.agent, provider, model, usage, mode, px, usd=reported)
@@ -290,7 +293,7 @@ def serve(state: str, port: int = 0, extra_routes: dict[str, str] | None = None,
     for name, url in (extra_routes or {}).items():
         u = urllib.parse.urlsplit(url)
         routes[name] = (f"{u.scheme}://{u.netloc}", name.split("-")[0])
-    gw = Gateway(("127.0.0.1", port), Budget(pathlib.Path(state)), routes, agent)
+    gw = Gateway(("127.0.0.1", port), Budget(pathlib.Path(state)), routes, agent, cfg)
     threading.Thread(target=gw.serve_forever, daemon=True).start()
     return gw
 

@@ -196,6 +196,15 @@ class OpenShell:
         """Workspace and state back to the host (the host's dashboard, watchdog and commits read them)."""
         self._run(["openshell", "sandbox", "download", self.name, IN_WS, str(self.info["workspace"])], check=False)
         self._run(["openshell", "sandbox", "download", self.name, IN_STATE, str(self.info["state"])], check=False)
+        f = pathlib.Path(self.info["state"]) / "mission.json"
+        if not self.dry_run and f.exists():  # the session inside rewrote its workspace path: restore the host's
+            try:
+                s = json.loads(f.read_text())
+            except json.JSONDecodeError:
+                return
+            if s.get("workspace") != str(self.info["workspace"]):
+                s["workspace"] = str(self.info["workspace"])
+                f.write_text(json.dumps(s, indent=1) + "\n")
 
     def teardown(self) -> None:
         self.pull()

@@ -276,15 +276,15 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
     cfg = load_config()
     run = Run(cfg, workspace=ws, allow_spend=True, run_id=state.name, log_dir=state, settings=s)
     gw = gateway = None
-    if box:
-        box.setup()
-    else:
-        gw, gateway = open_gateway(state, s, h)
-        harness_setup(info, h, gateway, run)
     stop = threading.Event()
     threading.Thread(target=_watchdog, args=(run, stop), daemon=True).start()
     sessions = max_sessions or int(info["mission"].get("harness", {}).get("max_sessions", 20))
     try:
+        if box:  # inside the try: a failed setup still deletes what it created
+            box.setup()
+        else:
+            gw, gateway = open_gateway(state, s, h)
+            harness_setup(info, h, gateway, run)
         for n in range(1, sessions + 1):
             why = _stop_reason(run)
             if why:

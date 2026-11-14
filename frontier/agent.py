@@ -55,7 +55,7 @@ class Run:
 
     def log(self, **event) -> None:
         """Append to events.jsonl, a hash-chained log (budget.verify_chain detects an edited line)."""
-        event = {"t": dt.datetime.now().isoformat(timespec="seconds"), **event}
+        event = {"t": now().isoformat(timespec="seconds"), **event}
         append_chained(self.log_dir / "events.jsonl", json.loads(json.dumps(event, default=str)))
 
     def charge(self, usage: dict, spec: llm.ModelSpec | None = None, agent: str = "") -> float:

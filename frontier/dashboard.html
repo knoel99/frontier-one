@@ -30,7 +30,7 @@ window <select id="gwin"><option value="0">all</option><option value="21600">las
 <th>status</th><th>task</th></tr></thead><tbody id="subs"></tbody></table></div></div>
 <div class="card"><h2>All actions (latest first)</h2><table class="feed"><tbody id="feed"></tbody></table></div>
 </main><script>
-const fmt=(x,d=4)=>x==null?'–':Number(x).toFixed(d), esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmt=(x,d=4)=>x==null?'–':Number(x).toFixed(d), esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function bar(v,cap){if(cap==null||!cap)return '';const p=Math.min(100,100*v/cap);return `<div class="bar ${p>90?'bad':p>70?'warn':''}"><i style="width:${p}%"></i></div>`}
 function spark(series,cap){if(!series.length)return '';const t0=Date.parse(series[0][0]),t1=Math.max(Date.parse(series[series.length-1][0]),t0+1);
  const ymax=Math.max(cap||0,series[series.length-1][1])||1;const pts=series.map(([t,v])=>`${(100*(Date.parse(t)-t0)/(t1-t0)).toFixed(1)},${(60-58*v/ymax).toFixed(1)}`).join(' ');

@@ -184,7 +184,7 @@ def team_state(d: pathlib.Path) -> dict:
         r = _event_text(e)
         if r:
             actions.append({"t": e.get("t", ""), "kind": r[0], "text": r[1]})
-    sessions = sorted((d / "sessions").glob("*.log")) if (d / "sessions").exists() else []
+    sessions = sorted((d / "sessions").glob("[0-9]*.log"), key=lambda p: int(p.stem)) if (d / "sessions").exists() else []
     running = None
     if sessions:
         starts = [e for e in events if e.get("event") == "session_start"]
@@ -215,7 +215,12 @@ def team_state(d: pathlib.Path) -> dict:
 
 
 def snapshot(root: pathlib.Path) -> dict:
-    teams = [team_state(p.parent) for p in sorted(root.glob("*/mission.json"))]
+    teams = []
+    for p in sorted(root.glob("*/mission.json")):
+        try:
+            teams.append(team_state(p.parent))
+        except (OSError, ValueError, KeyError) as e:  # a file being rewritten: skip this team for this refresh
+            print(f"dashboard: {p.parent.name}: {e}", file=sys.stderr)
     feed = sorted(({**a, "team": t["name"]} for t in teams for a in t["actions"] if a["t"]),
                   key=lambda a: a["t"])[-FEED:]
     history = sorted(({**r, "team": t["name"]} for t in teams for r in t["subagents"]),
