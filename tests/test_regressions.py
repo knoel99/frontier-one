@@ -216,8 +216,10 @@ def test_a_sibling_directory_with_the_same_prefix_is_outside_the_workspace(tmp_p
 
 
 def test_renamed_key_variables_reach_every_reader(tmp_path, monkeypatch):
-    for v in ("OPENAI_API_KEY", "HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "SCW_SECRET_KEY", "SCW_DEFAULT_PROJECT_ID"):
-        monkeypatch.delenv(v, raising=False)
+    for v in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "SCW_SECRET_KEY", "SCW_DEFAULT_PROJECT_ID"):
+        monkeypatch.setenv(v, "")  # recorded, so that what export_env writes is undone after the test
+        monkeypatch.delenv(v)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-personal")  # an ambient default: the mission's own name wins
     monkeypatch.setenv("MY_OPENAI", "sk-mine")
     monkeypatch.setenv("MY_HF", "hf-mine")
     monkeypatch.setenv("MY_SCW", "scw-mine")

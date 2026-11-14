@@ -283,10 +283,9 @@ def export_env(settings: dict, cfg: dict | None = None) -> None:
     """Give the mission's keys and settings the names every reader uses (llm, http, hf, sub-agents, harness), once
     at the boundary, so that no reader has to know the mission's own names."""
     for canon, own in env_names(settings.get("conf", {}), cfg or load_config()).items():
-        if own != canon and os.environ.get(own) and not os.environ.get(canon):
+        if own != canon and os.environ.get(own):  # the mission's own name wins over an ambient default
             os.environ[canon] = os.environ[own]
-    for k, v in (settings.get("env") or {}).items():
-        os.environ.setdefault(k, v)
+    os.environ.update(settings.get("env") or {})  # what the mission resolved at preparation
 
 
 def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = True) -> dict:
