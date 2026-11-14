@@ -342,3 +342,37 @@ def test_launcher_stops_when_the_gateway_refused_the_last_session(tmp_path, cfg)
     gw.shutdown()
     assert e.value.code == 402
     assert "LLM budget" in launcher._stop_reason(r)  # no session restarted only to be refused again
+
+
+# ---------------------------------------------------------------- found by the fresh verification of the live run
+
+
+def test_a_tool_that_raises_is_logged_as_an_error(tmp_path, monkeypatch):
+    from frontier.tools import REGISTRY
+
+    monkeypatch.setenv("FRONTIER_RUNS", str(tmp_path))
+    srv = mcp.Server()
+
+    def boom(ctx, **kw):
+        raise infra.APIError("Runpod create-pod: HTTP 422")
+
+    monkeypatch.setattr(REGISTRY["rp_pod"], "fn", boom)
+    out, err = srv.call("rp_pod", {"pod_id": "x"})
+    assert err and "422" in out
+    (e,) = [e for e in budget.read_jsonl(srv.run.log_dir / "events.jsonl") if e.get("event") == "mcp_call"]
+    assert e["tool"] == "rp_pod" and e["error"] is True and "422" in e["output"]
+
+
+def test_costs_include_what_was_spent_after_delivery(tmp_path, cfg):
+    info = mission.prepare(_mission(tmp_path), ping=False, offers=False)
+    ws = info["workspace"]
+    for f in mission.REQUIRED:
+        (ws / f).write_text("x\n")
+    r = agent_mod.Run(cfg, workspace=ws, log_dir=info["state"], settings=info["settings"], allow_spend=True)
+    r.budget.charge_llm("gateway", "harness", "openai", "gpt-6-luna", {"input": 1000, "output": 100})
+    mission.deliver(agent_mod.Ctx(r, None), summary="done")
+    r.budget.charge_llm("gateway", "harness", "openai", "gpt-6-luna", {"input": 2000, "output": 200})  # finishing its turn
+    rec = mission.final_costs(r, ws)
+    assert rec["final_llm_usd"] > rec["llm_usd"] and rec["llm_usd_after_delivery"] > 0
+    costs = (ws / "COSTS.md").read_text()
+    assert "after delivery" in costs and "of None" not in costs and "- scaleway: 0.0000 EUR of 3" in costs

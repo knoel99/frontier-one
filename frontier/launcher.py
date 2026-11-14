@@ -361,6 +361,7 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
             (ws / "COSTS.md").write_text(mission.costs_markdown(st, run.budget.resources(), []))
             print("not delivered; COSTS.md written")
         else:
+            mission.final_costs(run, ws)  # what the harness spent after deliver, finishing its turn
             commit(ws, "Delivery", tag="delivery")
             print("delivered: " + (state / "delivery.json").read_text())
     return 0

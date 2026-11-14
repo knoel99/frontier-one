@@ -423,6 +423,7 @@ deny = ["github.com", "de.wikipedia.org"]
     assert info["settings"]["sandbox"] == "openshell"
     conf = tomllib.loads((info["workspace"] / ".codex/config.toml").read_text())["mcp_servers"]["frontier"]
     env_vars = conf.pop("env_vars")  # Codex passes a server only the variables it is told to
+    assert conf.pop("default_tools_approval_mode") == "approve"  # headless: a tool needing approval is refused
     assert conf == {"command": "/opt/frontier/bin/frontier-mcp", "args": ["--state", "/sandbox/state"], "tool_timeout_sec": 3600}
     assert "HTTPS_PROXY" in env_vars and "ANTHROPIC_API_KEY" in env_vars and "RUNPOD_API_KEY" in env_vars
     box = sandbox.OpenShell(info, launcher.harness_conf("codex", "anthropic"), dry_run=True)

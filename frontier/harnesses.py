@@ -182,7 +182,10 @@ def artifacts(mcp: McpCommand, which: list[str] | None = None, target: dict | No
             out[".github/mcp.json"] = _j({"mcpServers": {"frontier": {"type": "local", **server, "tools": ["*"]}}})
         elif key == "codex_config":  # Codex starts MCP servers with a short list of variables: name the ones they need
             out[".codex/config.toml"] = (f'[mcp_servers.frontier]\ncommand = "{mcp.command}"\nargs = {_toml_list(mcp.args)}\n'
-                                         f"env_vars = {_toml_list(mcp_env_vars())}\ntool_timeout_sec = 3600\n")
+                                         f"env_vars = {_toml_list(mcp_env_vars())}\n"
+                                         # headless, approval policy never: a tool needing approval would be refused.
+                                         # The framework itself guards spending (caps, cloud lock, ownership).
+                                         'default_tools_approval_mode = "approve"\ntool_timeout_sec = 3600\n')
         elif key == "agents_mcp":
             out[".agents/mcp_config.json"] = _j({"mcpServers": {"frontier": {**server, "timeoutSeconds": 3600}}})
         elif key == "gemini_settings":

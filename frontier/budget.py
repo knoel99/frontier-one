@@ -324,6 +324,8 @@ class Budget:
         if deadline:
             out["deadline"] = caps["deadline"]
             out["hours_left"] = round((deadline - at).total_seconds() / 3600, 3)
+        if caps.get("frozen"):  # the harness finishing its turn after deliver, within the grace
+            out["llm"]["after_delivery_usd"] = round(out["llm"]["spent_usd"] - caps.get("frozen_llm_usd", 0), 6)
         if out["llm"]["cap_usd"] is not None:
             out["llm"]["left_usd"] = round(out["llm"]["cap_usd"] - out["llm"]["spent_usd"], 4)
         return out
