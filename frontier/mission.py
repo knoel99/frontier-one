@@ -326,7 +326,6 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
 
     run = Run(cfg, workspace=ws, allow_spend=True, run_id=state.name, log_dir=state, settings=settings)
     pings = {p: _ping(cfg, p, b) for p in settings["providers"]} if ping else {}
-    os.environ["FRONTIER_STATE"] = str(state)
     specs = Server(cfg, state=state).tool_specs()
     ctx = Ctx(run, None)
     (ws / "TOOLS.md").write_text(tools_inventory(ctx, m, cfg, pings, specs, offers=offers))

@@ -248,6 +248,12 @@ def test_renamed_key_variables_reach_every_reader(tmp_path, monkeypatch):
     assert os.environ["SCW_DEFAULT_PROJECT_ID"] == "proj-1"
 
 
+def test_prepare_leaves_the_process_environment_alone(tmp_path, monkeypatch):
+    monkeypatch.delenv("FRONTIER_STATE", raising=False)
+    mission.prepare(_mission(tmp_path), ping=False, offers=False)
+    assert "FRONTIER_STATE" not in os.environ  # it reaches the harness through its own environment only
+
+
 def test_openshell_mission_without_a_name(tmp_path):
     f = _mission(tmp_path, harness="codex")
     f.write_text(f.read_text().replace('name = "t"\n', "", 1) + '\n[sandbox]\nkind = "openshell"\n')
