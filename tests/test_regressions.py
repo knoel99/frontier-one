@@ -10,9 +10,10 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
+from test_frontier import FakeScaleway
 
 from frontier import agent as agent_mod
-from frontier import budget, gateway, launcher
+from frontier import budget, gateway, infra, launcher
 from frontier.config import load_config
 
 
@@ -93,3 +94,26 @@ def test_a_sub_agent_never_gets_tools_the_parent_lacks_even_when_none_are_left(r
     small = agent_mod.Agent(run, "openai", "light", "low", tools=["shell"], depth=1)
     agent_mod.t_spawn_agent(agent_mod.Ctx(run, small), task="t", tools=["infra"])
     assert seen == [[]]
+
+
+# ---------------------------------------------------------------- cloud
+
+
+def test_a_server_that_outlives_the_wait_is_not_marked_deleted(run, monkeypatch):
+    fake = FakeScaleway()
+    monkeypatch.setattr(infra, "scw", fake)
+    monkeypatch.setattr(infra, "POLL_S", 0)
+    monkeypatch.setattr(infra, "DELETE_WAIT_S", 0.05)
+    run.allow_spend = True
+    infra.scw_create_instance(agent_mod.Ctx(run, None), "n", "L4-1-24G", max_hours=2)
+    stuck = FakeScaleway.__call__
+
+    def never_terminates(self, method, path, body=None, **kw):
+        if path.endswith("/action"):
+            self.calls.append((method, path))
+            return {}
+        return stuck(self, method, path, body, **kw)
+
+    monkeypatch.setattr(FakeScaleway, "__call__", never_terminates)
+    (res,) = infra.cleanup(run)
+    assert res["server"].startswith("still there") and run.alive()  # still billed, retried by the watchdog

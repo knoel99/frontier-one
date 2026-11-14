@@ -16,6 +16,8 @@ from .budget import now, parse_time
 from .http import APIError, mcp_json, scw, scw_defaults
 
 POLL_S = 5
+DELETE_WAIT_S = 600  # a terminate that takes longer is left to the next cleanup or watchdog pass
+VOLUME_WAIT_S = 300
 SCW_ZONES = ["fr-par-1", "fr-par-2", "fr-par-3", "nl-ams-1", "nl-ams-2", "nl-ams-3", "pl-waw-1", "pl-waw-2", "pl-waw-3", "it-mil-1"]
 
 
@@ -174,12 +176,15 @@ def _delete_scw_instance(run, server_id: str, zone: str) -> dict:
         else:
             scw("POST", f"/instance/v1/zones/{zone}/servers/{server_id}/action", {"action": "terminate"})
         t0 = time.time()
-        while _server(zone, server_id) is not None and time.time() - t0 < 600:
+        while _server(zone, server_id) is not None:
+            if time.time() - t0 >= DELETE_WAIT_S:  # still billing: keep it alive in the ledger, so it is retried
+                done["server"] = f"still there after {DELETE_WAIT_S} s: deletion asked, not confirmed"
+                return done
             time.sleep(POLL_S)
         done["server"] = "deleted"
     for v in vols:  # terminate only detaches Block Storage volumes: they keep billing
         t0 = time.time()
-        while time.time() - t0 < 300:
+        while True:
             vol = scw("GET", f"/block/v1/zones/{zone}/volumes/{v}", ok404=True)
             if vol is None:
                 break
@@ -187,12 +192,17 @@ def _delete_scw_instance(run, server_id: str, zone: str) -> dict:
                 scw("DELETE", f"/block/v1/zones/{zone}/volumes/{v}")
                 done["volumes_deleted"].append(v)
                 break
+            if time.time() - t0 >= VOLUME_WAIT_S:
+                done.setdefault("volumes_left", []).append(v)
+                break
             time.sleep(POLL_S)
     for ip in ips:
         r = scw("GET", f"/instance/v1/zones/{zone}/ips/{ip}", ok404=True)
         if r and not (r.get("ip") or {}).get("server"):
             scw("DELETE", f"/instance/v1/zones/{zone}/ips/{ip}")
             done["ips_deleted"].append(ip)
+    if done.get("volumes_left"):  # a volume left behind keeps billing: the resource stays alive, to be retried
+        return done
     run.mark(server_id, "deleted")
     return done
 
