@@ -83,7 +83,7 @@ def user_data(team: str, broker_url: str, broker_token: str, token: str) -> str:
     setup = providers[team]["harness"]["setup"]
     script = TEAM_SCRIPT.read_text()
     for k, v in {"__TOKEN__": token, "__TEAM__": team, "__REPO__": cfg["repo"], "__TAG__": cfg["start_tag"],
-                 "__CONTROL__": cfg["control_repo"], "__CONTROL_REF__": cfg.get("control_ref", "main"),
+                 "__CONTROL__": cfg["control_repo"], "__CONTROL_REF__": cfg.get("control_ref", "master"),
                  "__DEADLINE__": str(deadline_epoch(cfg)),
                  "__ENV_B64__": base64.b64encode(env_text.encode()).decode(),
                  "__SETUP_B64__": base64.b64encode(setup.encode()).decode()}.items():

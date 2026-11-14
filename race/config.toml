@@ -5,7 +5,7 @@
 
 start_tag = "race-start"            # tag of the target repository the teams start from
 control_repo = "https://github.com/knoel99/frontier-one.git"   # this repository, cloned on every team VM
-control_ref = "main"
+control_ref = "master"
 deadline = "2026-11-26T18:00:00Z"   # full nine-team race only (tools/race_launch.py); the pilots have no deadline, only a budget
 repo = "https://github.com/knoel99/milady-2027.git"
 
