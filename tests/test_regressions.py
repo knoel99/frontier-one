@@ -82,3 +82,14 @@ def test_a_session_is_killed_at_the_deadline(tmp_path):
     time.sleep(0.2)
     stat = pathlib.Path(f"/proc/{child}/stat")  # the harness's own children are killed too (gone, or a zombie)
     assert not stat.exists() or stat.read_text().rsplit(")", 1)[1].split()[0] == "Z"
+
+
+# ---------------------------------------------------------------- sub-agents
+
+
+def test_a_sub_agent_never_gets_tools_the_parent_lacks_even_when_none_are_left(run, monkeypatch):
+    seen = []
+    monkeypatch.setattr(agent_mod.Agent, "run_task", lambda self, task: seen.append(list(self.tools)) or "ok")
+    small = agent_mod.Agent(run, "openai", "light", "low", tools=["shell"], depth=1)
+    agent_mod.t_spawn_agent(agent_mod.Ctx(run, small), task="t", tools=["infra"])
+    assert seen == [[]]

@@ -202,7 +202,7 @@ class Agent:
         self.parent = parent
         self.id = f"{name}-{uuid.uuid4().hex[:6]}"
         self.max_turns = min(int(max_turns or 10**9), run.limits.get("max_turns", 40))
-        names = expand_tools(tools or all_tools())
+        names = expand_tools(all_tools() if tools is None else tools)  # [] is a request for no tools
         if depth >= run.limits.get("max_depth", 2):
             names = [n for n in names if n != "spawn_agent"]
         self.tools: dict[str, Tool] = {n: REGISTRY[n] for n in names if n in REGISTRY}
