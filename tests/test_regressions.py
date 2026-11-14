@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import threading
 import time
@@ -11,9 +12,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 from test_frontier import FakeScaleway
+from test_mission import _mission
 
 from frontier import agent as agent_mod
-from frontier import budget, gateway, hf, infra, launcher, tools
+from frontier import budget, gateway, hf, infra, launcher, mission, sandbox, tools
 from frontier.config import load_config
 
 
@@ -131,3 +133,33 @@ def test_a_sibling_directory_with_the_same_prefix_is_outside_the_workspace(tmp_p
     with pytest.raises(PermissionError):
         tools.t_read_file(ctx, "../mission-old/secret")
     assert hf.hf_publish(ctx, "x", "../mission-old").startswith("error")
+
+
+# ---------------------------------------------------------------- mission settings
+
+
+def test_renamed_key_variables_reach_every_reader(tmp_path, monkeypatch):
+    for v in ("OPENAI_API_KEY", "HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "SCW_SECRET_KEY", "SCW_DEFAULT_PROJECT_ID"):
+        monkeypatch.delenv(v, raising=False)
+    monkeypatch.setenv("MY_OPENAI", "sk-mine")
+    monkeypatch.setenv("MY_HF", "hf-mine")
+    monkeypatch.setenv("MY_SCW", "scw-mine")
+    monkeypatch.setenv("MY_PROJECT", "proj-1")
+    f = _mission(tmp_path)
+    f.write_text(f.read_text().replace('provider = "openai"', 'provider = "openai"\nkey_env = "MY_OPENAI"')
+                 .replace("budget_eur = 3", 'budget_eur = 3\nkey_env = "MY_SCW"\nproject_id_env = "MY_PROJECT"')
+                 .replace("NO_SUCH_TOKEN_FOR_TESTS", "MY_HF"))
+    info = mission.prepare(f, ping=False, offers=False)
+    monkeypatch.delenv("MY_PROJECT")  # inside a sandbox only the settings carry it
+    mission.export_env(info["settings"])
+    assert os.environ["OPENAI_API_KEY"] == "sk-mine" and os.environ["SCW_SECRET_KEY"] == "scw-mine"
+    assert hf._token() == "hf-mine" and info["settings"]["allow_publish"]
+    assert os.environ["SCW_DEFAULT_PROJECT_ID"] == "proj-1"
+
+
+def test_openshell_mission_without_a_name(tmp_path):
+    f = _mission(tmp_path, harness="codex")
+    f.write_text(f.read_text().replace('name = "t"\n', "", 1) + '\n[sandbox]\nkind = "openshell"\n')
+    info = mission.prepare(f, ping=False, offers=False)
+    box = sandbox.OpenShell(info, launcher.harness_conf("codex", "openai"), dry_run=True)
+    assert box.name == "frontier-mission"

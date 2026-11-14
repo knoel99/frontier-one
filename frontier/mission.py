@@ -262,6 +262,33 @@ def _ping(cfg: dict, provider: str, b: budget_mod.Budget | None = None) -> str:
         return f"KEY CHECK FAILED: {str(e)[:160]}"
 
 
+# The variables the framework reads, and the mission field that may rename each one.
+ENV_FIELDS = {"SCW_SECRET_KEY": ("scaleway", "key_env"), "SCW_DEFAULT_PROJECT_ID": ("scaleway", "project_id_env"),
+              "RUNPOD_API_KEY": ("runpod", "key_env"), "HF_TOKEN": ("huggingface", "token_env")}
+# Non-secret settings, recorded in mission.json so that a session inside a sandbox gets them too.
+PLAIN_ENV = ("SCW_DEFAULT_PROJECT_ID", "SCW_DEFAULT_ORGANIZATION_ID", "SCW_DEFAULT_ZONE", "SCW_DEFAULT_REGION")
+
+
+def env_names(m: dict, cfg: dict) -> dict[str, str]:
+    """{variable the framework reads: variable the mission names for it}."""
+    out = {canon: m.get(sec, {}).get(field) or canon for canon, (sec, field) in ENV_FIELDS.items()}
+    prov = m.get("llm", {}).get("provider")
+    if prov in cfg.get("providers", {}):
+        canon = cfg["providers"][prov]["key_env"]
+        out[canon] = m["llm"].get("key_env") or canon
+    return out
+
+
+def export_env(settings: dict, cfg: dict | None = None) -> None:
+    """Give the mission's keys and settings the names every reader uses (llm, http, hf, sub-agents, harness), once
+    at the boundary, so that no reader has to know the mission's own names."""
+    for canon, own in env_names(settings.get("conf", {}), cfg or load_config()).items():
+        if own != canon and os.environ.get(own) and not os.environ.get(canon):
+            os.environ[canon] = os.environ[own]
+    for k, v in (settings.get("env") or {}).items():
+        os.environ.setdefault(k, v)
+
+
 def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = True) -> dict:
     """Create or refresh the mission workspace. Returns the paths and settings the launcher needs."""
     from .agent import Ctx, Run
@@ -284,7 +311,7 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
                runpod_usd=m.get("runpod", {}).get("budget_usd"))
     hf = m.get("huggingface", {})
     old_settings = json.loads((state / "mission.json").read_text()) if (state / "mission.json").exists() else {}
-    settings = {"gateway_port": old_settings.get("gateway_port") or _free_port(), "name": m["mission"].get("name"),
+    settings = {"gateway_port": old_settings.get("gateway_port") or _free_port(), "name": m["mission"].get("name", "mission"),
                 "workspace": str(ws), "harness": m["harness"]["name"],
                 "provider": m.get("llm", {}).get("provider"), "providers": providers_of(m),
                 "tier": m["harness"].get("tier", "frontier"), "reasoning": m["harness"].get("reasoning", "high"),
@@ -293,7 +320,10 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
                 "mission_file": m["_file"], "subject": subject, "state": str(state),
                 "sandbox": "" if sandbox_kind(m) == "none" else sandbox_kind(m),
                 "conf": {k: v for k, v in m.items() if k != "_file"}}
+    settings["env"] = {k: os.environ[c] for k, c in env_names(m, cfg).items() if k in PLAIN_ENV and os.environ.get(c)}
+    settings["env"].update({k: os.environ[k] for k in PLAIN_ENV if k not in settings["env"] and os.environ.get(k)})
     (state / "mission.json").write_text(json.dumps(settings, indent=1) + "\n")
+    export_env(settings, cfg)
 
     run = Run(cfg, workspace=ws, allow_spend=True, run_id=state.name, log_dir=state, settings=settings)
     pings = {p: _ping(cfg, p, b) for p in settings["providers"]} if ping else {}
