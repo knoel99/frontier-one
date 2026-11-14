@@ -55,7 +55,7 @@ HARNESSES: dict[str, Harness] = {h.name: h for h in [
             notes="also loads .mcp.json and .claude/skills through its Claude compatibility"),
     Harness("kimi", "Kimi Code CLI", "vendor", "moonshot", ["kimi_mcp", "shared_agents", "agents_skill"],
             notes="stdio MCP servers run only in a trusted workspace (KIMI_CODE_TRUST_WORKSPACE=1 headless)"),
-    Harness("qwen", "Qwen Code", "vendor", "alibaba", ["qwen_settings", "qwen_agents", "agents_skill"]),
+    Harness("qwen", "Qwen Code", "vendor", "alibaba", ["qwen_settings", "qwen_agents", "agents_skill", "qwen_skill"]),
     Harness("vibe", "Mistral Vibe", "vendor", "mistral", ["vibe_config", "vibe_agents", "agents_skill"],
             notes="project config is read in trusted folders only"),
     Harness("dsh", "DeepSeek Harness (dsh)", "vendor", "deepseek", ["dsh_patch", "agents_skill"],
@@ -174,7 +174,8 @@ def artifacts(mcp: McpCommand, which: list[str] | None = None) -> dict[str, str]
         elif key == "kimi_mcp":
             out[".kimi-code/mcp.json"] = _j({"mcpServers": {"frontier": server}})
         elif key == "qwen_settings":
-            out[".qwen/settings.json"] = _j({"mcpServers": {"frontier": {**server, "timeout": 3600000}}})
+            out[".qwen/settings.json"] = _j({"context": {"fileName": ["AGENTS.md", "QWEN.md"]},
+                                             "mcpServers": {"frontier": {**server, "timeout": 3600000}}})
         elif key == "vibe_config":
             out[".vibe/config.toml"] = ('[[mcp_servers]]\nname = "frontier"\ntransport = "stdio"\n'
                                         f'command = "{mcp.command}"\nargs = {_toml_list(mcp.args)}\ntool_timeout_sec = 3600\n')
@@ -217,6 +218,8 @@ def artifacts(mcp: McpCommand, which: list[str] | None = None) -> dict[str, str]
             out[".agents/skills/frontier/SKILL.md"] = skill_text()
         elif key == "claude_skill":
             out[".claude/skills/frontier/SKILL.md"] = skill_text()
+        elif key == "qwen_skill":
+            out[".qwen/skills/frontier/SKILL.md"] = skill_text()
         elif key.endswith("_agents"):
             for r in roles:
                 out.update(_agent_files(key, r))

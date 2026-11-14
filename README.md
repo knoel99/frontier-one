@@ -1,75 +1,78 @@
 # Frontier
 
-A provider-agnostic agent framework for the hackathon: an agent is a loop over a model **API** (no vendor
-harness), it has a fixed toolbox, and it can start **sub-agents** that also run on an API, each with the model and
-the reasoning level the parent chooses for the sub-task. Cloud compute (Scaleway, Runpod) is handled by one
-dedicated sub-agent, `infra`, with ready-made functions so that no agent has to rediscover the APIs. The previous
-race framework is kept, untouched, in [`old/`](old/).
+A framework that hands a research mission to an AI and lets it run it end to end. The owner gives:
+
+- **a harness**: the AI provider's own coding agent (Claude Code, Codex CLI, Antigravity, Grok Build, Kimi Code,
+  Qwen Code, Mistral Vibe, DeepSeek dsh), or a community one (OpenCode by default, Hermes, Goose, Crush, …);
+- **an LLM API key with a budget**;
+- **Scaleway and Runpod API keys with budgets**, and optionally a **Hugging Face token**;
+- **the subject** (here an M2 internship subject) and a deadline.
+
+The AI decides its own strategy: models, reasoning levels, speed modes, sub-agents, machines, scope. The framework
+gives the main thread a complete inventory of its tools (`TOOLS.md`), enforces the budgets, measures cost and time,
+and checks the deliverables (report, code, models or data on the Hub, a compliance matrix of the subject's
+instructions, a decision log). Evaluation: scientific quality, cost control, delivery time, compliance with the
+subject (departures justified). The previous race framework is kept in [`old/`](old/).
 
 ```bash
-python3 -m frontier plan                     # model and reasoning value of every provider × tier × level
-python3 -m frontier ping [--provider p]      # tiny tool-calling request per model: checks ids, effort values, tools
-python3 -m frontier run --provider openai --tier frontier --reasoning high --workspace ../milady-2027 "task…"
-python3 -m frontier run --role infra --allow-spend --task-file task.md
-python3 -m frontier tools                    # every tool, and which ones only the infra role holds
-python3 -m frontier docs search create gpu instance      # the API catalog the infra agent reads
-python3 -m frontier cleanup runs/<id>        # delete what a crashed run left alive
-python3 -m pytest && python3 -m ruff check .              # offline tests, lint
+cp config/mission.example.toml my-mission.toml          # fill in: harness, keys (env names), budgets, subject
+python3 -m frontier mission start my-mission.toml --prepare-only   # write the workspace, check the key
+python3 -m frontier mission start my-mission.toml       # launch the harness headless until delivery
+python3 -m frontier mission status my-mission.toml      # spend, commitments, time left
+frontier reap ~/.frontier/missions/<name>               # dead-man sweep, from cron on the host
 ```
 
-Python ≥ 3.11, standard library only (PyYAML only to rebuild the catalog).
+Other commands: `plan` (models and reasoning values per provider), `ping` (check ids and efforts with tiny calls),
+`run` (an API agent on a task, without a harness), `tools`, `docs search …` (the cloud API catalog), `harnesses`,
+`call <tool> '<json>'` (any tool from the shell). Python ≥ 3.11, standard library only (`huggingface_hub` for
+publishing; PyYAML to rebuild the catalog). Tests: `python3 -m pytest`, `ruff check .`,
+`python3 tools/sync_harnesses.py --check`.
+
+## What the AI gets
+
+| | |
+|---|---|
+| `MISSION.md` | the brief (`prompts/mission.md`): the task, the evaluation, the budgets and deadline, the deliverables, the rules; it states that the strategy is the AI's |
+| `TOOLS.md` | generated inventory: the harness and its model, every Frontier tool, every model usable through `spawn_agent` with its price per million tokens, reasoning values and speed modes, a snapshot of GPU offers with price and stock on Scaleway and Runpod, the billing facts, the budgets |
+| the `frontier` MCP server | `spawn_agent` (a sub-agent on any model API of the mission's providers, with tier, reasoning level, speed mode, its own instructions and tools), the cloud functions (`scw_*`, `rp_*`: offers with real prices, create with `max_hours`, exec, logs, delete with leftovers), `budget_status`, `hf_publish`, `deliver`, the API catalog and raw calls |
+| the harness's own files | instructions, MCP config, sub-agents and skills in the format of the chosen harness |
+
+The presets in `roles/` are only two: `infra` (a cloud operator) and `reviewer` (tries to refute a result); the AI
+can define any other sub-agent with `spawn_agent(instructions=…)`.
+
+## Budgets, cost and time
+
+- **LLM**: every model call of the mission is priced from `config/prices.toml` (list prices, refreshed by
+  `tools/update_prices.py` from OpenRouter's public list) and written to a hash-chained ledger. Sub-agents are charged
+  directly; the harness's own traffic goes through a local pass-through **metering gateway** (`frontier/gateway.py`)
+  where the harness lets its base URL be set (`config/harnesses.toml`), otherwise it is read from the harness's usage
+  report after each session. The cap is hard: each call reserves its worst case before it starts.
+- **Cloud**: every machine is created with a `max_hours`; the budget reserves price × max_hours; spend is price ×
+  lifetime from the ledger; a watchdog deletes what overruns; leftovers are deleted at the end.
+- **Time**: measured from the start of the mission to `deliver`, which freezes clock and spend and writes `COSTS.md`.
+- **Second line**: set provider-side caps too (OpenAI project hard limit, Anthropic workspace limit, OpenRouter key
+  limit, a prepaid Runpod balance with auto-pay off); Scaleway only has alerts.
+
+The mission's state lives outside the AI's workspace (`~/.frontier/missions/<name>/`) and is written by the
+framework only.
 
 ## Layout
 
 | Path | What it holds |
 |---|---|
-| `config/providers.toml` | the only provider-specific part: per provider its API style, base URL, key variable, model per **tier** (`frontier`, `standard`, `light`) and value of its reasoning parameter per **level** (`none`, `low`, `medium`, `high`, `max`); limits of a run |
-| `frontier/llm.py` | one `chat()` over four wire formats: `openai-chat` (Mistral, DeepSeek, xAI, Moonshot, Qwen, GLM, …), `openai-responses` (OpenAI), `gemini`, `anthropic`; tool calls normalised; reasoning state replayed between turns |
-| `frontier/agent.py` | the agent loop, the run (token budget, sub-agent count and depth shared by the tree, cloud resource ledger, JSONL log) and the `spawn_agent` tool |
-| `frontier/tools.py` | the toolbox. Every agent: `shell`, `read_file`, `write_file`, `edit_file`, `http_request`, `spawn_agent`. The `infra` role only: the ready-made cloud functions, `api_docs`, raw `scaleway` and `runpod_mcp` calls |
-| `frontier/infra.py` | ready-made cloud functions, typed like MCP tools: `scw_offers`, `scw_create_instance`, `scw_instance`, `scw_list_instances`, `scw_delete_instance`, `rp_offers`, `rp_create_pod`, `rp_pod`, `rp_list_pods`, `rp_exec`, `rp_logs`, `rp_delete_pod`, `infra_resources`, `infra_cleanup` |
-| `catalog/` | the API catalog, like a Swagger index: one compact signature per operation (params, body fields, return) for 311 Scaleway operations (13 APIs) and the 125 Runpod MCP tools, plus a short guide per provider; built by `tools/build_catalog.py` from the official specs (`catalog/SOURCES.json`) |
-| `prompts/` | system prompt of every agent, the model-choice rules for sub-agents, the cloud rules of the infra agent |
-| `roles/` | presets for `spawn_agent` / `--role`: `infra`, `worker`, `reviewer`, `scout` (tier, reasoning, tools, instructions) |
-| `runs/<id>/` | git-ignored: `events.jsonl` (every model call with model, effort and tokens, every tool call), `resources.json` (cloud ledger), `answer.md`, `summary.json` |
+| `frontier/` | `llm.py` (one chat API over OpenAI Responses, Chat Completions, Gemini, Anthropic), `agent.py` (agent loop, runs, `spawn_agent`), `tools.py`, `infra.py` (cloud functions, watchdog), `budget.py`, `gateway.py`, `mcp.py` (stdio MCP server), `mission.py` and `launcher.py`, `harnesses.py` (files per harness), `catalog.py`, `hf.py` |
+| `config/` | `providers.toml` (models per tier, reasoning values, speed modes, limits), `prices.toml`, `harnesses.toml` (launch recipes), `mission.example.toml` |
+| `catalog/` | the Scaleway and Runpod API catalog (one signature per operation) and a guide per provider |
+| `prompts/`, `roles/` | the brief, the system prompts, the two role presets |
+| `docs/` | `HARNESSES.md` (what each harness reads and gets), `STANDARDS.md` (industry standards and where Frontier stands) |
+| `bin/` | `frontier`, `frontier-mcp`: run from anywhere |
+| harness files | `CLAUDE.md`, `.mcp.json`, `.codex/`, `.agents/`, `.claude/`, `.gemini/`, `.grok/`, `.kimi-code/`, `.qwen/`, `.vibe/`, `.dsh/`, `.github/`, `.cursor/`, `opencode.json`, `.opencode/`, `.crushrc`, `.kilo/`, `.devin/`, `.amp/`, `.continue/`, `.zed/`, `.clinerules/`, `.aider.conf.yml`: generated by `tools/sync_harnesses.py`, so this repository works in any of the 23 harnesses |
 
-## How an agent chooses a sub-agent
-
-`spawn_agent(task, tier, reasoning, provider?, role?, tools?, max_turns?)`. The system prompt gives the rule
-(mechanical → `light`/`low`, ordinary work → `standard`/`medium`, design or hard debugging → `frontier`/`high`,
-decisive check → `frontier`/`high|max`); the parent may pick another provider for an independent check. A sub-agent
-gets a fresh context and cannot spawn beyond `limits.max_depth`. Several `spawn_agent` calls in one turn run in
-parallel. All agents of a run share `max_tokens_per_run` and `max_agents`.
-
-## Infrastructure: one dedicated sub-agent
-
-Agents do not rediscover the cloud APIs. Three layers, from the most used to the least:
-
-1. **Ready-made functions** (`frontier/infra.py`) for the usual flows: real prices and stock (`scw_offers` reads the
-   Scaleway Product Catalog and converts per-minute GPU prices; `rp_offers`), create a machine (image, cloud-init,
-   power-on, wait), run a command in it (`rp_exec`), delete it with what it leaves behind (Scaleway Block volumes
-   and IPs).
-2. **The catalog** (`api_docs`): a compact signature per operation, for everything else.
-3. **Raw calls** (`scaleway`, `runpod_mcp`), authentication handled.
-
-Only the **`infra` role** holds these tools. Any agent asks it for compute with
-`spawn_agent(role="infra", task="run X on a ≥ 24 GB GPU, budget …, bring back …")`; it prices, creates, runs,
-collects and deletes. Spending stays in one place: every resource created is recorded in the run's ledger, the
-functions refuse to delete what the run did not create, creation needs `--allow-spend`, and whatever is still
-alive when the run ends is deleted (unless `--keep-resources`).
-
-## Keys
-
-Each provider reads its key from `key_env` (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `SCW_SECRET_KEY`,
-`RUNPOD_API_KEY`, …). In a Claude Code cloud session whose network proxy injects the credentials, no variable is
-needed: the framework sends the placeholder `proxy-injected` and the proxy replaces it.
-
-## Checked on 2026-11-14 (from a Claude Code cloud session)
+## Checked on 2026-11-14
 
 - `ping`: tool calls with a reasoning value work for every tier of openai, google, xai, mistral, deepseek,
-  moonshot, alibaba and zhipu. anthropic is configured but not checked (no key in that session).
-- Read-only cloud functions against the live APIs: `scw_offers` (cheapest ≥ 24 GB: L4-1-24G, 0.7875 €/h) and
-  `rp_offers` (RTX 3090 secure, 0.50 $/h). Creation and deletion are tested against mocked APIs only.
-- Facts the guides record: OpenAI needs the Responses API for tools with reasoning; Mistral Medium 3.5 and Small
-  accept only `none`/`high`; Scaleway `hourly_price` is 0 and GPU prices are per minute in the Product Catalog;
-  a Scaleway `terminate` leaves Block Storage volumes billing.
+  moonshot, alibaba, zhipu; anthropic is configured, not checked (no key in that session).
+- The gateway meters OpenAI Responses, Chat Completions (GLM) and Gemini, streamed and not, and answers 402 at the cap.
+- A real mission run with Codex CLI 0.169 on `gpt-6-luna`: it read the brief and the inventory, did the task, wrote
+  the deliverables and called `budget_status` and `deliver` (through the shell fallback) in 40 s.
+- Not yet run for real: creating and deleting cloud machines (tested against mocked APIs), Hugging Face uploads.

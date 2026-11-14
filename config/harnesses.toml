@@ -27,12 +27,12 @@ default_base_url = { ANTHROPIC_BASE_URL = "https://api.z.ai/api/anthropic" }
 [codex]
 install = "npm install -g @openai/codex"
 setup = "printenv OPENAI_API_KEY | codex login --with-api-key"
-command = ["codex", "exec", "-m", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "--sandbox", "workspace-write", "--json", "{prompt}"]
+command = ["codex", "exec", "--trust", "--add-dir", "{state}", "-m", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "--sandbox", "workspace-write", "-c", "sandbox_workspace_write.network_access=true", "--json", "{prompt}"]
 effort = "provider"
 env = { OPENAI_API_KEY = "{key}" }
 route = { OPENAI_BASE_URL = "{gateway}/openai/v1" }
 wire = "openai-responses"
-usage = "jsonl:usage"
+usage = "jsonl:turn.completed"
 
 [antigravity]
 install = "curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --skip-aliases"

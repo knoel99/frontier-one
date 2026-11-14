@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from . import llm
-from .budget import Budget, now, worst_case_usd
+from .budget import Budget, append_chained, now, worst_case_usd
 from .config import ROOT
 from .tools import GROUPS, INFRA_TOOLS, REGISTRY, Tool, _obj, all_tools
 
@@ -54,9 +54,9 @@ class Run:
         return self.cfg["limits"]
 
     def log(self, **event) -> None:
+        """Append to events.jsonl, a hash-chained log (budget.verify_chain detects an edited line)."""
         event = {"t": dt.datetime.now().isoformat(timespec="seconds"), **event}
-        with self._lock, open(self.log_dir / "events.jsonl", "a") as f:
-            f.write(json.dumps(event, default=str) + "\n")
+        append_chained(self.log_dir / "events.jsonl", json.loads(json.dumps(event, default=str)))
 
     def charge(self, usage: dict, spec: llm.ModelSpec | None = None, agent: str = "") -> float:
         with self._lock:
@@ -237,11 +237,18 @@ class Agent:
             worst = worst_case_usd(self.spec.provider, self.spec.model,
                                    len(json.dumps(self.messages, default=str)) + len(json.dumps(tool_specs)), max_out,
                                    self.spec.price_x)
-            if why := self.run.over_budget(worst):
+            if why := self.run.over_budget():
+                final = f"[stopped: {why}]\n" + final
+                break
+            rid, why = self.run.budget.reserve(worst, f"{self.id} {self.spec.label()}")
+            if rid is None:
                 final = f"[stopped: {why}]\n" + final
                 break
             t0 = time.time()
-            reply = llm.chat(self.spec, self.messages, tool_specs, max_out)
+            try:
+                reply = llm.chat(self.spec, self.messages, tool_specs, max_out)
+            finally:
+                self.run.budget.release(rid)
             usd = self.run.charge(reply.usage, self.spec, self.id)
             self.usage["usd"] = round(self.usage.get("usd", 0) + usd, 6)
             for k in ("input", "output", "reasoning"):

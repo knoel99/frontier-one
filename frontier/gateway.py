@@ -24,8 +24,10 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from .budget import Budget
+from .budget import Budget, worst_case_usd
 from .config import load_config
+
+DEFAULT_MAX_OUT = 32000  # output tokens assumed for a call that sets no limit
 
 HOP = {"host", "content-length", "accept-encoding", "connection", "keep-alive", "transfer-encoding", "upgrade",
        "proxy-connection", "te", "trailer"}
@@ -78,6 +80,8 @@ def usage_of(obj) -> dict:
                 out["cache_write"] = u.get("cache_creation_input_tokens") or 0
             if "output_tokens" in u:
                 out["output"] = u.get("output_tokens") or 0
+    if isinstance(u, dict) and isinstance(u.get("cost"), (int, float)):  # OpenRouter reports the cost itself
+        out["cost_usd"] = float(u["cost"])
     um = obj.get("usageMetadata")
     if isinstance(um, dict):  # Gemini (cumulative in a stream)
         out["input"] = um.get("promptTokenCount") or 0
@@ -157,11 +161,28 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length else b""
         is_llm_call = self.command == "POST" and any(k in rest for k in ("/chat/completions", "/responses", "/messages",
                                                                            ":generateContent", ":streamGenerateContent"))
+        rid = None
         if is_llm_call:
-            ok, why = self.server.budget.llm_allowed()
-            if not ok:
+            rid, why = self.server.budget.reserve(self._worst_case(provider, rest, body), f"gateway {rest[:60]}")
+            if rid is None:
                 return self._send_json(402, {"error": {"type": "budget_exhausted", "code": "budget_exhausted", "message": why}})
             body = self._with_stream_usage(rest, body)
+        try:
+            self._forward(origin, rest, body, provider, is_llm_call)
+        finally:
+            self.server.budget.release(rid)
+
+    def _worst_case(self, provider: str, path: str, body: bytes) -> float:
+        """Upper bound of a call: the whole request as uncached input, and its output limit (or DEFAULT_MAX_OUT)."""
+        try:
+            obj = json.loads(body or b"{}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            obj = {}
+        out = (obj.get("max_output_tokens") or obj.get("max_completion_tokens") or obj.get("max_tokens")
+               or (obj.get("generationConfig") or {}).get("maxOutputTokens") or DEFAULT_MAX_OUT)
+        return worst_case_usd(provider, model_of(body, path, None), len(body), int(out))
+
+    def _forward(self, origin: str, rest: str, body: bytes, provider: str, is_llm_call: bool) -> None:
         headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP}
         headers["Accept-Encoding"] = "identity"
         req = urllib.request.Request(origin + rest, data=body if self.command in ("POST", "PUT") else None,
@@ -224,7 +245,8 @@ class Handler(BaseHTTPRequestHandler):
                 tier = ""
             mode = tier if tier not in ("", "auto", "default", None) else ""
             px = self._mode_price_x(provider, mode)
-            self.server.budget.charge_llm("gateway", self.server.agent, provider, model, usage, mode, px)
+            reported = usage.pop("cost_usd", None)
+            self.server.budget.charge_llm("gateway", self.server.agent, provider, model, usage, mode, px, usd=reported)
 
     def _mode_price_x(self, provider: str, mode: str) -> float:
         if not mode:

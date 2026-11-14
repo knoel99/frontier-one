@@ -1,4 +1,10 @@
 {
+  "context": {
+    "fileName": [
+      "AGENTS.md",
+      "QWEN.md"
+    ]
+  },
   "mcpServers": {
     "frontier": {
       "command": "python3",

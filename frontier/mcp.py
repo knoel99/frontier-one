@@ -34,7 +34,33 @@ from .config import load_config
 from .tools import GROUPS as TOOL_GROUPS
 from .tools import REGISTRY
 
-PROTOCOL = "2025-06-18"
+# Revisions this server answers with the initialize handshake (it also answers server/discover and calls made
+# without a handshake). The stateless 2026-07-28 revision is only partly covered: see docs/STANDARDS.md.
+SUPPORTED = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
+PROTOCOL = SUPPORTED[0]
+INSTRUCTIONS = ("Sub-agents on any model API with a chosen provider, tier, reasoning level and speed mode (spawn_agent); "
+                "cloud compute on Scaleway and Runpod under budgets; budget and time status; Hugging Face publishing; "
+                "mission delivery. TOOLS.md of the workspace lists models, prices, offers and budgets.")
+# MCP tool annotations (hints for the client: read-only, destructive, idempotent, reaches outside services).
+_READ_LOCAL = {"frontier_plan", "frontier_roles", "api_docs", "budget_status", "infra_resources"}
+_READ_REMOTE = {"scw_offers", "scw_instance", "scw_list_instances", "rp_offers", "rp_pod", "rp_list_pods", "rp_logs", "hf_whoami"}
+_DELETE = {"scw_delete_instance", "rp_delete_pod", "infra_cleanup", "deliver"}
+_CREATE = {"scw_create_instance", "rp_create_pod", "hf_publish", "spawn_agent"}
+
+
+def annotations(name: str) -> dict:
+    title = name.replace("_", " ")
+    if name in _READ_LOCAL:
+        return {"title": title, "readOnlyHint": True, "openWorldHint": False}
+    if name in _READ_REMOTE:
+        return {"title": title, "readOnlyHint": True, "openWorldHint": True}
+    if name in _DELETE:
+        return {"title": title, "readOnlyHint": False, "destructiveHint": True, "idempotentHint": True,
+                "openWorldHint": name != "deliver"}
+    if name in _CREATE:
+        return {"title": title, "readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
+                "openWorldHint": True}
+    return {"title": title, "readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True}
 WATCHDOG_S = 60
 # The harness has its own shell and file tools: the server exposes the rest.
 GROUPS = {"agents": ["spawn_agent", "frontier_plan", "frontier_roles"], **{k: v for k, v in TOOL_GROUPS.items() if k != "base"}}
@@ -78,17 +104,17 @@ class Server:
         for n in self.names:
             if n == "frontier_plan":
                 out.append({"name": n, "description": "Providers, model per tier and reasoning levels available to spawn_agent.",
-                            "inputSchema": {"type": "object", "properties": {}}})
+                            "inputSchema": {"type": "object", "properties": {}}, "annotations": annotations(n)})
             elif n == "frontier_roles":
                 out.append({"name": n, "description": "Role presets for spawn_agent (name, tier, reasoning, tools, purpose).",
-                            "inputSchema": {"type": "object", "properties": {}}})
+                            "inputSchema": {"type": "object", "properties": {}}, "annotations": annotations(n)})
             elif n in REGISTRY:
                 t = REGISTRY[n]
                 desc = t.description
                 if n == "spawn_agent":
                     desc += (" It runs on a model API, outside this harness, and sees only what you pass it. The call "
                              "returns when the sub-agent has finished (minutes for long tasks).")
-                out.append({"name": n, "description": desc, "inputSchema": t.parameters})
+                out.append({"name": n, "description": desc, "inputSchema": t.parameters, "annotations": annotations(n)})
         return out
 
     def call(self, name: str, args: dict) -> tuple[str, bool]:
@@ -110,11 +136,13 @@ class Server:
         if mid is None:  # notification
             return None
         if method == "initialize":
-            result = {"protocolVersion": msg.get("params", {}).get("protocolVersion", PROTOCOL),
+            asked = msg.get("params", {}).get("protocolVersion")
+            result = {"protocolVersion": asked if asked in SUPPORTED else PROTOCOL,
                       "capabilities": {"tools": {"listChanged": False}},
-                      "serverInfo": {"name": "frontier", "version": "0.3.0"},
-                      "instructions": "API sub-agents with a chosen model and reasoning level (spawn_agent), and "
-                                      "cloud compute on Scaleway and Runpod (infra tools, or spawn_agent role='infra')."}
+                      "serverInfo": {"name": "frontier", "version": "0.3.0"}, "instructions": INSTRUCTIONS}
+        elif method == "server/discover":
+            result = {"supportedVersions": SUPPORTED, "capabilities": {"tools": {"listChanged": False}},
+                      "serverInfo": {"name": "frontier", "version": "0.3.0"}, "instructions": INSTRUCTIONS}
         elif method == "tools/list":
             result = {"tools": self.tool_specs()}
         elif method == "tools/call":

@@ -1,12 +1,14 @@
 """Missions: what the owner gives (a harness, an LLM key and budget, Scaleway and Runpod keys and budgets, a Hugging
 Face token, the subject, a deadline) turned into a workspace the AI works in, and the delivery that ends it.
 
-Workspace layout (a git repository):
+Workspace layout (a git repository the AI works in):
   AGENTS.md, MISSION.md, TOOLS.md   generated: how to work here, the brief, the inventory of tools
   subject/                          the internship subject
   <harness files>                   MCP config, sub-agents and skills for the chosen harness (frontier/harnesses.py)
-  .frontier/                        state shared by every process: mission.json, budgets.json, llm.jsonl,
-                                    resources.json, events.jsonl, publications.json, delivery.json
+
+State, outside the workspace (default ~/.frontier/missions/<name>/, or [mission] state): shared by every process
+of the mission and written only by the framework: mission.json, budgets.json, llm.jsonl and events.jsonl
+(hash-chained), resources.json, reservations.json, publications.json, delivery.json, sessions/.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from . import llm
 from .config import ROOT, load_config
 from .harnesses import HARNESSES, McpCommand, artifacts
 
-STATE = ".frontier"
+STATE_ROOT = pathlib.Path.home() / ".frontier" / "missions"
 REQUIRED = ["DELIVERY.md", "COMPLIANCE.md", "DECISIONS.md"]
 NATIVE_HARNESS = {"anthropic": "claude", "openai": "codex", "google": "antigravity", "xai": "grok", "moonshot": "kimi",
                   "alibaba": "qwen", "mistral": "vibe", "deepseek": "dsh"}
@@ -40,6 +42,8 @@ def load(path: str | os.PathLike) -> dict:
     m.setdefault("mission", {})
     ws = pathlib.Path(m["mission"].get("workspace", "workspace"))
     m["mission"]["workspace"] = str((path.parent / ws).resolve() if not ws.is_absolute() else ws)
+    st = pathlib.Path(m["mission"].get("state") or STATE_ROOT / m["mission"].get("name", "mission"))
+    m["mission"]["state"] = str((path.parent / st).resolve() if not st.is_absolute() else st)
     h = m.setdefault("harness", {})
     if h.get("name", "auto") == "auto":
         h["name"] = NATIVE_HARNESS.get(m.get("llm", {}).get("provider", ""), FALLBACK_HARNESS)
@@ -193,7 +197,8 @@ AGENTS_MD = """# AGENTS.md
 This repository is a research mission run by an AI team. Read `MISSION.md` (the brief: task, evaluation, budgets,
 deliverables) and `TOOLS.md` (every tool, model, price and compute offer available), then work on the mission.
 
-- The subject is in `subject/`. The mission state kept by the framework is in `.frontier/` (do not edit it).
+- The subject is in `subject/`. The framework keeps the mission's state (budgets, ledgers) in `{state}`; it is
+  written by the framework only.
 - The Frontier tools come from the `frontier` MCP server; without MCP, call them from the shell:
   `{frontier} call <tool> '<json>' --state {state}`.
 - Record your strategy and decisions in `DECISIONS.md` as you go; finish with the `deliver` tool.
@@ -244,8 +249,8 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     ws.mkdir(parents=True, exist_ok=True)
     if not (ws / ".git").exists():
         subprocess.run(["git", "init", "-q", str(ws)], check=True)
-    state = ws / STATE
-    state.mkdir(exist_ok=True)
+    state = pathlib.Path(m["mission"]["state"])
+    state.mkdir(parents=True, exist_ok=True)
     subject = _copy_subject(m["mission"]["subject"], ws / "subject", pathlib.Path(m["_file"]).parent)
 
     b = budget_mod.Budget(state)
@@ -259,10 +264,10 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
                 "tier": m["harness"].get("tier", "frontier"), "reasoning": m["harness"].get("reasoning", "high"),
                 "allow_spend": True, "allow_publish": bool(os.environ.get(hf.get("token_env", "HF_TOKEN"))),
                 "publish_visibility": hf.get("visibility", "private"), "hf_namespace": hf.get("namespace", ""),
-                "mission_file": m["_file"], "subject": subject}
+                "mission_file": m["_file"], "subject": subject, "state": str(state)}
     (state / "mission.json").write_text(json.dumps(settings, indent=1) + "\n")
 
-    run = Run(cfg, workspace=ws, allow_spend=True, run_id=STATE, log_dir=state, settings=settings)
+    run = Run(cfg, workspace=ws, allow_spend=True, run_id=state.name, log_dir=state, settings=settings)
     pings = {p: _ping(cfg, p, b) for p in settings["providers"]} if ping else {}
     os.environ["FRONTIER_STATE"] = str(state)
     specs = Server(cfg, state=state).tool_specs()
@@ -277,7 +282,7 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
         p.write_text(content)
     gi = ws / ".gitignore"
     lines = gi.read_text().splitlines() if gi.exists() else []
-    for pat in [".frontier/*.lock", ".frontier/.*.lock", "__pycache__/", ".env"]:
+    for pat in ["__pycache__/", ".env"]:
         if pat not in lines:
             lines.append(pat)
     gi.write_text("\n".join(lines) + "\n")
@@ -334,6 +339,8 @@ def costs_markdown(st: dict, resources: list[dict], pubs: list[dict]) -> str:
         lines.append(f"| {r['provider']} | {r.get('kind')} | {r['id']} | {r.get('type')} | {price} | {r.get('max_hours')} | "
                      f"{r.get('created')} | {r.get('deleted_at', '-')} |")
     lines += ["", "## Time", "", f"Elapsed: {st.get('elapsed_hours')} h. Deadline: {st.get('deadline') or 'none'}.", ""]
+    lines += ["## Ledgers", "", f"Integrity of the hash-chained logs: {json.dumps(st.get('ledgers_intact'))}.",
+              f"Last hash of llm.jsonl: `{st.get('llm_last_hash', '')}`.", ""]
     if pubs:
         lines += ["## Publications", ""] + [f"- {p['url']} ({p['type']}, {p['visibility']})" for p in pubs] + [""]
     return "\n".join(lines)

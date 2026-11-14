@@ -16,7 +16,7 @@ import re
 
 from .http import request
 
-CARD_FIELDS = {"model": ["license"], "dataset": ["license"], "space": ["sdk"]}
+CARD_FIELDS = {"model": ["license", "library_name"], "dataset": ["license"], "space": ["sdk"]}
 
 
 def _token() -> str:

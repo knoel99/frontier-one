@@ -8,9 +8,11 @@ deleted at the end of the run; they only delete resources of that ledger unless 
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import time
 
+from .budget import now, parse_time
 from .http import APIError, mcp_json, scw, scw_defaults
 
 POLL_S = 5
@@ -126,8 +128,9 @@ def scw_create_instance(ctx, name: str, commercial_type: str, max_hours: float, 
     ok, why = ctx.run.budget.cloud_allowed("scaleway", offer.get("eur_per_hour"), max_hours)
     if not ok:
         return f"refused: {why}"
+    expires = (now() + dt.timedelta(hours=max_hours)).isoformat(timespec="minutes")
     body = {"name": name, "commercial_type": commercial_type, "image": img["id"], "project": d["project_id"],
-            "tags": ["frontier", f"run:{ctx.run.run_id}", *(tags or [])]}
+            "tags": ["frontier", f"run:{ctx.run.run_id}", f"expires:{expires}", *(tags or [])]}
     s = scw("POST", f"/instance/v1/zones/{zone}/servers", body)["server"]
     ctx.run.record({"provider": "scaleway", "kind": "instance", "id": s["id"], "zone": zone, "name": name,
                     "type": commercial_type, "eur_per_hour": offer.get("eur_per_hour"), "max_hours": max_hours,
@@ -241,8 +244,9 @@ def rp_create_pod(ctx, name: str, gpu_type_id: str, max_hours: float,
     ok, why = ctx.run.budget.cloud_allowed("runpod", offer["usd_per_gpu_hour"] * gpu_count if offer else None, max_hours)
     if not ok:
         return f"refused: {why}"
+    expires = (now() + dt.timedelta(hours=max_hours)).isoformat(timespec="minutes")
     body = {"name": name, "image": image, "gpu": {"id": gpu_type_id, "count": gpu_count}, "cloud": cloud, "disk": disk_gb,
-            "env": {"FRONTIER_RUN": ctx.run.run_id, **(env or {})}}
+            "env": {"FRONTIER_RUN": ctx.run.run_id, "FRONTIER_EXPIRES": expires, **(env or {})}}
     if ports:
         body["ports"] = ports
     if command:
@@ -349,6 +353,23 @@ def enforce(run) -> list[dict]:
             res = {"id": r["id"], "error": str(e)[:300]}
         run.log(event="watchdog_delete", reason=why, result=res)
         done.append({**res, "reason": why})
+    return done
+
+
+def reap(run) -> list[dict]:
+    """Dead-man sweep, for cron on the host: enforce the ledger, then delete the Scaleway Instances tagged with this
+    run whose `expires:` tag has passed even when the ledger lost them."""
+    done = enforce(run)
+    zones = {r.get("zone") for r in run.resources if r.get("provider") == "scaleway"} | {scw_defaults()["zone"]}
+    for zone in sorted(z for z in zones if z):
+        try:
+            servers = scw("GET", f"/instance/v1/zones/{zone}/servers", query={"tags": f"run:{run.run_id}", "per_page": 100})
+        except APIError:
+            continue
+        for srv in servers.get("servers", []):
+            exp = next((t[8:] for t in srv.get("tags", []) if t.startswith("expires:")), None)
+            if exp and parse_time(exp) <= now():
+                done.append({**_delete_scw_instance(run, srv["id"], zone), "reason": "expires tag passed"})
     return done
 
 

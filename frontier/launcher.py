@@ -76,19 +76,41 @@ def build_session(info: dict, h: dict, prompt: str, gateway: str | None) -> tupl
     return _fill(h["command"], values), env
 
 
-def _usage_from_report(h: dict, out: str) -> float | None:
-    """USD the harness reports for a session it ran unmetered (e.g. Claude Code's total_cost_usd)."""
+def usage_from_report(h: dict, out: str) -> tuple[float | None, dict]:
+    """What a harness reports about its own session: (USD if it gives a cost, token usage if it gives tokens).
+
+    `usage` in config/harnesses.toml: "json:<field>" = a USD field of a JSON line (Claude Code's total_cost_usd);
+    "jsonl:turn.completed" = token usage of JSONL events of that type, summed (Codex CLI's --json)."""
     kind = h.get("usage", "")
+    lines = out.strip().splitlines()
     if kind.startswith("json:"):
         field = kind.split(":", 1)[1]
-        for line in reversed(out.strip().splitlines()):
+        for line in reversed(lines):
             try:
                 v = json.loads(line).get(field)
             except (json.JSONDecodeError, AttributeError):
                 continue
             if v is not None:
-                return float(v)
-    return None
+                return float(v), {}
+    if kind.startswith("jsonl:"):
+        etype = kind.split(":", 1)[1]
+        tot = {"input": 0, "cached": 0, "cache_write": 0, "output": 0, "reasoning": 0}
+        for line in lines:
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(e, dict) or e.get("type") != etype:
+                continue
+            u = e.get("usage") or {}
+            tot["input"] += u.get("input_tokens", 0) or 0
+            tot["cached"] += u.get("cached_input_tokens", 0) or 0
+            tot["cache_write"] += u.get("cache_write_input_tokens", 0) or 0
+            tot["output"] += u.get("output_tokens", 0) or 0
+            tot["reasoning"] += u.get("reasoning_output_tokens", 0) or 0
+        if tot["input"] or tot["output"]:
+            return None, tot
+    return None, {}
 
 
 def _watchdog(run: Run, stop: threading.Event) -> None:
@@ -120,6 +142,11 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
     else:
         print("this harness cannot be routed through the gateway: its main-thread spend comes from its own usage "
               "report when it gives one (config/harnesses.toml `usage`)")
+    if h.get("setup"):  # once per machine and key, e.g. `codex login`
+        cmd, env = build_session(info, h, "", gateway)
+        p = subprocess.run(["bash", "-c", h["setup"]], cwd=ws, env=env, capture_output=True, text=True)
+        run.log(event="harness_setup", code=p.returncode, output=(p.stdout + p.stderr)[-2000:])
+        print(f"setup: exit {p.returncode}")
     stop = threading.Event()
     threading.Thread(target=_watchdog, args=(run, stop), daemon=True).start()
     sessions = max_sessions or int(info["mission"].get("harness", {}).get("max_sessions", 20))
@@ -134,17 +161,23 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
             prompt = FIRST_PROMPT if n == 1 else NEXT_PROMPT.format(n=n)
             cmd, env = build_session(info, h, prompt, gateway)
             run.log(event="session_start", n=n, command=cmd[0])
+            started = budget_mod.now().isoformat(timespec="seconds")
             t0 = time.time()
             with open(logs / f"{n:02d}.log", "w") as f:
                 p = subprocess.run(cmd, cwd=ws, env=env, stdout=subprocess.PIPE, stderr=f, text=True,
                                    stdin=subprocess.DEVNULL)
                 f.write(p.stdout)
-            if not h.get("route"):
-                usd = _usage_from_report(h, p.stdout)
-                if usd is not None:
-                    run.budget.charge_llm("harness-report", f"harness:{s['harness']}", s["provider"], "harness",
-                                          {}, usd=usd)
+            metered = any(e["frontier.source"] == "gateway" and e["t"] >= started
+                          for e in run.budget.llm_entries())
+            if not metered:  # the gateway saw none of the session's traffic: charge what the harness reports
+                usd, usage = usage_from_report(h, p.stdout)
+                model = llm.resolve(cfg, s["provider"], s["tier"], s["reasoning"]).model
+                if usd is not None or usage:
+                    run.budget.charge_llm("harness-report", f"harness:{s['harness']}", s["provider"], model, usage, usd=usd)
+                else:
+                    run.log(event="session_unmetered", n=n, note="no gateway traffic and no usage report")
             run.log(event="session_end", n=n, code=p.returncode, seconds=round(time.time() - t0, 1))
+            commit(ws, f"Session {n}")
             print(f"session {n}: exit {p.returncode}, {time.time() - t0:.0f} s")
     finally:
         stop.set()
@@ -157,8 +190,18 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
             (ws / "COSTS.md").write_text(mission.costs_markdown(st, run.budget.resources(), []))
             print("not delivered; COSTS.md written")
         else:
+            commit(ws, "Delivery", tag="delivery")
             print("delivered: " + (state / "delivery.json").read_text())
     return 0
+
+
+def commit(ws: pathlib.Path, message: str, tag: str = "") -> None:
+    """Commit the workspace from outside the harness (whose sandbox may keep .git read-only)."""
+    subprocess.run(["git", "-C", str(ws), "add", "-A"], capture_output=True)
+    subprocess.run(["git", "-C", str(ws), "-c", "user.name=frontier", "-c", "user.email=frontier@localhost", "commit", "-q",
+                    "-m", message], capture_output=True)
+    if tag:
+        subprocess.run(["git", "-C", str(ws), "tag", "-f", tag], capture_output=True)
 
 
 def _stop_reason(run: Run) -> str:
@@ -174,10 +217,11 @@ def _stop_reason(run: Run) -> str:
     return ""
 
 
-def status(workspace: str) -> int:
-    state = pathlib.Path(workspace).resolve() / mission.STATE
-    run = Run(load_config(), workspace=state.parent, run_id=state.name, log_dir=state,
-              settings=json.loads((state / "mission.json").read_text()))
+def status(mission_file: str) -> int:
+    m = mission.load(mission_file)
+    state = pathlib.Path(m["mission"]["state"])
+    settings = json.loads((state / "mission.json").read_text())
+    run = Run(load_config(), workspace=settings["workspace"], run_id=state.name, log_dir=state, settings=settings)
     print(infra.budget_status(Ctx(run, None)))
     return 0
 

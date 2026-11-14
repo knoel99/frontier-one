@@ -43,18 +43,25 @@ that changes it in `DECISIONS.md`, with its reason and the time, as you go.
 
 All in this repository (commit as you go), then call `deliver`:
 
-- `DELIVERY.md`: where each deliverable is (the report, the code, the data and models with their Hub URLs) and the
-  commands that reproduce the main results.
-- The research report.
+- `DELIVERY.md`: where each deliverable is (the report, the code, the data and models with their Hub URLs), and the
+  commands that regenerate every reported result from a fresh checkout (or a `reproduce.sh`). The evaluation may
+  re-run them on a fresh machine.
+- The research report. It states which AI models did which part of the work.
 - The code that produced every reported result.
-- The models or datasets worth sharing, on the Hugging Face Hub (`hf_publish`, each with its card), when the work
-  produces any.
-- `COMPLIANCE.md`: every instruction of the subject (quoted or paraphrased, with where it is in the subject), its
-  status (followed, departed from, not applicable) and the evidence, or the justification of the departure.
+- The models or datasets worth sharing, on the Hugging Face Hub (`hf_publish`), when the work produces any: each with
+  its card (SPDX `license`; for a model `library_name`, for a dataset `task_categories`; what it is, how it was made,
+  intended use, limits).
+- `COMPLIANCE.md`: a traceability matrix of the subject's instructions, one row each: an id (S1, S2, … in the order of
+  the subject), the instruction (quoted or paraphrased, with where it is in the subject), its status (`compliant`,
+  `partial`, `deviation`, `not applicable`), the evidence (path, commit or run), and for `partial` and `deviation` the
+  justification.
 - `DECISIONS.md`: your strategy and decisions, as above.
+- `CITATION.cff` for the repository, and the answers to the NeurIPS paper checklist (reproducibility, statistical
+  significance, compute, licences of the assets used, use of AI) in the report or in `CHECKLIST.md`.
 
-At `deliver` the framework checks these files, deletes the cloud resources still running, writes `COSTS.md` from its
-ledgers, and freezes the clock and the spend. Work after `deliver` does not count.
+At `deliver` the framework checks DELIVERY.md, COMPLIANCE.md and DECISIONS.md, deletes the cloud resources still
+running, writes `COSTS.md` from its ledgers, and freezes the clock and the spend. Work after `deliver` does not
+count.
 
 ## Rules
 

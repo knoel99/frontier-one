@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "frontier"
 version = "0.2.0"
@@ -6,7 +10,15 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
+publish = ["huggingface_hub>=1.0"]
 dev = ["pytest", "ruff", "pyyaml"]
+
+[project.scripts]
+frontier = "frontier.__main__:main"
+frontier-mcp = "frontier.mcp:main"
+
+[tool.setuptools]
+packages = ["frontier"]
 
 [tool.ruff]
 line-length = 140

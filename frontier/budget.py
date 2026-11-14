@@ -12,13 +12,16 @@ from __future__ import annotations
 
 import datetime as dt
 import fcntl
+import hashlib
 import json
 import pathlib
 import tomllib
+import uuid
 
 from .config import ROOT
 
 PRICES = ROOT / "config" / "prices.toml"
+RESERVATION_TTL_S = 7200  # a reservation older than this belongs to a call that died
 CLOUD_CURRENCY = {"scaleway": ("scaleway_eur", "EUR", "eur_per_hour"), "runpod": ("runpod_usd", "USD", "usd_per_hour")}
 
 
@@ -31,6 +34,47 @@ def parse_time(s: str | None) -> dt.datetime | None:
         return None
     t = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
     return t if t.tzinfo else t.replace(tzinfo=dt.UTC)
+
+
+def _digest(prev: str, entry: dict) -> str:
+    return hashlib.sha256((prev + json.dumps(entry, sort_keys=True, separators=(",", ":"))).encode()).hexdigest()
+
+
+def append_chained(path: pathlib.Path, entry: dict) -> str:
+    """Append a JSON line carrying `prev` (hash of the previous line) and `hash`; returns the new hash."""
+    with open(path.with_name("." + path.name + ".lock"), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        prev = ""
+        if path.exists() and path.stat().st_size:
+            with open(path, "rb") as f:
+                f.seek(max(0, path.stat().st_size - 65536))
+                last = f.read().splitlines()[-1]
+            try:
+                prev = json.loads(last).get("hash", "")
+            except json.JSONDecodeError:
+                prev = "corrupt"
+        body = {**entry, "prev": prev}
+        body["hash"] = _digest(prev, body)
+        with open(path, "a") as f:
+            f.write(json.dumps(body, default=str) + "\n")
+        fcntl.flock(lock, fcntl.LOCK_UN)
+        return body["hash"]
+
+
+def read_jsonl(path: pathlib.Path) -> list[dict]:
+    if not path.exists():
+        return []
+    return [json.loads(x) for x in path.read_text().splitlines() if x.strip()]
+
+
+def verify_chain(path: pathlib.Path) -> bool | str:
+    prev = ""
+    for i, e in enumerate(read_jsonl(path), 1):
+        h = e.pop("hash", None)
+        if e.get("prev") != prev or _digest(prev, e) != h:
+            return f"broken at line {i}"
+        prev = h
+    return True
 
 
 _prices: dict | None = None
@@ -92,30 +136,63 @@ class Budget:
         (self.dir / "budgets.json").write_text(json.dumps(merged, indent=1) + "\n")
 
     # ------------------------------------------------------------ LLM
+    # Entries use the OpenTelemetry GenAI attribute names (gen_ai.*) plus frontier.* ones, and form a hash chain:
+    # each line carries the hash of the previous one, so an edited or deleted line is detected (verify_chain).
     def charge_llm(self, source: str, agent: str, provider: str, model: str, usage: dict, mode: str = "",
                    price_x: float = 1.0, usd: float | None = None) -> float:
         exact = True
         if usd is None:
             usd, exact = llm_cost(provider, model, usage, price_x)
-        entry = {"t": now().isoformat(timespec="seconds"), "source": source, "agent": agent, "provider": provider,
-                 "model": model, "mode": mode, "usage": usage, "usd": usd, "price_exact": exact}
-        with open(self.dir / "llm.jsonl", "a") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            f.write(json.dumps(entry) + "\n")
-            fcntl.flock(f, fcntl.LOCK_UN)
+        entry = {"t": now().isoformat(timespec="seconds"), "frontier.source": source, "gen_ai.agent.name": agent,
+                 "gen_ai.provider.name": provider, "gen_ai.request.model": model, "frontier.mode": mode,
+                 "gen_ai.usage.input_tokens": usage.get("input", 0) or 0,
+                 "gen_ai.usage.output_tokens": usage.get("output", 0) or 0,
+                 "gen_ai.usage.cache_read.input_tokens": usage.get("cached", 0) or 0,
+                 "gen_ai.usage.cache_write.input_tokens": usage.get("cache_write", 0) or 0,
+                 "gen_ai.usage.reasoning.output_tokens": usage.get("reasoning", 0) or 0,
+                 "frontier.cost.usd": usd, "frontier.price_exact": exact}
+        append_chained(self.dir / "llm.jsonl", entry)
         return usd
 
     def llm_entries(self) -> list[dict]:
-        f = self.dir / "llm.jsonl"
-        if not f.exists():
-            return []
-        return [json.loads(x) for x in f.read_text().splitlines() if x.strip()]
+        return read_jsonl(self.dir / "llm.jsonl")
 
     def llm_spent(self) -> float:
-        return round(sum(e["usd"] for e in self.llm_entries()), 6)
+        return round(sum(e["frontier.cost.usd"] for e in self.llm_entries()), 6)
 
-    def llm_allowed(self, next_call_usd: float = 0.0) -> tuple[bool, str]:
-        """Hard cap: refused when what is spent plus the worst case of the next call exceeds the LLM budget."""
+    # Reservations: the worst case of every call in flight, held until the call is charged, so that parallel
+    # calls (sub-agents, harness traffic through the gateway, several processes) cannot overrun the cap together.
+    def _reservations(self, fn) -> object:
+        f = self.dir / "reservations.json"
+        with open(self.dir / ".reservations.lock", "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            items = json.loads(f.read_text()) if f.exists() else {}
+            at = now()
+            items = {k: v for k, v in items.items() if (at - parse_time(v["t"])).total_seconds() < RESERVATION_TTL_S}
+            out = fn(items)
+            f.write_text(json.dumps(items) + "\n")
+            fcntl.flock(lock, fcntl.LOCK_UN)
+            return out
+
+    def reserved(self) -> float:
+        return round(self._reservations(lambda items: sum(v["usd"] for v in items.values())), 6)
+
+    def reserve(self, usd: float, what: str = "") -> tuple[str | None, str]:
+        """Hold `usd` for a call about to be made: (reservation id, "") or (None, why it does not fit)."""
+        def take(items):
+            ok, why = self._fits(sum(v["usd"] for v in items.values()) + usd)
+            if not ok:
+                return None, why
+            rid = uuid.uuid4().hex[:12]
+            items[rid] = {"usd": usd, "t": now().isoformat(timespec="seconds"), "what": what}
+            return rid, ""
+        return self._reservations(take)
+
+    def release(self, rid: str | None) -> None:
+        if rid:
+            self._reservations(lambda items: items.pop(rid, None))
+
+    def _fits(self, extra: float) -> tuple[bool, str]:
         caps = self.caps
         if caps.get("frozen"):
             return False, "the mission is delivered: spend is frozen"
@@ -123,10 +200,18 @@ class Budget:
         if cap is None:
             return True, ""
         spent = self.llm_spent()
-        if spent >= cap or spent + next_call_usd > cap:
-            return False, (f"LLM budget: spent {spent:.4f} + next call up to {next_call_usd:.4f} > cap {cap:.2f} USD "
+        if spent >= cap or spent + extra > cap:
+            return False, (f"LLM budget: spent {spent:.4f} + calls in flight up to {extra:.4f} > cap {cap:.2f} USD "
                            "(a cheaper model, a lower reasoning level or fewer output tokens may still fit)")
         return True, ""
+
+    def llm_allowed(self, next_call_usd: float = 0.0) -> tuple[bool, str]:
+        """Hard cap: refused when what is spent, plus the calls in flight, plus `next_call_usd` exceeds the budget."""
+        return self._fits(self.reserved() + next_call_usd)
+
+    def verify(self) -> dict:
+        """Integrity of the chained logs: {file: True | 'broken at line n'}."""
+        return {name: verify_chain(self.dir / name) for name in ("llm.jsonl", "events.jsonl") if (self.dir / name).exists()}
 
     # ------------------------------------------------------------ cloud
     def resources(self) -> list[dict]:
@@ -179,16 +264,20 @@ class Budget:
         llm = self.llm_entries()
         by_model: dict[str, dict] = {}
         for e in llm:
-            k = f"{e['provider']}/{e['model']}" + (f"+{e['mode']}" if e.get("mode") else "")
+            k = f"{e['gen_ai.provider.name']}/{e['gen_ai.request.model']}" + (f"+{e['frontier.mode']}" if e.get("frontier.mode") else "")
             m = by_model.setdefault(k, {"calls": 0, "input": 0, "output": 0, "usd": 0.0})
             m["calls"] += 1
-            m["input"] += e["usage"].get("input", 0) or 0
-            m["output"] += e["usage"].get("output", 0) or 0
-            m["usd"] = round(m["usd"] + e["usd"], 6)
+            m["input"] += e["gen_ai.usage.input_tokens"]
+            m["output"] += e["gen_ai.usage.output_tokens"]
+            m["usd"] = round(m["usd"] + e["frontier.cost.usd"], 6)
+        by_source: dict[str, float] = {}
+        for e in llm:
+            by_source[e["frontier.source"]] = round(by_source.get(e["frontier.source"], 0) + e["frontier.cost.usd"], 6)
         out = {"time": at.isoformat(timespec="seconds"),
-               "llm": {"spent_usd": self.llm_spent(), "cap_usd": caps.get("llm_usd"), "by_model": by_model,
-                       "estimated": any(not e.get("price_exact", True) for e in llm)},
-               "cloud": {}}
+               "llm": {"spent_usd": self.llm_spent(), "in_flight_usd": self.reserved(), "cap_usd": caps.get("llm_usd"),
+                       "by_model": by_model, "by_source": by_source,
+                       "estimated": any(not e.get("frontier.price_exact", True) for e in llm)},
+               "cloud": {}, "ledgers_intact": self.verify(), "llm_last_hash": llm[-1].get("hash", "") if llm else ""}
         for prov, (cap_key, cur, _) in CLOUD_CURRENCY.items():
             out["cloud"][prov] = {"currency": cur, "spent": self.cloud_spent(prov, at), "committed": self.cloud_committed(prov, at),
                                   "cap": caps.get(cap_key),

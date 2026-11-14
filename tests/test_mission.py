@@ -47,6 +47,23 @@ def test_llm_cap_is_hard(tmp_path):
     assert not b2.llm_allowed(next_call_usd=1.5)[0]
 
 
+def test_reservations_and_tamper_evident_ledger(tmp_path):
+    b = budget.Budget(tmp_path)
+    b.set_caps(llm_usd=1.0)
+    r1, _ = b.reserve(0.6)
+    r2, why = b.reserve(0.6)  # does not fit next to the first call in flight
+    assert r1 and r2 is None and "in flight" in why
+    b.release(r1)
+    assert b.reserve(0.6)[0]
+    for i in range(3):
+        b.charge_llm("t", "a", "openai", "gpt-6-luna", {"input": 10 * (i + 1), "output": 1})
+    assert b.verify()["llm.jsonl"] is True
+    lines = (tmp_path / "llm.jsonl").read_text().splitlines()
+    lines[1] = lines[1].replace('"gen_ai.usage.input_tokens": 20', '"gen_ai.usage.input_tokens": 2')
+    (tmp_path / "llm.jsonl").write_text("\n".join(lines) + "\n")
+    assert b.verify()["llm.jsonl"] == "broken at line 2"
+
+
 def test_cloud_budget_counts_spent_committed_and_new(tmp_path):
     b = budget.Budget(tmp_path)
     b.set_caps(runpod_usd=10.0)
@@ -138,8 +155,9 @@ def test_gateway_meters_and_caps(tmp_path):
     assert "[DONE]" in streamed
     assert up.seen[1][1]["stream_options"] == {"include_usage": True}  # asked for usage in the stream
     entries = b.llm_entries()
-    assert [e["usage"]["input"] for e in entries] == [2000, 1000] and all(e["source"] == "gateway" for e in entries)
-    assert entries[0]["usd"] > 0
+    assert [e["gen_ai.usage.input_tokens"] for e in entries] == [2000, 1000]
+    assert all(e["frontier.source"] == "gateway" for e in entries) and entries[0]["frontier.cost.usd"] > 0
+    assert b.verify() == {"llm.jsonl": True} and b.reserved() == 0  # chained ledger, reservations released
     b.set_caps(llm_usd=b.llm_spent())
     with pytest.raises(urllib.error.HTTPError) as e:
         post({"model": "glm-5.3", "messages": []})
@@ -187,6 +205,7 @@ def _mission(tmp_path: pathlib.Path, harness: str = "auto", provider: str = "ope
 name = "t"
 subject = "subject.md"
 workspace = "ws"
+state = "state"
 duration_hours = 2
 [harness]
 name = "{harness}"
@@ -208,7 +227,7 @@ def test_prepare_writes_the_workspace(tmp_path, monkeypatch):
     ws = info["workspace"]
     for f in ("AGENTS.md", "MISSION.md", "TOOLS.md", "subject/subject.md", ".codex/config.toml", ".agents/skills/frontier/SKILL.md"):
         assert (ws / f).exists(), f
-    caps = json.loads((ws / ".frontier" / "budgets.json").read_text())
+    caps = json.loads((info["state"] / "budgets.json").read_text())
     assert caps["llm_usd"] == 5 and caps["scaleway_eur"] == 3 and caps["runpod_usd"] == 4 and caps["deadline"]
     brief = (ws / "MISSION.md").read_text()
     assert "subject/subject.md" in brief and "COMPLIANCE.md" in brief and "The strategy is yours" in brief
@@ -216,7 +235,8 @@ def test_prepare_writes_the_workspace(tmp_path, monkeypatch):
     assert "`spawn_agent`" in tools_md and "`deliver`" in tools_md and "gpt-6-astra" in tools_md
     assert "publishing is not available" in tools_md  # no token
     conf = tomllib.loads((ws / ".codex/config.toml").read_text())["mcp_servers"]["frontier"]
-    assert conf["command"].endswith("bin/frontier-mcp") and conf["args"] == ["--state", str(ws / ".frontier")]
+    assert conf["command"].endswith("bin/frontier-mcp") and conf["args"] == ["--state", str(info["state"])]
+    assert not (ws / ".frontier").exists()  # the state stays out of the AI's workspace
     assert info["settings"]["harness"] == "codex" and not info["settings"]["allow_publish"]
 
 
@@ -242,7 +262,8 @@ def test_harness_choice_and_launch_command(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     h = launcher.harness_conf("codex", "openai")
     cmd, env = launcher.build_session(info, h, "PROMPT", "http://127.0.0.1:9")
-    assert cmd[:3] == ["codex", "exec", "-m"] and cmd[3] == "gpt-6-astra" and 'model_reasoning_effort="high"' in cmd
+    assert cmd[:2] == ["codex", "exec"] and cmd[cmd.index("-m") + 1] == "gpt-6-astra"
+    assert 'model_reasoning_effort="high"' in cmd
     assert env["OPENAI_BASE_URL"] == "http://127.0.0.1:9/openai/v1" and env["OPENAI_API_KEY"] == "sk-test"
     z = launcher.harness_conf("claude", "zhipu")
     assert z["route"]["ANTHROPIC_BASE_URL"] == "{gateway}/zhipu/api/anthropic" and "ANTHROPIC_AUTH_TOKEN" in z["env"]
@@ -252,10 +273,10 @@ def test_hf_card_check(tmp_path):
     d = tmp_path / "model"
     d.mkdir()
     assert "card missing" in hf.card_problems(d, "model")[0]
-    (d / "README.md").write_text("---\nlicense: mit\ntags: [physics]\n---\n" + "A model card. " * 30)
+    (d / "README.md").write_text("---\nlicense: mit\nlibrary_name: pytorch\ntags: [physics]\n---\n" + "A model card. " * 30)
     assert hf.card_problems(d, "model") == []
     (d / "README.md").write_text("---\ntags: [x]\n---\nshort")
-    assert len(hf.card_problems(d, "model")) == 2
+    assert len(hf.card_problems(d, "model")) == 3  # no license, no library_name, empty body
 
 
 def test_hf_publish_needs_permission_and_card(tmp_path, cfg, monkeypatch):
@@ -288,3 +309,16 @@ def test_modes_change_body_and_price(cfg):
     assert s.extra["service_tier"] == "priority" and s.price_x == 2.0 and s.label().endswith("+priority")
     with pytest.raises(llm.LLMError):
         llm.resolve(cfg, "openai", "standard", "low", "turbo")
+
+
+def test_usage_reports_of_unrouted_harnesses():
+    codex = "\n".join([
+        "Reading additional input from stdin...",
+        json.dumps({"type": "turn.completed", "usage": {"input_tokens": 1000, "cached_input_tokens": 600,
+                                                         "output_tokens": 50, "reasoning_output_tokens": 10}}),
+        json.dumps({"type": "turn.completed", "usage": {"input_tokens": 500, "output_tokens": 5}})])
+    usd, usage = launcher.usage_from_report({"usage": "jsonl:turn.completed"}, codex)
+    assert usd is None and usage == {"input": 1500, "cached": 600, "cache_write": 0, "output": 55, "reasoning": 10}
+    claude = json.dumps({"type": "result", "total_cost_usd": 0.42, "result": "done"})
+    assert launcher.usage_from_report({"usage": "json:total_cost_usd"}, claude) == (0.42, {})
+    assert launcher.usage_from_report({"usage": ""}, claude) == (None, {})
