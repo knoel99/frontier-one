@@ -319,3 +319,42 @@ def test_runpod_create_exec_delete(run, monkeypatch):
     infra.rp_exec(ctx, "pod1", "nvidia-smi")
     assert calls[-1] == ("exec-pod", {"id": "pod1", "body": {"command": ["sh", "-c", "nvidia-smi"], "timeoutSeconds": 20}})
     assert json.loads(infra.rp_delete_pod(ctx, "pod1"))["state"] == "deleted" and not run.alive()
+
+
+# ---------------------------------------------------------------- MCP server
+
+
+def test_mcp_server_protocol(tmp_path, monkeypatch):
+    from frontier import mcp
+
+    monkeypatch.setenv("FRONTIER_RUNS", str(tmp_path))
+    monkeypatch.setenv("FRONTIER_SESSION", "s1")
+    monkeypatch.delenv("FRONTIER_ALLOW_SPEND", raising=False)
+    srv = mcp.Server()
+    init = srv.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}})
+    assert init["result"]["serverInfo"]["name"] == "frontier"
+    assert srv.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
+    names = [t["name"] for t in srv.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})["result"]["tools"]]
+    assert names[:3] == ["spawn_agent", "frontier_plan", "frontier_roles"] and "rp_create_pod" in names
+    assert "shell" not in names  # the harness has its own
+    r = srv.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                    "params": {"name": "rp_create_pod", "arguments": {"name": "x", "gpu_type_id": "g"}}})["result"]
+    assert r["isError"] and "refused" in r["content"][0]["text"]
+    plan = json.loads(srv.call("frontier_plan", {})[0])
+    assert "openai" in plan["providers"]
+    assert srv.handle({"jsonrpc": "2.0", "id": 4, "method": "nope"})["error"]["code"] == -32601
+
+    # the ledger of a session survives a server restart
+    srv.run.record({"provider": "runpod", "kind": "pod", "id": "p1"})
+    assert mcp.Server().run.owns("p1")
+
+
+def test_mcp_spawn_agent(tmp_path, monkeypatch):
+    from frontier import mcp
+
+    monkeypatch.setenv("FRONTIER_RUNS", str(tmp_path))
+    monkeypatch.setattr(llm, "chat", lambda spec, m, t, max_tokens=0: llm.Reply(
+        spec.label(), [], {"input": 1, "output": 1}, {"role": "assistant", "content": spec.label(), "tool_calls": []}))
+    srv = mcp.Server()
+    text, err = srv.call("spawn_agent", {"task": "t", "provider": "mistral", "tier": "light", "reasoning": "low"})
+    assert not err and "mistral/mistral-small-2603@low" in text

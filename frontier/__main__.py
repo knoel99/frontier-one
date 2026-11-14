@@ -89,6 +89,26 @@ def cmd_docs(a, cfg) -> int:
     return 0
 
 
+def cmd_call(a, cfg) -> int:
+    """One tool call from a shell, for harnesses without MCP. Same tools and session ledger as the MCP server."""
+    import os
+
+    from .mcp import Server
+
+    if a.session:
+        os.environ["FRONTIER_SESSION"] = a.session
+    if a.allow_spend:
+        os.environ["FRONTIER_ALLOW_SPEND"] = "1"
+    server = Server(cfg)
+    if a.tool == "list":
+        for t in server.tool_specs():
+            print(f"{t['name']:20s} {json.dumps(t['inputSchema'].get('properties', {}))[:150]}")
+        return 0
+    text, err = server.call(a.tool, json.loads(a.arguments or "{}"))
+    print(text)
+    return 1 if err else 0
+
+
 def cmd_cleanup(a, cfg) -> int:
     """Delete what a finished or crashed run left alive, from its runs/<id>/resources.json."""
     d = pathlib.Path(a.run_dir)
@@ -131,12 +151,17 @@ def main(argv=None) -> int:
     d.add_argument("args", nargs="*")
     d.add_argument("--doc", default="")
     sub.add_parser("tools", help="list the tools")
+    k = sub.add_parser("call", help="call one framework tool from a shell (harnesses without MCP); 'list' lists them")
+    k.add_argument("tool")
+    k.add_argument("arguments", nargs="?", help="JSON object")
+    k.add_argument("--session", default="cli", help="session under runs/ whose resource ledger is shared (default: cli)")
+    k.add_argument("--allow-spend", action="store_true")
     c = sub.add_parser("cleanup", help="delete the resources a run left alive")
     c.add_argument("run_dir")
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
     return {"run": cmd_run, "plan": cmd_plan, "ping": cmd_ping, "docs": cmd_docs, "tools": cmd_tools,
-            "cleanup": cmd_cleanup}[a.cmd](a, cfg)
+            "cleanup": cmd_cleanup, "call": cmd_call}[a.cmd](a, cfg)
 
 
 if __name__ == "__main__":

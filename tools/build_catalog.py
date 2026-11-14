@@ -28,17 +28,14 @@ SCALEWAY_APIS = {
     "block": ("block/v1", "Block Storage volumes and snapshots attached to Instances"),
     "marketplace": ("marketplace/v2", "OS images: image id for a zone and commercial type"),
     "billing": ("billing/v2beta1", "consumption and invoices"),
-    "iam": ("iam/v1alpha1", "API keys, applications, policies, SSH keys"),
-    "vpc": ("vpc/v2", "VPCs and private networks"),
-    "ipam": ("ipam/v1", "IP addresses"),
-    "secret-manager": ("secret-manager/v1beta1", "secrets"),
-    "registry": ("registry/v1", "container registry namespaces and images"),
     "serverless-jobs": ("serverless-jobs/v1alpha1", "batch jobs on containers (CPU), billed per second"),
     "inference": ("inference/v1", "dedicated model deployments"),
-    "generative-apis": ("generative-apis/v1", "serverless OpenAI-compatible LLM endpoints"),
-    "file-storage": ("file-storage/v1alpha1", "file systems shared between Instances"),
 }
 METHODS = ("get", "post", "put", "patch", "delete")
+# Runpod MCP tools left out: account administration, not compute.
+RUNPOD_SKIP = ("organization", "cost-center", "delegation", "audit", "report_", "secret", "registr", "ssh-keys",
+               "cluster", "global-volume", "ask_question", "journal")
+DESC = 70  # characters kept of a field description
 
 
 def get(url: str, data: bytes | None = None, headers: dict | None = None) -> bytes:
@@ -108,7 +105,7 @@ class Summarizer:
         for name, sub in (s.get("properties") or {}).items():
             sub = self.deref(sub)
             key = name + ("*" if name in req else "")
-            desc = short(sub.get("description"))
+            desc = short(sub.get("description"), DESC)
             inner = sub
             if inner.get("type") == "array":
                 inner = self.deref(inner.get("items", {}))
@@ -138,7 +135,7 @@ def scaleway(sources: dict) -> list[dict]:
                     prm = sm.deref(prm)
                     if prm.get("in") in ("path", "query"):
                         params.append(f"{prm['name']}{'*' if prm.get('required') else ''} ({prm['in']}) "
-                                      f"{sm.typ(prm.get('schema', {}))}" + (f": {short(prm.get('description'), 80)}"
+                                      f"{sm.typ(prm.get('schema', {}))}" + (f": {short(prm.get('description'), 50)}"
                                                                            if prm.get("description") else ""))
                 e = {"id": f"scaleway/{name}:{op.get('operationId', m + p)}", "method": m.upper(), "path": p,
                      "summary": short(op.get("summary") or op.get("description"), 140), "params": params}
@@ -167,6 +164,7 @@ def runpod(sources: dict) -> list[dict]:
     tools = rpc("tools/list")["tools"]
     sources["runpod/mcp"] = {"url": url, "tools": len(tools)}
     ops = []
+    tools = [t for t in tools if not any(k in t["name"] for k in RUNPOD_SKIP)]
     for t in tools:
         schema = t.get("inputSchema", {})
         try:  # full schema (some listings say "schema on demand")
@@ -177,7 +175,7 @@ def runpod(sources: dict) -> list[dict]:
         sm = Summarizer(schema)
         ann = t.get("annotations") or {}
         ops.append({"id": f"runpod/mcp:{t['name']}", "method": "MCP", "path": t["name"],
-                    "summary": short(t.get("description"), 320, sentence=False), "args": sm.fields(schema),
+                    "summary": short(t.get("description"), 220, sentence=False), "args": sm.fields(schema),
                     "read_only": bool(ann.get("readOnlyHint"))})
     return ops
 
@@ -187,7 +185,8 @@ def main() -> int:
     sources = {"built": dt.date.today().isoformat()}
     for name, fn in (("scaleway", scaleway), ("runpod", runpod)):
         ops = fn(sources)
-        (OUT / f"{name}.json").write_text(json.dumps(ops, indent=0, ensure_ascii=False) + "\n")
+        lines = ",\n".join(json.dumps(o, ensure_ascii=False, separators=(",", ":")) for o in ops)
+        (OUT / f"{name}.json").write_text("[\n" + lines + "\n]\n")
         print(f"catalog/{name}.json: {len(ops)} operations, {(OUT / f'{name}.json').stat().st_size} bytes")
     (OUT / "SOURCES.json").write_text(json.dumps(sources, indent=1) + "\n")
     return 0
