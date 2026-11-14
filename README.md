@@ -23,6 +23,18 @@ box links to the code it describes at commit `7100fc2`). Source `docs/diagrams/r
 [archify](https://github.com/tt-a1i/archify) 3.2 at commit `7e45f36`:
 `node <archify>/bin/archify.mjs finalize workflow docs/diagrams/race.archify.json docs/diagrams/race.html --repo-root . --quality showcase`.
 
+How a race runs, step by step (one team; every box links to its code at commit `6d76c7e`):
+
+1. [Run order](docs/diagrams/run-order.html) ([PNG](docs/diagrams/run-order.png)): the owner's one command, `mission.prepare`,
+   the gateway and watchdog threads, the session loop and its three stop conditions, delivery or cleanup.
+2. [Processes](docs/diagrams/processes.html) ([PNG](docs/diagrams/processes.png)): the processes alive during a race,
+   the code each one executes, and the workspace, state and Frontier files each one reads or writes.
+3. [One session](docs/diagrams/session.html) ([PNG](docs/diagrams/session.png)): the harness reads its instructions and
+   starts the MCP server; then one model call through the gateway, `scw_create_instance`, `spawn_agent`, `deliver`,
+   and the end of the session.
+
+Render each with `node <archify>/bin/archify.mjs finalize <workflow|architecture|sequence> docs/diagrams/<name>.archify.json docs/diagrams/<name>.html --repo-root . --quality showcase`.
+
 ```bash
 cp config/mission.example.toml my-mission.toml          # fill in: harness, keys (env names), budgets, subject
 python3 -m frontier mission start my-mission.toml --prepare-only   # write the workspace, check the key

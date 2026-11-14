@@ -1,0 +1,616 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Run order of one team's race: from one command to delivery",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/run-order.html",
+    "repository": {
+      "url": "https://github.com/knoel99/frontier-one",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d76c7e4913cd746b3729a969157ae9a1a1e940b"
+    },
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "Harness CLI: the AI"
+        },
+        "backend": {
+          "label": "Frontier code that runs"
+        },
+        "security": {
+          "label": "Stop check, delivery, cleanup"
+        },
+        "messagebus": {
+          "label": "MCP server entry point"
+        },
+        "cloud": {
+          "label": "Outside service"
+        },
+        "external": {
+          "label": "Owner"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "owner",
+      "label": "Owner (human)"
+    },
+    {
+      "id": "launcher",
+      "label": "Launcher process (host)"
+    },
+    {
+      "id": "harness",
+      "label": "Harness process (the AI)"
+    },
+    {
+      "id": "mcp",
+      "label": "Frontier MCP server process"
+    },
+    {
+      "id": "outside",
+      "label": "Outside services"
+    }
+  ],
+  "phases": [
+    {
+      "id": "setup",
+      "label": "Setup, once",
+      "fromCol": 0,
+      "toCol": 2
+    },
+    {
+      "id": "loop",
+      "label": "Session loop, up to max_sessions",
+      "fromCol": 3,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "end",
+      "label": "Stop check and end",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "mission_file",
+    "start_cmd",
+    "prepare",
+    "threads",
+    "session",
+    "harness",
+    "after",
+    "stop",
+    "final"
+  ],
+  "nodes": [
+    {
+      "id": "mission_file",
+      "lane": "owner",
+      "col": 0,
+      "type": "external",
+      "icon": "person",
+      "label": "Write mission.toml",
+      "sublabel": "keys stay in env variables",
+      "tag": "the only manual step",
+      "sources": [
+        {
+          "path": "config/mission.example.toml",
+          "line": 1,
+          "end_line": 54,
+          "label": "mission file"
+        }
+      ]
+    },
+    {
+      "id": "start_cmd",
+      "lane": "owner",
+      "col": 1,
+      "type": "external",
+      "icon": "start",
+      "label": "frontier mission start",
+      "sublabel": "bin/frontier, __main__.py",
+      "sources": [
+        {
+          "path": "bin/frontier",
+          "line": 1,
+          "end_line": 5,
+          "label": "python3 -m frontier"
+        },
+        {
+          "path": "frontier/__main__.py",
+          "line": 112,
+          "end_line": 117,
+          "label": "cmd_mission -> launcher.start"
+        }
+      ]
+    },
+    {
+      "id": "prepare",
+      "lane": "launcher",
+      "col": 1,
+      "type": "backend",
+      "label": "mission.prepare",
+      "sublabel": "workspace + state dir written",
+      "tag": "mission.py, harnesses.py",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 291,
+          "end_line": 352,
+          "label": "prepare()"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 202,
+          "end_line": 216,
+          "label": "MISSION.md from prompts/mission.md"
+        },
+        {
+          "path": "frontier/harnesses.py",
+          "line": 152,
+          "end_line": 244,
+          "label": "harness files"
+        }
+      ]
+    },
+    {
+      "id": "threads",
+      "lane": "launcher",
+      "col": 2,
+      "type": "backend",
+      "icon": "clock",
+      "label": "Gateway + watchdog",
+      "sublabel": "threads; then harness setup",
+      "tag": "gateway.py, launcher.py",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 319,
+          "end_line": 330,
+          "label": "watchdog, gateway, setup"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 216,
+          "end_line": 245,
+          "label": "_watchdog, open_gateway"
+        },
+        {
+          "path": "frontier/gateway.py",
+          "line": 315,
+          "end_line": 323,
+          "label": "serve()"
+        }
+      ]
+    },
+    {
+      "id": "session",
+      "lane": "launcher",
+      "col": 3,
+      "type": "backend",
+      "icon": "active",
+      "label": "Session n: run_one",
+      "sublabel": "build_session, run_until",
+      "tag": "log state/sessions/NN.log",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 248,
+          "end_line": 262,
+          "label": "run_one()"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 61,
+          "end_line": 84,
+          "label": "build_session(): env, PATH, route"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 196,
+          "end_line": 207,
+          "label": "run_until(): process group, deadline"
+        }
+      ]
+    },
+    {
+      "id": "after",
+      "lane": "launcher",
+      "col": 4,
+      "type": "backend",
+      "label": "After the session",
+      "sublabel": "usage fallback, then commit",
+      "tag": "commit \"Session n\"",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 263,
+          "end_line": 276,
+          "label": "usage_from_report if unmetered"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 348,
+          "end_line": 348,
+          "label": "commit(ws, Session n)"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 369,
+          "end_line": 375,
+          "label": "commit()"
+        }
+      ]
+    },
+    {
+      "id": "stop",
+      "lane": "launcher",
+      "col": 5,
+      "yOffset": -48,
+      "type": "security",
+      "icon": "decision",
+      "label": "_stop_reason",
+      "sublabel": "delivered? deadline? LLM cap?",
+      "tag": "before every session",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 378,
+          "end_line": 388,
+          "label": "three stop conditions"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 331,
+          "end_line": 335,
+          "label": "checked at each loop turn"
+        }
+      ]
+    },
+    {
+      "id": "final",
+      "lane": "launcher",
+      "col": 5,
+      "yOffset": 48,
+      "type": "security",
+      "icon": "flag",
+      "label": "finally",
+      "sublabel": "tag delivery, or cleanup",
+      "tag": "COSTS.md if not delivered",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 349,
+          "end_line": 366,
+          "label": "end of start()"
+        }
+      ]
+    },
+    {
+      "id": "harness",
+      "lane": "harness",
+      "col": 3,
+      "type": "frontend",
+      "label": "Harness CLI",
+      "sublabel": "e.g. codex exec, headless",
+      "tag": "AGENTS, MISSION, TOOLS.md",
+      "sources": [
+        {
+          "path": "config/harnesses.toml",
+          "line": 30,
+          "end_line": 41,
+          "label": "codex recipe"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 26,
+          "end_line": 33,
+          "label": "first and next prompts"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 219,
+          "end_line": 229,
+          "label": "workspace AGENTS.md"
+        }
+      ]
+    },
+    {
+      "id": "mcp",
+      "lane": "mcp",
+      "col": 3,
+      "type": "messagebus",
+      "label": "bin/frontier-mcp",
+      "sublabel": "mcp.py, stdio JSON-RPC",
+      "tag": "own watchdog",
+      "sources": [
+        {
+          "path": "bin/frontier-mcp",
+          "line": 1,
+          "end_line": 6,
+          "label": "python3 -m frontier.mcp"
+        },
+        {
+          "path": "frontier/mcp.py",
+          "line": 170,
+          "end_line": 227,
+          "label": "watchdog, serve_stdio, main"
+        },
+        {
+          "path": "frontier/harnesses.py",
+          "line": 169,
+          "end_line": 171,
+          "label": ".codex/config.toml entry"
+        }
+      ]
+    },
+    {
+      "id": "deliver",
+      "lane": "mcp",
+      "col": 4,
+      "yOffset": -44,
+      "type": "security",
+      "icon": "flag",
+      "label": "deliver tool",
+      "sublabel": "tools.py -> mission.deliver",
+      "tag": "writes delivery.json",
+      "sources": [
+        {
+          "path": "frontier/tools.py",
+          "line": 188,
+          "end_line": 197,
+          "label": "t_deliver"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 387,
+          "end_line": 414,
+          "label": "deliver()"
+        }
+      ]
+    },
+    {
+      "id": "tools",
+      "lane": "mcp",
+      "col": 4,
+      "yOffset": 44,
+      "type": "backend",
+      "label": "Tool modules",
+      "sublabel": "agent, llm, infra, http, hf",
+      "tag": "REGISTRY in tools.py",
+      "sources": [
+        {
+          "path": "frontier/tools.py",
+          "line": 121,
+          "end_line": 219,
+          "label": "REGISTRY and groups"
+        },
+        {
+          "path": "frontier/agent.py",
+          "line": 293,
+          "end_line": 318,
+          "label": "spawn_agent"
+        },
+        {
+          "path": "frontier/infra.py",
+          "line": 111,
+          "end_line": 153,
+          "label": "scw_create_instance"
+        }
+      ]
+    },
+    {
+      "id": "llm_api",
+      "lane": "outside",
+      "col": 2,
+      "type": "cloud",
+      "label": "LLM provider API",
+      "sublabel": "e.g. api.openai.com",
+      "sources": [
+        {
+          "path": "config/providers.toml",
+          "line": 25,
+          "end_line": 31,
+          "label": "base_url, key_env"
+        },
+        {
+          "path": "frontier/llm.py",
+          "line": 137,
+          "end_line": 155,
+          "label": "direct POST of sub-agents"
+        }
+      ]
+    },
+    {
+      "id": "cloud",
+      "lane": "outside",
+      "col": 4,
+      "type": "cloud",
+      "label": "Scaleway, Runpod, HF",
+      "sublabel": "machines, Hub publishing",
+      "sources": [
+        {
+          "path": "frontier/http.py",
+          "line": 48,
+          "end_line": 57,
+          "label": "api.scaleway.com"
+        },
+        {
+          "path": "frontier/http.py",
+          "line": 73,
+          "end_line": 78,
+          "label": "mcp.runpod.io"
+        },
+        {
+          "path": "frontier/hf.py",
+          "line": 75,
+          "end_line": 84,
+          "label": "Hugging Face Hub upload"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-write-start",
+      "from": "mission_file",
+      "to": "start_cmd",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-start-prepare",
+      "from": "start_cmd",
+      "to": "prepare",
+      "label": "launcher.start",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-prepare-ping",
+      "from": "prepare",
+      "to": "llm_api",
+      "label": "key check",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "e-prepare-threads",
+      "from": "prepare",
+      "to": "threads",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-threads-session",
+      "from": "threads",
+      "to": "session",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-session-harness",
+      "from": "session",
+      "to": "harness",
+      "label": "spawns",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-harness-gateway",
+      "from": "harness",
+      "to": "threads",
+      "label": "model calls",
+      "role": "branch"
+    },
+    {
+      "id": "e-gateway-llm",
+      "from": "threads",
+      "to": "llm_api",
+      "label": "metered",
+      "role": "branch"
+    },
+    {
+      "id": "e-harness-mcp",
+      "from": "harness",
+      "to": "mcp",
+      "label": "starts, calls tools",
+      "role": "branch"
+    },
+    {
+      "id": "e-mcp-deliver",
+      "from": "mcp",
+      "to": "deliver",
+      "variant": "security",
+      "role": "branch"
+    },
+    {
+      "id": "e-mcp-tools",
+      "from": "mcp",
+      "to": "tools",
+      "role": "branch"
+    },
+    {
+      "id": "e-tools-llm",
+      "from": "tools",
+      "to": "llm_api",
+      "label": "spawn_agent, direct",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "e-tools-cloud",
+      "from": "tools",
+      "to": "cloud",
+      "label": "scw, rp, hf",
+      "role": "branch"
+    },
+    {
+      "id": "e-deliver-cloud",
+      "from": "deliver",
+      "to": "cloud",
+      "label": "cleanup",
+      "variant": "security",
+      "role": "branch"
+    },
+    {
+      "id": "e-harness-after",
+      "from": "harness",
+      "to": "after",
+      "label": "exits",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-after-stop",
+      "from": "after",
+      "to": "stop",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-stop-next",
+      "from": "stop",
+      "to": "session",
+      "label": "none: session n+1",
+      "role": "return",
+      "route": "up-channel"
+    },
+    {
+      "id": "e-stop-final",
+      "from": "stop",
+      "to": "final",
+      "label": "one met",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "Three stop conditions",
+      "items": [
+        "delivery.json exists: the AI called deliver",
+        "hours_left <= 0: the deadline passed (a session is also killed at the deadline)",
+        "llm_allowed() fails: the LLM budget is spent"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "What runs when",
+      "items": [
+        "prepare writes AGENTS.md, MISSION.md, TOOLS.md, subject/ and the harness files, then budgets.json, mission.json, events.jsonl",
+        "Each session gets FRONTIER_STATE, bin/ on PATH and a model base URL on the gateway",
+        "Unrouted harness: its spend is read from its own usage report"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Run by the owner, outside the loop",
+      "items": [
+        "frontier dashboard (dashboard.py): read-only view of the ledgers",
+        "frontier reap <state> from cron: dead-man sweep (infra.reap)"
+      ]
+    }
+  ]
+}

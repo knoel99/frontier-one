@@ -1,0 +1,276 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Processes of a race and the files each one executes or reads",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/processes.html",
+    "repository": {
+      "url": "https://github.com/knoel99/frontier-one",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d76c7e4913cd746b3729a969157ae9a1a1e940b"
+    },
+    "legend": {
+      "entries": {
+        "backend": { "label": "Executed: Frontier Python code" },
+        "frontend": { "label": "Executed: the harness CLI (third-party)" },
+        "database": { "label": "Read or written: instructions, config, work" },
+        "security": { "label": "Ledger written by the framework only" },
+        "cloud": { "label": "Outside service (HTTPS)" },
+        "external": { "label": "Owner" }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "owner", "type": "external", "icon": "person",
+      "label": "Owner", "sublabel": "frontier mission start",
+      "pos": [295, 40], "size": [180, 68],
+      "sources": [
+        { "path": "config/mission.example.toml", "line": 1, "end_line": 5, "label": "mission file, keys in env" },
+        { "path": "frontier/__main__.py", "line": 112, "end_line": 117, "label": "mission start" }
+      ]
+    },
+    {
+      "id": "watchdog", "type": "backend", "icon": "clock",
+      "label": "Watchdog thread", "sublabel": "infra.enforce every 60 s",
+      "pos": [40, 220], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/launcher.py", "line": 216, "end_line": 221, "label": "_watchdog" },
+        { "path": "frontier/infra.py", "line": 352, "end_line": 376, "label": "enforce(): max_hours, budget" }
+      ]
+    },
+    {
+      "id": "launcher", "type": "backend",
+      "label": "launcher.py", "sublabel": "+ mission.py, harnesses.py",
+      "pos": [295, 220], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/launcher.py", "line": 299, "end_line": 366, "label": "start(): loop, finally" },
+        { "path": "frontier/mission.py", "line": 291, "end_line": 352, "label": "prepare()" },
+        { "path": "frontier/harnesses.py", "line": 152, "end_line": 244, "label": "harness files" }
+      ]
+    },
+    {
+      "id": "gateway", "type": "backend",
+      "label": "Gateway thread", "sublabel": "gateway.py, 127.0.0.1:port",
+      "pos": [550, 220], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/gateway.py", "line": 204, "end_line": 226, "label": "reserve, forward, release; 402" },
+        { "path": "frontier/gateway.py", "line": 315, "end_line": 323, "label": "serve()" },
+        { "path": "frontier/launcher.py", "line": 224, "end_line": 237, "label": "open_gateway" }
+      ]
+    },
+    {
+      "id": "ledgers", "type": "security",
+      "label": "Ledgers", "sublabel": "llm, events .jsonl; resources",
+      "pos": [805, 220], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/budget.py", "line": 1, "end_line": 9, "label": "files of the state dir" },
+        { "path": "frontier/budget.py", "line": 159, "end_line": 211, "label": "charge_llm, reserve, release" },
+        { "path": "frontier/agent.py", "line": 56, "end_line": 98, "label": "events.jsonl, resources.json" }
+      ]
+    },
+    {
+      "id": "settings", "type": "security",
+      "label": "Settings", "sublabel": "mission, budgets, delivery .json",
+      "pos": [805, 380], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/mission.py", "line": 9, "end_line": 11, "label": "state dir layout" },
+        { "path": "frontier/mission.py", "line": 306, "end_line": 324, "label": "budgets.json, mission.json" },
+        { "path": "frontier/mission.py", "line": 408, "end_line": 409, "label": "delivery.json, frozen" }
+      ]
+    },
+    {
+      "id": "agent", "type": "backend",
+      "label": "agent.py + llm.py", "sublabel": "spawn_agent sub-agent loop",
+      "pos": [1060, 220], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/agent.py", "line": 228, "end_line": 272, "label": "run_task: reserve, chat, charge" },
+        { "path": "frontier/agent.py", "line": 212, "end_line": 226, "label": "reads prompts/ and roles/" },
+        { "path": "frontier/llm.py", "line": 137, "end_line": 155, "label": "direct POST to provider" }
+      ]
+    },
+    {
+      "id": "infra", "type": "backend",
+      "label": "infra.py + http.py", "sublabel": "scw_*, rp_* functions",
+      "pos": [1315, 220], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/infra.py", "line": 111, "end_line": 153, "label": "scw_create_instance" },
+        { "path": "frontier/http.py", "line": 48, "end_line": 90, "label": "Scaleway REST, Runpod MCP" }
+      ]
+    },
+    {
+      "id": "server", "type": "backend", "icon": "messagebus",
+      "label": "mcp.py + tools.py", "sublabel": "stdio JSON-RPC, watchdog",
+      "pos": [1060, 380], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/mcp.py", "line": 77, "end_line": 133, "label": "Server: settings, call" },
+        { "path": "frontier/mcp.py", "line": 170, "end_line": 227, "label": "watchdog, thread pool, main" },
+        { "path": "frontier/tools.py", "line": 121, "end_line": 219, "label": "REGISTRY" }
+      ]
+    },
+    {
+      "id": "misc", "type": "backend",
+      "label": "budget, hf, catalog", "sublabel": "+ deliver (mission.py)",
+      "pos": [1315, 380], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/tools.py", "line": 175, "end_line": 197, "label": "budget_status, hf_*, deliver" },
+        { "path": "frontier/mission.py", "line": 387, "end_line": 414, "label": "deliver()" },
+        { "path": "frontier/catalog.py", "line": 14, "end_line": 25, "label": "reads catalog/*.json" }
+      ]
+    },
+    {
+      "id": "config", "type": "database",
+      "label": "config/*.toml", "sublabel": "providers, harnesses, prices",
+      "pos": [40, 380], "size": [180, 68],
+      "sources": [
+        { "path": "config/providers.toml", "line": 25, "end_line": 31, "label": "provider: base_url, key_env" },
+        { "path": "config/harnesses.toml", "line": 30, "end_line": 41, "label": "codex launch recipe" },
+        { "path": "config/prices.toml", "line": 1, "end_line": 5, "label": "list prices" }
+      ]
+    },
+    {
+      "id": "prompts", "type": "database",
+      "label": "prompts/, roles/", "sublabel": "+ catalog/: read by code",
+      "pos": [40, 530], "size": [180, 68],
+      "sources": [
+        { "path": "prompts/mission.md", "line": 1, "end_line": 12, "label": "brief template" },
+        { "path": "prompts/system.md", "line": 1, "end_line": 8, "label": "sub-agent system prompt" },
+        { "path": "roles/reviewer.md", "line": 1, "end_line": 8, "label": "role preset" }
+      ]
+    },
+    {
+      "id": "harness", "type": "frontend",
+      "label": "Harness CLI", "sublabel": "e.g. codex exec --json",
+      "pos": [550, 530], "size": [180, 68],
+      "sources": [
+        { "path": "config/harnesses.toml", "line": 30, "end_line": 41, "label": "codex command, route_args" },
+        { "path": "frontier/launcher.py", "line": 61, "end_line": 84, "label": "env: FRONTIER_STATE, PATH" },
+        { "path": "frontier/launcher.py", "line": 196, "end_line": 207, "label": "own process group" }
+      ]
+    },
+    {
+      "id": "instructions", "type": "database",
+      "label": "Instructions", "sublabel": "AGENTS, MISSION, TOOLS.md",
+      "pos": [295, 680], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/mission.py", "line": 329, "end_line": 334, "label": "TOOLS, MISSION, AGENTS.md" },
+        { "path": "frontier/mission.py", "line": 304, "end_line": 304, "label": "subject/" }
+      ]
+    },
+    {
+      "id": "harnessfiles", "type": "database",
+      "label": "Harness files", "sublabel": ".codex/, .agents/skills/",
+      "pos": [550, 680], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/harnesses.py", "line": 169, "end_line": 171, "label": ".codex/config.toml: frontier MCP" },
+        { "path": "frontier/harnesses.py", "line": 254, "end_line": 261, "label": ".codex/agents/<role>.toml" },
+        { "path": "frontier/harnesses.py", "line": 235, "end_line": 236, "label": ".agents/skills/frontier/SKILL.md" }
+      ]
+    },
+    {
+      "id": "work", "type": "database",
+      "label": "The AI's work", "sublabel": "code, DELIVERY.md, COSTS.md",
+      "pos": [805, 680], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/mission.py", "line": 31, "end_line": 31, "label": "required deliverables" },
+        { "path": "frontier/mission.py", "line": 395, "end_line": 407, "label": "checked; COSTS.md written" }
+      ]
+    },
+    {
+      "id": "llm", "type": "cloud",
+      "label": "LLM provider API", "sublabel": "e.g. api.openai.com",
+      "pos": [805, 40], "size": [180, 68],
+      "sources": [
+        { "path": "config/providers.toml", "line": 25, "end_line": 28, "label": "base_url" }
+      ]
+    },
+    {
+      "id": "scaleway", "type": "cloud",
+      "label": "Scaleway API", "sublabel": "api.scaleway.com",
+      "pos": [1315, 40], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/http.py", "line": 48, "end_line": 57, "label": "scw_raw" }
+      ]
+    },
+    {
+      "id": "runpod", "type": "cloud",
+      "label": "Runpod", "sublabel": "mcp.runpod.io",
+      "pos": [1570, 220], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/http.py", "line": 73, "end_line": 78, "label": "mcp_call" }
+      ]
+    },
+    {
+      "id": "hub", "type": "cloud",
+      "label": "Hugging Face Hub", "sublabel": "huggingface.co",
+      "pos": [1570, 380], "size": [180, 68],
+      "sources": [
+        { "path": "frontier/hf.py", "line": 75, "end_line": 84, "label": "create_repo, upload_folder" }
+      ]
+    }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Host machine", "wraps": ["watchdog", "launcher", "gateway", "ledgers", "settings", "agent", "infra", "server", "misc", "config", "prompts", "harness", "instructions", "harnessfiles", "work"] },
+    { "kind": "region", "label": "Launcher process", "wraps": ["watchdog", "launcher", "gateway"] },
+    { "kind": "security-group", "label": "State dir (framework only)", "wraps": ["ledgers", "settings"] },
+    { "kind": "region", "label": "MCP server process", "wraps": ["agent", "infra", "server", "misc"] },
+    { "kind": "security-group", "label": "Frontier repo files", "wraps": ["config", "prompts"] },
+    { "kind": "region", "label": "Harness process", "wraps": ["harness"] },
+    { "kind": "region", "label": "Mission workspace (git)", "wraps": ["instructions", "harnessfiles", "work"] }
+  ],
+  "connections": [
+    { "id": "c-owner-launcher", "from": "owner", "to": "launcher", "label": "starts", "variant": "emphasis" },
+    { "id": "c-launcher-config", "from": "launcher", "to": "config", "label": "reads", "variant": "dashed" },
+    { "id": "c-launcher-prompts", "from": "launcher", "to": "prompts", "label": "reads", "variant": "dashed" },
+    { "id": "c-launcher-harness", "from": "launcher", "to": "harness", "label": "spawns per session", "variant": "emphasis" },
+    { "id": "c-harness-gateway", "from": "harness", "to": "gateway", "label": "model calls" },
+    { "id": "c-gateway-llm", "from": "gateway", "to": "llm", "label": "forwards" },
+    { "id": "c-gateway-ledgers", "from": "gateway", "to": "ledgers", "label": "charge", "variant": "security" },
+    { "id": "c-harness-server", "from": "harness", "to": "server", "label": "starts, stdio", "variant": "emphasis" },
+    { "id": "c-server-agent", "from": "server", "to": "agent" },
+    { "id": "c-server-infra", "from": "server", "to": "infra" },
+    { "id": "c-server-misc", "from": "server", "to": "misc" },
+    { "id": "c-server-settings", "from": "server", "to": "settings", "label": "reads", "variant": "dashed" },
+    { "id": "c-agent-llm", "from": "agent", "to": "llm", "label": "direct" },
+    { "id": "c-agent-ledgers", "from": "agent", "to": "ledgers", "label": "charge", "variant": "security" },
+    { "id": "c-infra-scaleway", "from": "infra", "to": "scaleway", "label": "REST" },
+    { "id": "c-infra-runpod", "from": "infra", "to": "runpod", "label": "MCP" },
+    { "id": "c-misc-hub", "from": "misc", "to": "hub", "label": "upload" },
+    { "id": "c-misc-work", "from": "misc", "to": "work", "label": "deliver checks", "variant": "dashed" },
+    { "id": "c-harness-instructions", "from": "harness", "to": "instructions", "label": "reads", "variant": "dashed" },
+    { "id": "c-harness-harnessfiles", "from": "harness", "to": "harnessfiles", "label": "reads", "variant": "dashed" },
+    { "id": "c-harness-work", "from": "harness", "to": "work", "label": "writes" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Executed vs read",
+      "items": [
+        "Executed boxes (see the legend): launcher, gateway and watchdog threads in one process; mcp.py and the tool modules in another, a child of the harness",
+        "The harness reads AGENTS.md, then MISSION.md and TOOLS.md, and starts bin/frontier-mcp because .codex/config.toml names it",
+        "mission.prepare wrote every workspace instruction and harness file before session 1"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Ledgers in the state dir",
+      "items": [
+        "llm.jsonl and events.jsonl are hash-chained; reservations.json holds calls in flight",
+        "Gateway charges the harness traffic; agent.py charges sub-agents; infra.py records machines in resources.json",
+        "Both watchdogs read resources.json and delete what overran"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Not drawn as boxes",
+      "items": [
+        "Native sub-agents (.codex/agents/*.toml) run inside the harness process, on its routed model provider",
+        "OpenShell variant: the host keeps the watchdog; gateway, harness and MCP run in the sandbox via frontier mission session; box.pull() copies workspace and state back",
+        "Owner tools: frontier dashboard (read-only) and frontier reap (cron)"
+      ]
+    }
+  ]
+}
