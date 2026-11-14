@@ -38,7 +38,7 @@ SL = {"type": "array", "items": {"type": "string"}}
 
 def _path(ctx, p: str) -> pathlib.Path:
     q = (ctx.workspace / p).resolve()
-    if not str(q).startswith(str(ctx.workspace.resolve())):
+    if not q.is_relative_to(ctx.workspace.resolve()):
         raise PermissionError(f"{p} is outside the workspace {ctx.workspace}")
     return q
 

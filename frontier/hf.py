@@ -67,7 +67,7 @@ def hf_publish(ctx, repo_name: str, folder: str, repo_type: str = "model", names
     if repo_type not in ("model", "dataset", "space"):
         return "error: repo_type must be model, dataset or space"
     path = (ctx.workspace / folder).resolve()
-    if not str(path).startswith(str(ctx.workspace.resolve())) or not path.is_dir():
+    if not path.is_relative_to(ctx.workspace.resolve()) or not path.is_dir():
         return f"error: {folder} is not a folder of the workspace"
     problems = card_problems(path, repo_type)
     if problems:

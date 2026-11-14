@@ -13,7 +13,7 @@ import pytest
 from test_frontier import FakeScaleway
 
 from frontier import agent as agent_mod
-from frontier import budget, gateway, infra, launcher
+from frontier import budget, gateway, hf, infra, launcher, tools
 from frontier.config import load_config
 
 
@@ -117,3 +117,17 @@ def test_a_server_that_outlives_the_wait_is_not_marked_deleted(run, monkeypatch)
     monkeypatch.setattr(FakeScaleway, "__call__", never_terminates)
     (res,) = infra.cleanup(run)
     assert res["server"].startswith("still there") and run.alive()  # still billed, retried by the watchdog
+
+
+# ---------------------------------------------------------------- workspace
+
+
+def test_a_sibling_directory_with_the_same_prefix_is_outside_the_workspace(tmp_path, cfg):
+    ws = tmp_path / "mission"
+    (tmp_path / "mission-old").mkdir()
+    (tmp_path / "mission-old" / "secret").write_text("s")
+    r = agent_mod.Run(cfg, workspace=ws, log_dir=tmp_path / "log", settings={"allow_publish": True})
+    ctx = agent_mod.Ctx(r, None)
+    with pytest.raises(PermissionError):
+        tools.t_read_file(ctx, "../mission-old/secret")
+    assert hf.hf_publish(ctx, "x", "../mission-old").startswith("error")
