@@ -177,23 +177,34 @@ DEADLINE_EXIT = 124  # exit code of a session stopped at the deadline (as timeou
 KILL_GRACE_S = 10
 
 
+def _end_group(p: subprocess.Popen) -> None:
+    """Terminate the process group of `p`, then kill what is left of it after the grace (children included)."""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(p.pid, sig)
+        except ProcessLookupError:
+            return
+        if sig == signal.SIGTERM:
+            try:
+                p.wait(timeout=KILL_GRACE_S)
+            except subprocess.TimeoutExpired:
+                pass
+            time.sleep(0.1)  # let children that exit on SIGTERM do so before the group is killed
+    p.wait()
+
+
 def run_until(cmd: list[str], seconds: float | None, **kw) -> int:
-    """Run `cmd` in its own process group; at `seconds` (None: no limit) terminate the whole group, then kill it."""
+    """Run `cmd` in its own process group; at `seconds` (None: no limit) end the whole group. The group does not get
+    the terminal's Ctrl-C, so any interruption of the launcher ends it here before going up."""
     p = subprocess.Popen(cmd, start_new_session=True, stdin=subprocess.DEVNULL, stderr=subprocess.STDOUT, text=True, **kw)
     try:
         return p.wait(timeout=seconds)
     except subprocess.TimeoutExpired:
-        for sig in (signal.SIGTERM, signal.SIGKILL):
-            try:
-                os.killpg(p.pid, sig)
-            except ProcessLookupError:
-                break
-            try:
-                p.wait(timeout=KILL_GRACE_S)
-                break
-            except subprocess.TimeoutExpired:
-                continue
+        _end_group(p)
         return DEADLINE_EXIT
+    except BaseException:
+        _end_group(p)
+        raise
 
 
 def seconds_left(run: Run) -> float | None:

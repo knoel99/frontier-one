@@ -6,6 +6,7 @@ import io
 import json
 import os
 import pathlib
+import subprocess
 import threading
 import time
 import urllib.request
@@ -84,8 +85,35 @@ def test_a_session_is_killed_at_the_deadline(tmp_path):
     assert time.time() - t0 < 10 and code == launcher.DEADLINE_EXIT
     child = int((tmp_path / "child").read_text())
     time.sleep(0.2)
-    stat = pathlib.Path(f"/proc/{child}/stat")  # the harness's own children are killed too (gone, or a zombie)
-    assert not stat.exists() or stat.read_text().rsplit(")", 1)[1].split()[0] == "Z"
+    assert _dead(child)  # the harness's own children are killed too
+
+
+def _dead(pid: int) -> bool:
+    stat = pathlib.Path(f"/proc/{pid}/stat")  # gone, or a zombie left to a PID 1 that does not reap
+    for _ in range(50):
+        if not stat.exists() or stat.read_text().rsplit(")", 1)[1].split()[0] == "Z":
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def test_an_interrupted_launcher_ends_the_session(tmp_path, monkeypatch):
+    real_wait = subprocess.Popen.wait
+    calls = []
+
+    def interrupted(self, timeout=None):
+        calls.append(timeout)
+        if len(calls) == 1:
+            while not (tmp_path / "child").exists():
+                time.sleep(0.01)
+            raise KeyboardInterrupt  # Ctrl-C: the harness's group does not get it, being in its own session
+        return real_wait(self, timeout)
+
+    monkeypatch.setattr(subprocess.Popen, "wait", interrupted)
+    monkeypatch.setattr(launcher, "KILL_GRACE_S", 0.5)
+    with pytest.raises(KeyboardInterrupt), open(tmp_path / "log", "w") as f:
+        launcher.run_until(["bash", "-c", "trap '' TERM; sleep 30 & echo $! > child; wait"], None, cwd=tmp_path, stdout=f)
+    assert _dead(int((tmp_path / "child").read_text()))  # even a group that ignores SIGTERM
 
 
 # ---------------------------------------------------------------- sub-agents
