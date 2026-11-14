@@ -114,7 +114,9 @@ def cmd_mission(a, cfg) -> int:
 
     if a.action == "start":
         return launcher.start(a.target, prepare_only=a.prepare_only, keep_resources=a.keep_resources,
-                              max_sessions=a.max_sessions, ping=not a.no_ping)
+                              max_sessions=a.max_sessions, ping=not a.no_ping, dry_run=a.dry_run)
+    if a.action == "session":
+        return launcher.session(a.target, a.n)
     return launcher.status(a.target)
 
 
@@ -188,8 +190,10 @@ def main(argv=None) -> int:
     k.add_argument("--allow-spend", action="store_true")
     k.add_argument("--state", help="a mission's state directory (.frontier/); default $FRONTIER_STATE")
     ms = sub.add_parser("mission", help="prepare and run a mission (see config/mission.example.toml)")
-    ms.add_argument("action", choices=["start", "status"])
-    ms.add_argument("target", help="the mission .toml file")
+    ms.add_argument("action", choices=["start", "status", "session"])
+    ms.add_argument("target", help="the mission .toml file (session: the state directory)")
+    ms.add_argument("n", nargs="?", type=int, default=1, help="session: its number")
+    ms.add_argument("--dry-run", action="store_true", help="sandbox: print the OpenShell commands instead of running them")
     ms.add_argument("--prepare-only", action="store_true", help="write the workspace, do not launch the harness")
     ms.add_argument("--keep-resources", action="store_true")
     ms.add_argument("--max-sessions", type=int)

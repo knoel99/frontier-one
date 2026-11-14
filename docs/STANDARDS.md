@@ -47,6 +47,9 @@ standard, what Frontier does, and the gaps that remain.
   Runpod pods `FRONTIER_RUN`, `FRONTIER_EXPIRES`; `frontier reap <state>` is a dead-man sweep to run from cron on the
   host, which also deletes expired Instances tagged with the run that the ledger lost; a Scaleway terminate leaves
   Block volumes and IPs, which the delete function removes.
+- **Sandbox.** With `[sandbox] kind = "openshell"`, the harness runs in NVIDIA OpenShell: deny-by-default egress per
+  binary, keys injected by its proxy (placeholders inside), Landlock and seccomp; the mission's `[network] allow/deny`
+  lists become its policy (README, "Sandbox and network lists"). Not yet run live.
 - **Gap.** No switch inside the machine itself (a pod or Instance whose host-side processes all died keeps running
   until a reaper runs): run `frontier reap` from cron, and use the provider-side caps above.
 

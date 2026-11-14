@@ -60,6 +60,22 @@ def _deadline(m: dict, start: dt.datetime) -> str | None:
     return None
 
 
+def sandbox_kind(m: dict) -> str:
+    kind = m.get("sandbox", {}).get("kind", "none")
+    if kind not in ("none", "openshell"):
+        raise ValueError(f"[sandbox] kind must be none or openshell, not {kind!r}")
+    return kind
+
+
+def _paths(m: dict, state) -> tuple[str, str]:
+    """Where this repository and the mission state are as the harness sees them (inside a sandbox or not)."""
+    if sandbox_kind(m) == "openshell":
+        from .sandbox import IN_ROOT, IN_STATE
+
+        return IN_ROOT, IN_STATE
+    return str(ROOT), str(state)
+
+
 def providers_of(m: dict) -> list[str]:
     llm_sec = m.get("llm", {})
     return [p for p in [llm_sec.get("provider"), *llm_sec.get("other_providers", [])] if p]
@@ -155,7 +171,8 @@ def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict]
         "sub-agents, skills) are yours as well." + (f" Note: {h.notes}." if h.notes else ""), "",
         "## Frontier tools", "",
         "Served by the `frontier` MCP server of this workspace. Without MCP, the same tools run from the shell: "
-        f"`{ROOT / 'bin' / 'frontier'} call <tool> '<json>' --state {ctx.run.log_dir}` (`call list` lists them).", "",
+        f"`{_paths(m, ctx.run.log_dir)[0]}/bin/frontier call <tool> '<json>' --state {_paths(m, ctx.run.log_dir)[1]}` "
+        "(`call list` lists them).", "",
         "| tool | what it does |", "|---|---|", tools, "",
         "## Models (for `spawn_agent`)", "",
         "Prices: list prices in USD per million tokens (config/prices.toml: the provider's own price where read, else "
@@ -273,7 +290,9 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
                 "tier": m["harness"].get("tier", "frontier"), "reasoning": m["harness"].get("reasoning", "high"),
                 "allow_spend": True, "allow_publish": bool(os.environ.get(hf.get("token_env", "HF_TOKEN"))),
                 "publish_visibility": hf.get("visibility", "private"), "hf_namespace": hf.get("namespace", ""),
-                "mission_file": m["_file"], "subject": subject, "state": str(state)}
+                "mission_file": m["_file"], "subject": subject, "state": str(state),
+                "sandbox": "" if sandbox_kind(m) == "none" else sandbox_kind(m),
+                "conf": {k: v for k, v in m.items() if k != "_file"}}
     (state / "mission.json").write_text(json.dumps(settings, indent=1) + "\n")
 
     run = Run(cfg, workspace=ws, allow_spend=True, run_id=state.name, log_dir=state, settings=settings)
@@ -283,8 +302,9 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     ctx = Ctx(run, None)
     (ws / "TOOLS.md").write_text(tools_inventory(ctx, m, cfg, pings, specs, offers=offers))
     (ws / "MISSION.md").write_text(mission_brief(m, b.caps, subject))
-    (ws / "AGENTS.md").write_text(AGENTS_MD.format(frontier=ROOT / "bin" / "frontier", state=state))
-    mcp = McpCommand(command=str(ROOT / "bin" / "frontier-mcp"), args=["--state", str(state)])
+    root_in, state_in = _paths(m, state)
+    (ws / "AGENTS.md").write_text(AGENTS_MD.format(frontier=f"{root_in}/bin/frontier", state=state_in))
+    mcp = McpCommand(command=f"{root_in}/bin/frontier-mcp", args=["--state", str(state_in)])
     gateway = f"http://127.0.0.1:{settings['gateway_port']}"
     target = {"provider": settings["provider"], "model": _main_model(cfg, m), "gateway": gateway,
               "key_env": m.get("llm", {}).get("key_env") or cfg["providers"][settings["provider"]]["key_env"]}

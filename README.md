@@ -65,6 +65,28 @@ can define any other sub-agent with `spawn_agent(instructions=…)`.
 The mission's state lives outside the AI's workspace (`~/.frontier/missions/<name>/`) and is written by the
 framework only.
 
+## Sandbox and network lists (NVIDIA OpenShell)
+
+With `[sandbox] kind = "openshell"` in the mission file, each team's harness runs in an
+[OpenShell](https://docs.nvidia.com/openshell/) sandbox (`frontier/sandbox.py`, written from the 0.1.8 docs):
+
+- **Keys never enter the sandbox.** Each key (LLM provider, Scaleway, Runpod, Hugging Face) becomes an OpenShell provider
+  backed by a profile of ours; inside, its variable holds a placeholder that OpenShell's proxy replaces with the real key
+  only on the way to that service's hosts, in that service's header.
+- **Network denied by default.** Allowed: the providers' hosts, package registries, Hugging Face storage, and the
+  mission's `[network] allow` list (read-only, L7-enforced); `[network] deny` removes hosts from it (a wildcard that
+  covers a denied host is dropped, with a warning). Landlock (required, not best effort) and seccomp confine files and
+  processes; the workload runs as the `sandbox` user.
+- **Flow.** The host launcher imports the profiles, creates the providers and the sandbox (image built from a generated
+  Dockerfile with the harness and this repository), uploads the workspace and the state, runs each session with
+  `openshell sandbox exec … frontier mission session`, downloads workspace and ledgers after each session (the host's
+  dashboard, watchdog and commits read them), and deletes sandbox and providers at the end.
+  `mission start <file> --dry-run` prints every command without running it.
+- **To check on the race host before a real mission** (no Docker daemon in the session that wrote it): one short
+  session; that loopback traffic from the harness to the metering gateway inside the sandbox is allowed; the
+  `binaries` globs against the image's real paths (add a harness's native binary with `sandbox_binaries` in
+  `config/harnesses.toml`).
+
 ## Layout
 
 | Path | What it holds |

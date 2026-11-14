@@ -406,3 +406,37 @@ def test_dashboard_subagent_history(tmp_path, cfg):
     assert sub["kind"] == "spawn_agent" and sub["seconds"] == 5 and sub["calls"] == 1 and sub["tool_calls"] == 1
     assert sub["input"] == 900 and sub["cached"] == 100 and sub["usd"] == 0.0002 and sub["status"] == "done"
     assert rows[1]["kind"] == "native" and rows[1]["agent"] == "reviewer" and rows[1]["usd"] is None
+
+
+def test_openshell_files_and_commands(tmp_path, monkeypatch):
+    from frontier import sandbox
+
+    f = _mission(tmp_path, harness="codex", provider="anthropic")
+    f.write_text(f.read_text().replace('name = "codex"', 'name = "codex"') + '''
+[sandbox]
+kind = "openshell"
+[network]
+allow = ["arxiv.org", "*.wikipedia.org", "github.com"]
+deny = ["github.com", "de.wikipedia.org"]
+''')
+    info = mission.prepare(f, ping=False, offers=False)
+    assert info["settings"]["sandbox"] == "openshell"
+    conf = tomllib.loads((info["workspace"] / ".codex/config.toml").read_text())["mcp_servers"]["frontier"]
+    assert conf == {"command": "/opt/frontier/bin/frontier-mcp", "args": ["--state", "/sandbox/state"], "tool_timeout_sec": 3600}
+    box = sandbox.OpenShell(info, launcher.harness_conf("codex", "anthropic"), dry_run=True)
+    warnings = box.write_files()
+    assert any("github.com" in w for w in warnings) and any("wikipedia" in w for w in warnings)
+    pol = json.loads((box.dir / "policy.yaml").read_text())
+    assert [e["host"] for e in pol["network_policies"]["research"]["endpoints"]] == ["arxiv.org"]
+    assert all(e["access"] == "read-only" and e["enforcement"] == "enforce" for e in pol["network_policies"]["research"]["endpoints"])
+    llm_prof = json.loads((box.dir / "frontier-llm-anthropic.yaml").read_text())
+    assert llm_prof["credentials"][0]["header_name"] == "x-api-key" and llm_prof["endpoints"][0]["host"] == "api.anthropic.com"
+    scw = json.loads((box.dir / "frontier-scaleway.yaml").read_text())
+    assert scw["credentials"][0]["env_vars"] == ["SCW_SECRET_KEY"] and scw["credentials"][0]["header_name"] == "x-auth-token"
+    assert "COPY frontier /opt/frontier" in (box.dir / "image" / "Dockerfile").read_text()
+    box.setup()
+    created = next(c for c in box.commands if c[:3] == ["openshell", "sandbox", "create"])
+    assert "--policy" in created and created.count("--provider") == 4 and created[-3:] == ["--", "sleep", "infinity"]
+    assert box.session_command(2)[-3:] == ["session", "/sandbox/state", "2"]
+    box.teardown()
+    assert box.commands[-1][:3] == ["openshell", "provider", "delete"]

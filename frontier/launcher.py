@@ -180,77 +180,139 @@ def _watchdog(run: Run, stop: threading.Event) -> None:
             print(f"watchdog: {e}", file=sys.stderr)
 
 
+def open_gateway(state: pathlib.Path, s: dict, h: dict):
+    """Start the metering gateway when the harness can be routed through it: (server, base URL) or (None, None)."""
+    if not routable(h):
+        print("this harness cannot be routed through the gateway: its main-thread spend comes from its own usage "
+              "report when it gives one (config/harnesses.toml `usage`)")
+        return None, None
+    try:
+        gw = serve(str(state), s.get("gateway_port", 0), agent=f"harness:{s['harness']}")
+    except OSError:  # the port chosen at preparation is taken: harnesses configured by file will miss the gateway
+        gw = serve(str(state), 0, agent=f"harness:{s['harness']}")
+        print(f"warning: port {s.get('gateway_port')} busy, gateway on {gw.server_address[1]}")
+    gateway = f"http://127.0.0.1:{gw.server_address[1]}"
+    print(f"metering gateway {gateway}")
+    return gw, gateway
+
+
+def harness_setup(info: dict, h: dict, gateway: str | None, run: Run) -> None:
+    if h.get("setup"):  # once per machine and key, e.g. `codex login`
+        _, env = build_session(info, h, "", gateway)
+        p = subprocess.run(["bash", "-c", h["setup"]], cwd=info["workspace"], env=env, capture_output=True, text=True)
+        run.log(event="harness_setup", code=p.returncode, output=(p.stdout + p.stderr)[-2000:])
+        print(f"setup: exit {p.returncode}")
+
+
+def run_one(info: dict, h: dict, n: int, run: Run, gateway: str | None) -> int:
+    """One headless session of the harness; its output is written live to sessions/<n>.log."""
+    s, cfg = info["settings"], load_config()
+    prompt = FIRST_PROMPT if n == 1 else NEXT_PROMPT.format(n=n)
+    if h.get("goal"):
+        prompt = f"{h['goal']} {prompt} {GOAL_CONDITION}"
+    cmd, env = build_session(info, h, prompt, gateway)
+    run.log(event="session_start", n=n, command=cmd[0])
+    started = budget_mod.now().isoformat(timespec="seconds")
+    t0 = time.time()
+    logs = pathlib.Path(info["state"]) / "sessions"
+    logs.mkdir(exist_ok=True)
+    log = logs / f"{n:02d}.log"
+    with open(log, "w") as f:  # written live: the dashboard follows the session as it runs
+        p = subprocess.run(cmd, cwd=info["workspace"], env=env, stdout=f, stderr=subprocess.STDOUT, text=True,
+                           stdin=subprocess.DEVNULL)
+    out = log.read_text(errors="replace")
+    metered = any(e["frontier.source"] == "gateway" and e["t"] >= started for e in run.budget.llm_entries())
+    if not metered:  # the gateway saw none of the session's traffic: charge what the harness reports
+        usd, usage = usage_from_report(h, out)
+        model = llm.resolve(cfg, s["provider"], s["tier"], s["reasoning"]).model
+        if usd is not None or usage:
+            run.budget.charge_llm("harness-report", f"harness:{s['harness']}", s["provider"], model, usage, usd=usd)
+        else:
+            run.log(event="session_unmetered", n=n, note="no gateway traffic and no usage report")
+    run.log(event="session_end", n=n, code=p.returncode, seconds=round(time.time() - t0, 1))
+    print(f"session {n}: exit {p.returncode}, {time.time() - t0:.0f} s")
+    return p.returncode
+
+
+def session(state_dir: str, n: int) -> int:
+    """`frontier mission session <state> <n>`: one session where the state and workspace are local, e.g. inside an
+    OpenShell sandbox (the host launcher runs this through `openshell sandbox exec`)."""
+    state = pathlib.Path(state_dir)
+    s = json.loads((state / "mission.json").read_text())
+    s["workspace"] = os.getcwd()
+    (state / "mission.json").write_text(json.dumps(s, indent=1) + "\n")
+    info = {"mission": s.get("conf", {}), "settings": s, "state": state, "workspace": pathlib.Path(os.getcwd())}
+    h = harness_conf(s["harness"], s["provider"])
+    run = Run(load_config(), workspace=info["workspace"], allow_spend=True, run_id=state.name, log_dir=state, settings=s)
+    gw, gateway = open_gateway(state, s, h)
+    try:
+        harness_setup(info, h, gateway, run)
+        return run_one(info, h, n, run, gateway)
+    finally:
+        if gw:
+            gw.shutdown()
+
+
 def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = False, max_sessions: int | None = None,
-          ping: bool = True) -> int:
+          ping: bool = True, dry_run: bool = False) -> int:
     info = mission.prepare(mission_file, ping=ping)
     s, state, ws = info["settings"], info["state"], info["workspace"]
-    print(f"workspace {ws}\nharness {s['harness']}, provider {s['provider']} ({s['tier']}/{s['reasoning']})")
+    print(f"workspace {ws}\nharness {s['harness']}, provider {s['provider']} ({s['tier']}/{s['reasoning']})"
+          + (f", sandbox {s['sandbox']}" if s.get("sandbox") else ""))
     for p, r in info["pings"].items():
         print(f"  {p}: {r}")
+    h = harness_conf(s["harness"], s["provider"])
+    box = None
+    if s.get("sandbox") == "openshell":
+        from .sandbox import OpenShell
+
+        box = OpenShell(info, h, dry_run=dry_run)
+        for w in box.write_files():
+            print(f"network list: {w}")
+        print(f"OpenShell files in {box.dir}")
     if prepare_only:
         print("prepared (MISSION.md, TOOLS.md, AGENTS.md, harness files); not launched")
         return 0
-    h = harness_conf(s["harness"], s["provider"])
     cfg = load_config()
     run = Run(cfg, workspace=ws, allow_spend=True, run_id=state.name, log_dir=state, settings=s)
     gw = gateway = None
-    if routable(h):
-        try:
-            gw = serve(str(state), s.get("gateway_port", 0), agent=f"harness:{s['harness']}")
-        except OSError:  # the port chosen at preparation is taken: harnesses configured by file will miss the gateway
-            gw = serve(str(state), 0, agent=f"harness:{s['harness']}")
-            print(f"warning: port {s.get('gateway_port')} busy, gateway on {gw.server_address[1]}")
-        gateway = f"http://127.0.0.1:{gw.server_address[1]}"
-        print(f"metering gateway {gateway}")
+    if box:
+        box.setup()
     else:
-        print("this harness cannot be routed through the gateway: its main-thread spend comes from its own usage "
-              "report when it gives one (config/harnesses.toml `usage`)")
-    if h.get("setup"):  # once per machine and key, e.g. `codex login`
-        cmd, env = build_session(info, h, "", gateway)
-        p = subprocess.run(["bash", "-c", h["setup"]], cwd=ws, env=env, capture_output=True, text=True)
-        run.log(event="harness_setup", code=p.returncode, output=(p.stdout + p.stderr)[-2000:])
-        print(f"setup: exit {p.returncode}")
+        gw, gateway = open_gateway(state, s, h)
+        harness_setup(info, h, gateway, run)
     stop = threading.Event()
     threading.Thread(target=_watchdog, args=(run, stop), daemon=True).start()
     sessions = max_sessions or int(info["mission"].get("harness", {}).get("max_sessions", 20))
-    logs = state / "sessions"
-    logs.mkdir(exist_ok=True)
     try:
         for n in range(1, sessions + 1):
             why = _stop_reason(run)
             if why:
                 print(f"stop: {why}")
                 break
-            prompt = FIRST_PROMPT if n == 1 else NEXT_PROMPT.format(n=n)
-            if h.get("goal"):
-                prompt = f"{h['goal']} {prompt} {GOAL_CONDITION}"
-            cmd, env = build_session(info, h, prompt, gateway)
-            run.log(event="session_start", n=n, command=cmd[0])
-            started = budget_mod.now().isoformat(timespec="seconds")
-            t0 = time.time()
-            log = logs / f"{n:02d}.log"
-            with open(log, "w") as f:  # written live: the dashboard follows the session as it runs
-                p = subprocess.run(cmd, cwd=ws, env=env, stdout=f, stderr=subprocess.STDOUT, text=True,
-                                   stdin=subprocess.DEVNULL)
-            p.stdout = log.read_text(errors="replace")
-            metered = any(e["frontier.source"] == "gateway" and e["t"] >= started
-                          for e in run.budget.llm_entries())
-            if not metered:  # the gateway saw none of the session's traffic: charge what the harness reports
-                usd, usage = usage_from_report(h, p.stdout)
-                model = llm.resolve(cfg, s["provider"], s["tier"], s["reasoning"]).model
-                if usd is not None or usage:
-                    run.budget.charge_llm("harness-report", f"harness:{s['harness']}", s["provider"], model, usage, usd=usd)
-                else:
-                    run.log(event="session_unmetered", n=n, note="no gateway traffic and no usage report")
-            run.log(event="session_end", n=n, code=p.returncode, seconds=round(time.time() - t0, 1))
+            if box:
+                (state / "sessions").mkdir(exist_ok=True)
+                with open(state / "sessions" / f"sandbox-{n:02d}.log", "w") as f:
+                    box.commands.append(box.session_command(n))
+                    code = 0 if dry_run else subprocess.run(box.session_command(n), stdout=f, stderr=subprocess.STDOUT,
+                                                            stdin=subprocess.DEVNULL).returncode
+                box.pull()
+                print(f"sandbox session {n}: exit {code}")
+                if dry_run:
+                    break
+            else:
+                run_one(info, h, n, run, gateway)
             commit(ws, f"Session {n}")
-            print(f"session {n}: exit {p.returncode}, {time.time() - t0:.0f} s")
     finally:
         stop.set()
         if gw:
             gw.shutdown()
+        if box:
+            box.teardown()
+            if dry_run:
+                print("\n".join(" ".join(c) for c in box.commands))
         if not (state / "delivery.json").exists():
-            if run.alive() and not keep_resources:
+            if run.alive() and not keep_resources and not dry_run:
                 print("cleanup: " + json.dumps(infra.cleanup(run)))
             st = run.budget.status()
             (ws / "COSTS.md").write_text(mission.costs_markdown(st, run.budget.resources(), []))
