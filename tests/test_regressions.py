@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import json
+import pathlib
 import threading
+import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
 from frontier import agent as agent_mod
-from frontier import budget, gateway
+from frontier import budget, gateway, launcher
 from frontier.config import load_config
 
 
@@ -66,3 +68,17 @@ def test_gateway_reserves_at_the_dearest_mode(cfg):
     body = json.dumps({"model": "gpt-6-astra", "input": "x", "max_output_tokens": 1000}).encode()
     standard = budget.worst_case_usd("openai", "gpt-6-astra", len(body), 1000)
     assert gateway.worst_case(cfg, "openai", "/v1/responses", body) == pytest.approx(standard * dearest)
+
+
+# ---------------------------------------------------------------- launcher
+
+
+def test_a_session_is_killed_at_the_deadline(tmp_path):
+    t0 = time.time()
+    with open(tmp_path / "log", "w") as f:
+        code = launcher.run_until(["bash", "-c", "sleep 30 & echo $! > child; wait"], 1, cwd=tmp_path, stdout=f)
+    assert time.time() - t0 < 10 and code == launcher.DEADLINE_EXIT
+    child = int((tmp_path / "child").read_text())
+    time.sleep(0.2)
+    stat = pathlib.Path(f"/proc/{child}/stat")  # the harness's own children are killed too (gone, or a zombie)
+    assert not stat.exists() or stat.read_text().rsplit(")", 1)[1].split()[0] == "Z"

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import signal
 import subprocess
 import sys
 import threading
@@ -172,6 +173,35 @@ def _scan_usage(obj) -> tuple[dict, float | None]:
     return best, cost
 
 
+DEADLINE_EXIT = 124  # exit code of a session stopped at the deadline (as timeout(1))
+KILL_GRACE_S = 10
+
+
+def run_until(cmd: list[str], seconds: float | None, **kw) -> int:
+    """Run `cmd` in its own process group; at `seconds` (None: no limit) terminate the whole group, then kill it."""
+    p = subprocess.Popen(cmd, start_new_session=True, stdin=subprocess.DEVNULL, stderr=subprocess.STDOUT, text=True, **kw)
+    try:
+        return p.wait(timeout=seconds)
+    except subprocess.TimeoutExpired:
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(p.pid, sig)
+            except ProcessLookupError:
+                break
+            try:
+                p.wait(timeout=KILL_GRACE_S)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        return DEADLINE_EXIT
+
+
+def seconds_left(run: Run) -> float | None:
+    """Time to the mission's deadline (at least one second), or None without a deadline."""
+    deadline = budget_mod.parse_time(run.budget.caps.get("deadline"))
+    return None if deadline is None else max(1.0, (deadline - budget_mod.now()).total_seconds())
+
+
 def _watchdog(run: Run, stop: threading.Event) -> None:
     while not stop.wait(60):
         try:
@@ -218,8 +248,7 @@ def run_one(info: dict, h: dict, n: int, run: Run, gateway: str | None) -> int:
     logs.mkdir(exist_ok=True)
     log = logs / f"{n:02d}.log"
     with open(log, "w") as f:  # written live: the dashboard follows the session as it runs
-        p = subprocess.run(cmd, cwd=info["workspace"], env=env, stdout=f, stderr=subprocess.STDOUT, text=True,
-                           stdin=subprocess.DEVNULL)
+        code = run_until(cmd, seconds_left(run), cwd=info["workspace"], env=env, stdout=f)
     out = log.read_text(errors="replace")
     metered = any(e["frontier.source"] == "gateway" and e["t"] >= started for e in run.budget.llm_entries())
     if not metered:  # the gateway saw none of the session's traffic: charge what the harness reports
@@ -229,9 +258,10 @@ def run_one(info: dict, h: dict, n: int, run: Run, gateway: str | None) -> int:
             run.budget.charge_llm("harness-report", f"harness:{s['harness']}", s["provider"], model, usage, usd=usd)
         else:
             run.log(event="session_unmetered", n=n, note="no gateway traffic and no usage report")
-    run.log(event="session_end", n=n, code=p.returncode, seconds=round(time.time() - t0, 1))
-    print(f"session {n}: exit {p.returncode}, {time.time() - t0:.0f} s")
-    return p.returncode
+    run.log(event="session_end", n=n, code=code, seconds=round(time.time() - t0, 1),
+            **({"stopped": "deadline"} if code == DEADLINE_EXIT else {}))
+    print(f"session {n}: exit {code}, {time.time() - t0:.0f} s" + (" (deadline)" if code == DEADLINE_EXIT else ""))
+    return code
 
 
 def session(state_dir: str, n: int) -> int:
@@ -294,8 +324,8 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
                 (state / "sessions").mkdir(exist_ok=True)
                 with open(state / "sessions" / f"sandbox-{n:02d}.log", "w") as f:
                     box.commands.append(box.session_command(n))
-                    code = 0 if dry_run else subprocess.run(box.session_command(n), stdout=f, stderr=subprocess.STDOUT,
-                                                            stdin=subprocess.DEVNULL).returncode
+                    left = seconds_left(run)  # the session inside stops itself at the deadline; this is the backstop
+                    code = 0 if dry_run else run_until(box.session_command(n), left and left + 2 * KILL_GRACE_S, stdout=f)
                 box.pull()
                 print(f"sandbox session {n}: exit {code}")
                 if dry_run:
