@@ -26,7 +26,6 @@ frontier = ["dashboard.html"]
 [tool.ruff]
 line-length = 140
 target-version = "py311"
-extend-exclude = ["old"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
