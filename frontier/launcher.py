@@ -25,6 +25,8 @@ HARNESS_CONF = ROOT / "config" / "harnesses.toml"
 FIRST_PROMPT = ("Read MISSION.md and TOOLS.md, then carry out the mission. You work autonomously: nobody will answer "
                 "questions. Record your strategy and decisions in DECISIONS.md as you go. When the deliverables are "
                 "ready, call the `deliver` tool.")
+GOAL_CONDITION = ("The goal is met when the `deliver` tool has returned a delivery record; it is impossible when "
+                  "`budget_status` shows the LLM budget spent or no time left.")
 NEXT_PROMPT = ("Continue the mission (session {n}). Your previous session ended. Read MISSION.md, DECISIONS.md and the "
                "state of the repository, call `budget_status` for the spend and the time left, then carry on. When the "
                "deliverables are ready, call the `deliver` tool.")
@@ -220,6 +222,8 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
                 print(f"stop: {why}")
                 break
             prompt = FIRST_PROMPT if n == 1 else NEXT_PROMPT.format(n=n)
+            if h.get("goal"):
+                prompt = f"{h['goal']} {prompt} {GOAL_CONDITION}"
             cmd, env = build_session(info, h, prompt, gateway)
             run.log(event="session_start", n=n, command=cmd[0])
             started = budget_mod.now().isoformat(timespec="seconds")
