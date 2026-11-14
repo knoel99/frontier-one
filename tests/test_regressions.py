@@ -148,6 +148,54 @@ def test_a_server_that_outlives_the_wait_is_not_marked_deleted(run, monkeypatch)
     monkeypatch.setattr(FakeScaleway, "__call__", never_terminates)
     (res,) = infra.cleanup(run)
     assert res["server"].startswith("still there") and run.alive()  # still billed, retried by the watchdog
+    monkeypatch.setattr(infra, "DELETE_WAIT_S", 30)
+    t0 = time.time()
+    (res,) = infra.cleanup(run)  # a retry checks once and does not wait again
+    assert res["server"].startswith("still there") and time.time() - t0 < 5
+    monkeypatch.setattr(FakeScaleway, "__call__", stuck)
+    fake.server_alive = False
+    (res,) = infra.cleanup(run)  # the server is gone: its IP, known from the ledger, is released too
+    assert res["ips_deleted"] == ["ip"] and not run.alive()
+
+
+def test_a_volume_still_attached_keeps_the_resource_alive(run, monkeypatch):
+    fake = FakeScaleway()
+    monkeypatch.setattr(infra, "scw", fake)
+    monkeypatch.setattr(infra, "POLL_S", 0)
+    monkeypatch.setattr(infra, "VOLUME_WAIT_S", 0.05)
+    run.allow_spend = True
+    infra.scw_create_instance(agent_mod.Ctx(run, None), "n", "L4-1-24G", max_hours=2)
+    real = FakeScaleway.__call__
+    monkeypatch.setattr(FakeScaleway, "__call__", lambda self, method, path, body=None, **kw: (
+        {"status": "in_use", "references": ["x"]} if "/block/" in path and method == "GET" else real(self, method, path, body, **kw)))
+    (res,) = infra.cleanup(run)
+    assert res["volumes_left"] == ["vol"] and run.alive()
+
+
+def test_parallel_creations_cannot_pass_the_same_budget_check(run, monkeypatch):
+    fake = FakeScaleway()
+    monkeypatch.setattr(infra, "scw", fake)
+    run.allow_spend = True
+    run.budget.set_caps(scaleway_eur=2.0)  # room for one machine: 0.7875 EUR/h x 2 h
+    real = FakeScaleway.__call__
+    created = iter(["srv1", "srv2"])
+
+    def slow_create(self, method, path, body=None, **kw):
+        if method == "POST" and path.endswith("/servers"):
+            time.sleep(0.2)  # both threads are past their check when the first records its machine
+            r = real(self, method, path, body, **kw)
+            return {"server": {**r["server"], "id": next(created)}}
+        return real(self, method, path, body, **kw)
+
+    monkeypatch.setattr(FakeScaleway, "__call__", slow_create)
+    out = []
+    ts = [threading.Thread(target=lambda: out.append(infra.scw_create_instance(agent_mod.Ctx(run, None), "n", "L4-1-24G",
+                                                                               max_hours=2))) for _ in range(2)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert len(run.alive()) == 1 and sum(o.startswith("refused") for o in out) == 1
 
 
 # ---------------------------------------------------------------- workspace

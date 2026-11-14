@@ -127,16 +127,18 @@ def scw_create_instance(ctx, name: str, commercial_type: str, max_hours: float, 
         return f"error: no {image_label} image in {zone} compatible with {commercial_type}"
     offer = next((o for o in json.loads(scw_offers(ctx, zone, 0, gpu_only=False, include_unavailable=True))["offers"]
                   if o["type"] == commercial_type), {})
-    ok, why = ctx.run.budget.cloud_allowed("scaleway", offer.get("eur_per_hour"), max_hours)
-    if not ok:
-        return f"refused: {why}"
-    expires = (now() + dt.timedelta(hours=max_hours)).isoformat(timespec="minutes")
-    body = {"name": name, "commercial_type": commercial_type, "image": img["id"], "project": d["project_id"],
-            "tags": ["frontier", f"run:{ctx.run.run_id}", f"expires:{expires}", *(tags or [])]}
-    s = scw("POST", f"/instance/v1/zones/{zone}/servers", body)["server"]
-    ctx.run.record({"provider": "scaleway", "kind": "instance", "id": s["id"], "zone": zone, "name": name,
-                    "type": commercial_type, "eur_per_hour": offer.get("eur_per_hour"), "max_hours": max_hours,
-                    "volumes": [v["id"] for v in (s.get("volumes") or {}).values()]})
+    with ctx.run.budget.cloud_lock():  # from the budget check to the ledger: parallel creations queue
+        ok, why = ctx.run.budget.cloud_allowed("scaleway", offer.get("eur_per_hour"), max_hours)
+        if not ok:
+            return f"refused: {why}"
+        expires = (now() + dt.timedelta(hours=max_hours)).isoformat(timespec="minutes")
+        body = {"name": name, "commercial_type": commercial_type, "image": img["id"], "project": d["project_id"],
+                "tags": ["frontier", f"run:{ctx.run.run_id}", f"expires:{expires}", *(tags or [])]}
+        s = scw("POST", f"/instance/v1/zones/{zone}/servers", body)["server"]
+        ctx.run.record({"provider": "scaleway", "kind": "instance", "id": s["id"], "zone": zone, "name": name,
+                        "type": commercial_type, "eur_per_hour": offer.get("eur_per_hour"), "max_hours": max_hours,
+                        "volumes": [v["id"] for v in (s.get("volumes") or {}).values()],
+                        "ips": [ip["id"] for ip in s.get("public_ips") or []]})
     if cloud_init:
         scw("PATCH", f"/instance/v1/zones/{zone}/servers/{s['id']}/user_data/cloud-init", cloud_init, content_type="text/plain")
     scw("POST", f"/instance/v1/zones/{zone}/servers/{s['id']}/action", {"action": "poweron"})
@@ -167,18 +169,25 @@ def _delete_scw_instance(run, server_id: str, zone: str) -> dict:
     done = {"id": server_id, "server": "already gone", "volumes_deleted": [], "ips_deleted": []}
     rec = next((r for r in run.resources if r["id"] == server_id), {})
     vols = set(rec.get("volumes", []))
-    ips = []
+    ips = set(rec.get("ips", []))  # also known after the server is gone, for a retry
     if s is not None:
         vols |= {v["id"] for v in (s.get("volumes") or {}).values() if v.get("volume_type") == "sbs_volume"}
-        ips = [ip["id"] for ip in s.get("public_ips") or []]
-        if s["state"] == "stopped":
-            scw("DELETE", f"/instance/v1/zones/{zone}/servers/{server_id}")
-        else:
-            scw("POST", f"/instance/v1/zones/{zone}/servers/{server_id}/action", {"action": "terminate"})
+        ips |= {ip["id"] for ip in s.get("public_ips") or []}
+        retry = rec.get("state") == "deleting"
+        try:
+            if s["state"] == "stopped":
+                scw("DELETE", f"/instance/v1/zones/{zone}/servers/{server_id}")
+            else:
+                scw("POST", f"/instance/v1/zones/{zone}/servers/{server_id}/action", {"action": "terminate"})
+        except APIError:
+            if not retry:  # on a retry, the server may still be busy with the first terminate
+                raise
         t0 = time.time()
+        wait = 0 if retry else DELETE_WAIT_S  # a retry checks once, it does not wait again
         while _server(zone, server_id) is not None:
-            if time.time() - t0 >= DELETE_WAIT_S:  # still billing: keep it alive in the ledger, so it is retried
-                done["server"] = f"still there after {DELETE_WAIT_S} s: deletion asked, not confirmed"
+            if time.time() - t0 >= wait:  # still billing: kept alive in the ledger, retried by cleanup and the watchdog
+                run.mark(server_id, "deleting")
+                done["server"] = f"still there after {wait} s: deletion asked, not confirmed"
                 return done
             time.sleep(POLL_S)
         done["server"] = "deleted"
@@ -251,25 +260,26 @@ def rp_create_pod(ctx, name: str, gpu_type_id: str, max_hours: float,
         return "error: max_hours must be > 0"
     offers = json.loads(rp_offers(ctx, 0, cloud, gpu_count, include_unavailable=True))["offers"]
     offer = next((o for o in offers if o["gpu_type_id"] == gpu_type_id), None)
-    ok, why = ctx.run.budget.cloud_allowed("runpod", offer["usd_per_gpu_hour"] * gpu_count if offer else None, max_hours)
-    if not ok:
-        return f"refused: {why}"
-    expires = (now() + dt.timedelta(hours=max_hours)).isoformat(timespec="minutes")
-    body = {"name": name, "image": image, "gpu": {"id": gpu_type_id, "count": gpu_count}, "cloud": cloud, "disk": disk_gb,
-            "env": {"FRONTIER_RUN": ctx.run.run_id, "FRONTIER_EXPIRES": expires, **(env or {})}}
-    if ports:
-        body["ports"] = ports
-    if command:
-        body["args"] = json.dumps({"entrypoint": ["/bin/bash", "-c"], "cmd": [command]})
-    if start_ssh:
-        body["startSsh"] = True
-    pod = mcp_json("create-pod", {"body": body})
-    pod_id = pod.get("id") or (pod.get("pod") or {}).get("id")
-    if not pod_id:
-        return f"error: create-pod returned no id: {_j(pod)[:1500]}"
-    usd = offer["usd_per_gpu_hour"] * gpu_count if offer else None
-    ctx.run.record({"provider": "runpod", "kind": "pod", "id": pod_id, "name": name, "type": f"{gpu_count}x {gpu_type_id}",
-                    "usd_per_hour": usd, "max_hours": max_hours})
+    with ctx.run.budget.cloud_lock():  # from the budget check to the ledger: parallel creations queue
+        ok, why = ctx.run.budget.cloud_allowed("runpod", offer["usd_per_gpu_hour"] * gpu_count if offer else None, max_hours)
+        if not ok:
+            return f"refused: {why}"
+        expires = (now() + dt.timedelta(hours=max_hours)).isoformat(timespec="minutes")
+        body = {"name": name, "image": image, "gpu": {"id": gpu_type_id, "count": gpu_count}, "cloud": cloud, "disk": disk_gb,
+                "env": {"FRONTIER_RUN": ctx.run.run_id, "FRONTIER_EXPIRES": expires, **(env or {})}}
+        if ports:
+            body["ports"] = ports
+        if command:
+            body["args"] = json.dumps({"entrypoint": ["/bin/bash", "-c"], "cmd": [command]})
+        if start_ssh:
+            body["startSsh"] = True
+        pod = mcp_json("create-pod", {"body": body})
+        pod_id = pod.get("id") or (pod.get("pod") or {}).get("id")
+        if not pod_id:
+            return f"error: create-pod returned no id: {_j(pod)[:1500]}"
+        usd = offer["usd_per_gpu_hour"] * gpu_count if offer else None
+        ctx.run.record({"provider": "runpod", "kind": "pod", "id": pod_id, "name": name, "type": f"{gpu_count}x {gpu_type_id}",
+                        "usd_per_hour": usd, "max_hours": max_hours})
     return _j({"id": pod_id, "usd_per_hour_gpu_only": usd, "pod": pod,
                "note": "run commands with rp_exec once it is RUNNING; delete with rp_delete_pod"})
 

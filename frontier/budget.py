@@ -10,6 +10,7 @@ metering gateway) shares it:
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import fcntl
 import hashlib
@@ -261,6 +262,17 @@ class Budget:
             left = max(0.0, (r.get("max_hours") or 0) - self._hours(r, at))
             total += (r.get(key) or 0) * left
         return round(total, 4)
+
+    @contextlib.contextmanager
+    def cloud_lock(self):
+        """Held from a creation's budget check until the resource is in the ledger, across threads and processes,
+        so that two parallel creations cannot both pass the same check."""
+        with open(self.dir / ".cloud.lock", "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
 
     def cloud_allowed(self, provider: str, price_per_hour: float | None, max_hours: float) -> tuple[bool, str]:
         cap_key, cur, _ = CLOUD_CURRENCY[provider]
