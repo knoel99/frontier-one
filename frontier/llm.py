@@ -19,7 +19,7 @@ import urllib.request
 import uuid
 from dataclasses import dataclass, field
 
-PROXY_PLACEHOLDER = "proxy-injected"
+from .credentials import PLACEHOLDER as PROXY_PLACEHOLDER  # noqa: E402
 LEVELS = ["none", "low", "medium", "high", "max"]
 TIERS = ["frontier", "standard", "light"]
 

@@ -19,11 +19,12 @@ import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import tomllib
 import urllib.request
 
 from . import budget as budget_mod
-from . import llm
+from . import credentials, llm
 from .config import ROOT, load_config
 from .harnesses import HARNESSES, McpCommand, artifacts
 
@@ -262,30 +263,10 @@ def _ping(cfg: dict, provider: str, b: budget_mod.Budget | None = None) -> str:
         return f"KEY CHECK FAILED: {str(e)[:160]}"
 
 
-# The variables the framework reads, and the mission field that may rename each one.
-ENV_FIELDS = {"SCW_SECRET_KEY": ("scaleway", "key_env"), "SCW_DEFAULT_PROJECT_ID": ("scaleway", "project_id_env"),
-              "RUNPOD_API_KEY": ("runpod", "key_env"), "HF_TOKEN": ("huggingface", "token_env")}
-# Non-secret settings, recorded in mission.json so that a session inside a sandbox gets them too.
-PLAIN_ENV = ("SCW_DEFAULT_PROJECT_ID", "SCW_DEFAULT_ORGANIZATION_ID", "SCW_DEFAULT_ZONE", "SCW_DEFAULT_REGION")
-
-
-def env_names(m: dict, cfg: dict) -> dict[str, str]:
-    """{variable the framework reads: variable the mission names for it}."""
-    out = {canon: m.get(sec, {}).get(field) or canon for canon, (sec, field) in ENV_FIELDS.items()}
-    prov = m.get("llm", {}).get("provider")
-    if prov in cfg.get("providers", {}):
-        canon = cfg["providers"][prov]["key_env"]
-        out[canon] = m["llm"].get("key_env") or canon
-    return out
-
-
-def export_env(settings: dict, cfg: dict | None = None) -> None:
-    """Give the mission's keys and settings the names every reader uses (llm, http, hf, sub-agents, harness), once
-    at the boundary, so that no reader has to know the mission's own names."""
-    for canon, own in env_names(settings.get("conf", {}), cfg or load_config()).items():
-        if own != canon and os.environ.get(own):  # the mission's own name wins over an ambient default
-            os.environ[canon] = os.environ[own]
-    os.environ.update(settings.get("env") or {})  # what the mission resolved at preparation
+def apply_settings(settings: dict) -> None:
+    """Inside a sandbox, where no secret source can be read: the non-secret settings resolved at preparation (the keys
+    themselves are OpenShell placeholders, under their standard names)."""
+    os.environ.update(settings.get("env") or {})
 
 
 def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = True) -> dict:
@@ -309,20 +290,23 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
                llm_usd=m.get("llm", {}).get("budget_usd"), scaleway_eur=m.get("scaleway", {}).get("budget_eur"),
                runpod_usd=m.get("runpod", {}).get("budget_usd"))
     hf = m.get("huggingface", {})
+    origin = credentials.load(m, cfg)  # every key under its standard name, from wherever the mission keeps it
+    hf_env = credentials.services(cfg)["huggingface"].env
     old_settings = json.loads((state / "mission.json").read_text()) if (state / "mission.json").exists() else {}
     settings = {"gateway_port": old_settings.get("gateway_port") or _free_port(), "name": m["mission"].get("name", "mission"),
                 "workspace": str(ws), "harness": m["harness"]["name"],
                 "provider": m.get("llm", {}).get("provider"), "providers": providers_of(m),
                 "tier": m["harness"].get("tier", "frontier"), "reasoning": m["harness"].get("reasoning", "high"),
-                "allow_spend": True, "allow_publish": bool(os.environ.get(hf.get("token_env", "HF_TOKEN"))),
+                "allow_spend": True, "allow_publish": "huggingface" in m and credentials.available(origin, hf_env),
                 "publish_visibility": hf.get("visibility", "private"), "hf_namespace": hf.get("namespace", ""),
                 "mission_file": m["_file"], "subject": subject, "state": str(state),
                 "sandbox": "" if sandbox_kind(m) == "none" else sandbox_kind(m),
                 "conf": {k: v for k, v in m.items() if k != "_file"}}
-    settings["env"] = {k: os.environ[c] for k, c in env_names(m, cfg).items() if k in PLAIN_ENV and os.environ.get(c)}
-    settings["env"].update({k: os.environ[k] for k in PLAIN_ENV if k not in settings["env"] and os.environ.get(k)})
+    settings["env"] = credentials.plain_settings(m, cfg)
+    settings["credentials"] = origin  # where each key came from, never its value
     (state / "mission.json").write_text(json.dumps(settings, indent=1) + "\n")
-    export_env(settings, cfg)
+    if bad := {k: v for k, v in origin.items() if v.startswith("error")}:
+        print("warning: some secret sources failed: " + json.dumps(bad), file=sys.stderr)
 
     run = Run(cfg, workspace=ws, allow_spend=True, run_id=state.name, log_dir=state, settings=settings)
     pings = {p: _ping(cfg, p, b) for p in settings["providers"]} if ping else {}
@@ -335,7 +319,7 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     mcp = McpCommand(command=f"{root_in}/bin/frontier-mcp", args=["--state", str(state_in)])
     gateway = f"http://127.0.0.1:{settings['gateway_port']}"
     target = {"provider": settings["provider"], "model": _main_model(cfg, m), "gateway": gateway,
-              "key_env": m.get("llm", {}).get("key_env") or cfg["providers"][settings["provider"]]["key_env"]}
+              "key_env": cfg["providers"][settings["provider"]]["key_env"]}
     if m["harness"]["name"] == "hermes":
         _hermes_home(state, cfg, target, mcp)
     for rel, content in artifacts(mcp, [m["harness"]["name"]], target).items():

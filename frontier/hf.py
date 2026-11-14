@@ -14,13 +14,15 @@ import os
 import pathlib
 import re
 
+from .credentials import PLACEHOLDER, auth_header
 from .http import request
 
 CARD_FIELDS = {"model": ["license", "library_name"], "dataset": ["license"], "space": ["sdk"]}
 
 
 def _token() -> str:
-    return os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or ""
+    """The token, or a placeholder for a proxy to replace (frontier/credentials.py)."""
+    return os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or PLACEHOLDER
 
 
 def _api():
@@ -48,9 +50,7 @@ def card_problems(folder: pathlib.Path, repo_type: str) -> list[str]:
 
 
 def hf_whoami(ctx) -> str:
-    if not _token():
-        return "error: no HF_TOKEN in the environment"
-    code, text = request("GET", "https://huggingface.co/api/whoami-v2", {"Authorization": f"Bearer {_token()}"})
+    code, text = request("GET", "https://huggingface.co/api/whoami-v2", auth_header("huggingface"))
     if code != 200:
         return f"error: HTTP {code} {text[:300]}"
     d = json.loads(text)

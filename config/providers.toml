@@ -12,8 +12,9 @@
 #         "openai-responses"  OpenAI Responses API
 #         "gemini"       native generateContent (key in x-goog-api-key)
 #         "anthropic"    native Messages API
-# key_env: variable holding the key. In a Claude Code cloud session the network proxy injects the key for the
-#          hosts it knows; the framework then sends the placeholder "proxy-injected" (see README).
+# key_env: variable holding the key (its source is set by the mission's [secrets], see frontier/credentials.py).
+#          When no value is found, the framework sends the placeholder "proxy-injected" for a proxy to replace
+#          (a Claude Code cloud session, OpenShell). The header follows the style; `header`/`scheme` override it.
 # effort_field: dotted path of the reasoning parameter in the request body.
 # extra:  merged into every request body (e.g. turning thinking on).
 #
@@ -135,6 +136,25 @@ effort_field = "reasoning_effort"
 tiers = { frontier = "glm-5.3", light = "glm-5.3-flash" }
 reasoning = { low = "low", medium = "medium", high = "high", max = "max" }
 extra = { thinking = { type = "enabled" } }
+
+# Services other than model APIs: the variable holding each key, the hosts it is sent to and the header that carries
+# it (with `scheme`, e.g. "Bearer"; "" for a bare key), and the non-secret settings of the service. A mission uses a
+# service when it has a section of the same name. Where each value comes from is set by the mission's [secrets]
+# (frontier/credentials.py): the framework never names a secret store, and adding a cloud is an entry here.
+[services.scaleway]
+env = "SCW_SECRET_KEY"
+hosts = ["api.scaleway.com"]
+header = "X-Auth-Token"
+scheme = ""
+settings = ["SCW_DEFAULT_PROJECT_ID", "SCW_DEFAULT_ORGANIZATION_ID", "SCW_DEFAULT_ZONE", "SCW_DEFAULT_REGION"]
+
+[services.runpod]
+env = "RUNPOD_API_KEY"
+hosts = ["mcp.runpod.io", "rest.runpod.io", "api.runpod.ai"]
+
+[services.huggingface]
+env = "HF_TOKEN"
+hosts = ["huggingface.co"]
 
 # Limits shared by an agent and all the sub-agents it starts (one "run").
 [limits]
