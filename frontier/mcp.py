@@ -27,6 +27,7 @@ import pathlib
 import sys
 import threading
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 
 from . import infra, llm
 from .agent import Agent, Ctx, Run, roles_summary
@@ -175,6 +176,38 @@ def _watchdog(server: Server, stop: threading.Event) -> None:
             traceback.print_exc()
 
 
+def serve_stdio(server: Server, inp, out, workers: int = 16) -> None:
+    """Answer each JSON-RPC line on its own thread, so a long call (spawn_agent) delays neither the parallel calls
+    of the same turn nor pings; replies are written whole, in completion order (JSON-RPC matches them by id)."""
+    write = threading.Lock()
+
+    def answer(msg) -> None:
+        replies = []
+        for m in msg if isinstance(msg, list) else [msg]:
+            try:
+                r = server.handle(m)
+            except Exception:  # noqa: BLE001
+                traceback.print_exc()
+                r = {"jsonrpc": "2.0", "id": m.get("id"), "error": {"code": -32603, "message": "internal error"}}
+            if r is not None:
+                replies.append(r)
+        if replies:
+            with write:
+                out.write(json.dumps(replies if isinstance(msg, list) else replies[0]) + "\n")
+                out.flush()
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:  # leaving the block waits for the calls in flight
+        for line in inp:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            pool.submit(answer, msg)
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
@@ -187,27 +220,7 @@ def main(argv: list[str] | None = None) -> int:
     out = sys.stdout
     sys.stdout = sys.stderr  # nothing but JSON-RPC may reach stdout
     try:
-        for line in sys.stdin:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                msg = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            msgs = msg if isinstance(msg, list) else [msg]
-            replies = []
-            for m in msgs:
-                try:
-                    r = server.handle(m)
-                except Exception:  # noqa: BLE001
-                    traceback.print_exc()
-                    r = {"jsonrpc": "2.0", "id": m.get("id"), "error": {"code": -32603, "message": "internal error"}}
-                if r is not None:
-                    replies.append(r)
-            if replies:
-                out.write(json.dumps(replies if isinstance(msg, list) else replies[0]) + "\n")
-                out.flush()
+        serve_stdio(server, sys.stdin, out)
     finally:
         stop.set()
         server.shutdown()

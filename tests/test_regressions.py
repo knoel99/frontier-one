@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import pathlib
@@ -15,7 +16,7 @@ from test_frontier import FakeScaleway
 from test_mission import _mission
 
 from frontier import agent as agent_mod
-from frontier import budget, gateway, hf, infra, launcher, mission, sandbox, tools
+from frontier import budget, gateway, hf, infra, launcher, mcp, mission, sandbox, tools
 from frontier.config import load_config
 
 
@@ -163,3 +164,32 @@ def test_openshell_mission_without_a_name(tmp_path):
     info = mission.prepare(f, ping=False, offers=False)
     box = sandbox.OpenShell(info, launcher.harness_conf("codex", "openai"), dry_run=True)
     assert box.name == "frontier-mission"
+
+
+# ---------------------------------------------------------------- MCP
+
+
+def test_mcp_calls_run_concurrently(tmp_path, monkeypatch):
+    monkeypatch.setenv("FRONTIER_RUNS", str(tmp_path))
+    srv = mcp.Server()
+    release = threading.Event()
+
+    def slow_call(name, args):
+        if name == "spawn_agent":
+            release.wait(5)
+        return "done " + name, False
+
+    monkeypatch.setattr(srv, "call", slow_call)
+    lines = [{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "spawn_agent"}},
+             {"jsonrpc": "2.0", "id": 2, "method": "ping"}]
+    out = io.StringIO()
+    inp = io.StringIO("".join(json.dumps(m) + "\n" for m in lines))
+    t = threading.Thread(target=mcp.serve_stdio, args=(srv, inp, out))
+    t.start()
+    deadline = time.time() + 3
+    while '"id": 2' not in out.getvalue() and time.time() < deadline:
+        time.sleep(0.01)
+    assert '"id": 2' in out.getvalue() and '"id": 1' not in out.getvalue()  # the ping did not wait
+    release.set()
+    t.join(5)
+    assert '"id": 1' in out.getvalue()
