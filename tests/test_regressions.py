@@ -254,6 +254,14 @@ def test_prepare_leaves_the_process_environment_alone(tmp_path, monkeypatch):
     assert "FRONTIER_STATE" not in os.environ  # it reaches the harness through its own environment only
 
 
+def test_costs_say_which_sessions_were_not_metered(tmp_path, cfg):
+    r = agent_mod.Run(cfg, workspace=tmp_path / "ws", log_dir=tmp_path / "state")
+    r.log(event="session_unmetered", n=3, note="stopped at the deadline before its usage report")
+    st = r.budget.status()
+    assert st["llm"]["unmetered_sessions"] == [{"n": 3, "note": "stopped at the deadline before its usage report"}]
+    assert "Not included: the spend of 1 harness session(s)" in mission.costs_markdown(st, [], [])
+
+
 def test_openshell_mission_without_a_name(tmp_path):
     f = _mission(tmp_path, harness="codex")
     f.write_text(f.read_text().replace('name = "t"\n', "", 1) + '\n[sandbox]\nkind = "openshell"\n')

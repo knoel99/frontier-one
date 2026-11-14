@@ -309,7 +309,10 @@ class Budget:
         out = {"time": at.isoformat(timespec="seconds"),
                "llm": {"spent_usd": self.llm_spent(), "in_flight_usd": self.reserved(), "cap_usd": caps.get("llm_usd"),
                        "by_model": by_model, "by_source": by_source,
-                       "estimated": any(not e.get("frontier.price_exact", True) for e in llm)},
+                       "estimated": any(not e.get("frontier.price_exact", True) for e in llm),
+                       "unmetered_sessions": [{"n": e.get("n"), "note": e.get("note", "")}
+                                              for e in read_jsonl(self.dir / "events.jsonl")
+                                              if e.get("event") == "session_unmetered"]},
                "cloud": {}, "ledgers_intact": self.verify(), "llm_last_hash": llm[-1].get("hash", "") if llm else ""}
         for prov, (cap_key, cur, _) in CLOUD_CURRENCY.items():
             out["cloud"][prov] = {"currency": cur, "spent": self.cloud_spent(prov, at), "committed": self.cloud_committed(prov, at),

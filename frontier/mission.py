@@ -418,6 +418,9 @@ def costs_markdown(st: dict, resources: list[dict], pubs: list[dict]) -> str:
     lines = ["# Costs", "", f"Written by the framework from its ledgers at {st['time']} (`.frontier/`).", "",
              "## LLM", "", f"Spent {st['llm']['spent_usd']:.4f} USD of {st['llm']['cap_usd']} USD"
              + (" (some prices estimated)" if st["llm"].get("estimated") else "") + ".", "",
+             *([f"Not included: the spend of {len(un)} harness session(s) the framework could not meter ("
+                + "; ".join(f"session {u['n']}: {u['note']}" for u in un) + ").", ""]
+               if (un := st["llm"].get("unmetered_sessions")) else []),
              "| model | calls | input tokens | output tokens | USD |", "|---|---:|---:|---:|---:|"]
     for k, v in sorted(st["llm"]["by_model"].items(), key=lambda x: -x[1]["usd"]):
         lines.append(f"| {k} | {v['calls']} | {v['input']} | {v['output']} | {v['usd']:.4f} |")

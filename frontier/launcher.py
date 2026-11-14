@@ -268,7 +268,8 @@ def run_one(info: dict, h: dict, n: int, run: Run, gateway: str | None) -> int:
         if usd is not None or usage:
             run.budget.charge_llm("harness-report", f"harness:{s['harness']}", s["provider"], model, usage, usd=usd)
         else:
-            run.log(event="session_unmetered", n=n, note="no gateway traffic and no usage report")
+            run.log(event="session_unmetered", n=n, note="stopped at the deadline before its usage report"
+                    if code == DEADLINE_EXIT else "no gateway traffic and no usage report")
     run.log(event="session_end", n=n, code=code, seconds=round(time.time() - t0, 1),
             **({"stopped": "deadline"} if code == DEADLINE_EXIT else {}))
     print(f"session {n}: exit {code}, {time.time() - t0:.0f} s" + (" (deadline)" if code == DEADLINE_EXIT else ""))
