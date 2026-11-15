@@ -22,7 +22,7 @@ def cmd_run(a, cfg) -> int:
     role = load_role(a.role) if a.role else {}
     agent = Agent(run, a.provider or role.get("provider") or cfg.get("default_provider", "openai"),
                   a.tier or role.get("tier") or "frontier", a.reasoning or role.get("reasoning") or "high",
-                  tools=a.tools.split(",") if a.tools else role.get("tools") or None,
+                  tools=a.tools.split(",") if a.tools else role.get("tools"),
                   instructions=role.get("instructions", ""), max_turns=a.max_turns or None, name=a.role or "main")
     print(f"run {run.run_id}: {agent.spec.label()} (tier {agent.spec.tier}); log {run.log_dir}/events.jsonl", file=sys.stderr)
     try:

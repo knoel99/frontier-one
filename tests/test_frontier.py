@@ -249,6 +249,8 @@ def test_main_agent_has_every_tool_and_sub_agents_never_more(run, monkeypatch):
     small = agent_mod.Agent(run, "openai", "light", "low", tools=["shell"], depth=1)
     agent_mod.t_spawn_agent(agent_mod.Ctx(run, small), task="t", tools=["scw_create_instance", "shell"])
     assert seen[-1][0] == ["shell"]  # never a tool the parent lacks
+    agent_mod.t_spawn_agent(ctx, task="t", tools=[])
+    assert seen[-1][0] == []  # an empty list is no tools, not the parent's
     assert agent_mod.t_spawn_agent(ctx, task="t", mode="nope").startswith("refused")
 
 

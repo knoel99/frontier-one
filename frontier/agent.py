@@ -295,7 +295,10 @@ def t_spawn_agent(ctx: Ctx, task: str, tier: str = "", reasoning: str = "", prov
     reasoning = reasoning or r.get("reasoning") or "medium"
     provider = provider or r.get("provider") or parent.spec.provider
     # Tools: those named in the call, else the role's, else the parent's; never one the parent does not have.
-    wanted = expand_tools(tools) if tools else expand_tools(r.get("tools") or []) or list(parent.tools)
+    # An empty list is a request for no tools, not for the default.
+    if tools is None:
+        tools = r.get("tools")
+    wanted = list(parent.tools) if tools is None else expand_tools(tools)
     tools = [t for t in wanted if t in parent.tools]
     if not ctx.run.take_agent_slot():
         return "refused: the run already started its maximum number of sub-agents (limits.max_agents)"
