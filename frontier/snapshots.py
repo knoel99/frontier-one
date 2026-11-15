@@ -18,13 +18,12 @@ OpenShell sandbox is not visible here.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import pathlib
 import subprocess
 
-from .budget import CLOUD_CURRENCY, append_chained, now, parse_time, read_jsonl
+from .budget import CLOUD_CURRENCY, append_chained, locked, now, parse_time, read_jsonl, write_json
 
 TIME_MINUTES = (5, 15, 30, 60, 120, 240, 480)  # then doubling
 SPEND_USD = (5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000)  # then doubling
@@ -45,7 +44,7 @@ def settings(state: pathlib.Path) -> dict:
 
 def write_settings(state: pathlib.Path, mission_section: dict | None) -> dict:
     s = {**DEFAULTS, **(mission_section or {})}
-    (state / "snapshots.json").write_text(json.dumps(s, indent=1))
+    write_json(state / "snapshots.json", s)
     return s
 
 
@@ -103,8 +102,7 @@ class Snapshots:
         if not self.s.get("enabled", True):
             return ""
         # A file lock: the gateway and the watchdog have a Snapshots each, and both would write a new milestone
-        with open(self.b.dir / ".snapshots.lock", "w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        with locked(self.b.dir / ".snapshots.lock"):
             notices = self._events("snapshot_notice")
             seen = {(e["kind"], float(e["value"])) for e in notices}
             minutes = self._minutes() or 0.0
@@ -151,7 +149,7 @@ class Snapshots:
         labels = [e["label"] for e in due]
         if not commit(ws, "Snapshot " + ", ".join(labels), tuple(f"snapshot-{lab}" for lab in labels), allow_empty=True):
             return None  # git busy (the harness or the launcher committing): the next tick tries again
-        head = subprocess.run(["git", "-C", str(ws), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        head = subprocess.run(["git", "-C", str(ws), "rev-parse", "HEAD"], capture_output=True, text=True, check=False).stdout.strip()
         llm, sim = spend(self.b, self.price)
         minutes = self._minutes()
         ev = {"t": now().isoformat(timespec="seconds"), "event": "snapshot", "labels": labels, "commit": head,
@@ -167,14 +165,19 @@ def commit(ws: pathlib.Path, message: str, tags: tuple[str, ...] = (), allow_emp
     framework's own identity, output captured (inside the MCP server, file descriptor 1 is the JSON-RPC pipe).
     False when the workspace is left uncommitted (git busy, e.g. the harness committing): the tags are then not moved."""
     git = ["git", "-C", str(ws)]
-    if subprocess.run([*git, "add", "-A"], capture_output=True).returncode != 0:
+
+    def ok(*args: str) -> subprocess.CompletedProcess | None:
+        p = subprocess.run([*git, *args], capture_output=True, text=True, check=False)
+        return p if p.returncode == 0 else None
+
+    if not ok("add", "-A"):
         return False  # index locked or unreadable: committing now would record the old tree
-    done = subprocess.run([*git, "-c", "user.name=frontier", "-c", "user.email=frontier@localhost", "commit", "-q",
-                           *(["--allow-empty"] if allow_empty else []), "-m", message], capture_output=True).returncode == 0
-    done = done or not subprocess.run([*git, "status", "--porcelain"], capture_output=True, text=True).stdout.strip()
-    for tag in tags if done else ():
-        subprocess.run([*git, "tag", "-f", tag], capture_output=True)
-    return done
+    if not ok("-c", "user.name=frontier", "-c", "user.email=frontier@localhost", "commit", "-q",
+              *(["--allow-empty"] if allow_empty else []), "-m", message):
+        status = ok("status", "--porcelain")  # nothing to commit is committed; a status that failed says nothing
+        if not status or status.stdout.strip():
+            return False
+    return all([ok("tag", "-f", tag) for tag in tags])  # every tag is tried; one that did not move is retried
 
 
 class CpuMeter:

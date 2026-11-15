@@ -299,11 +299,12 @@ def _copy_subject(src: str, dest_dir: pathlib.Path, base: pathlib.Path) -> str:
 def _ping(cfg: dict, provider: str, b: budget_mod.Budget) -> str:
     spec = llm.resolve(cfg, provider, "light", "low")
     try:
-        r = llm.chat(spec, [{"role": "user", "content": "Reply with OK."}], [], max_tokens=200)
-        b.charge_llm("launcher", "key-check", provider, spec.model, r.usage)
-        return f"key checked with {spec.model}: {'answered' if r.content or r.usage.get('output') else 'empty answer'}"
+        r, why = b.metered_chat("launcher", "key-check", spec, [{"role": "user", "content": "Reply with OK."}], [], 200)
     except llm.LLMError as e:
         return f"KEY CHECK FAILED: {str(e)[:160]}"
+    if r is None:
+        return f"key not checked: {why}"
+    return f"key checked with {spec.model}: {'answered' if r.content or r.usage.get('output') else 'empty answer'}"
 
 
 def apply_settings(settings: dict) -> None:
@@ -350,7 +351,7 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
                 "conf": {k: v for k, v in m.items() if k != "_file"}}
     settings["env"] = credentials.plain_settings(m, cfg)
     settings["credentials"] = origin  # where each key came from, never its value
-    (state / "mission.json").write_text(json.dumps(settings, indent=1) + "\n")
+    budget_mod.write_json(state / "mission.json", settings)
     if bad := {k: v for k, v in origin.items() if v.startswith("error")}:
         print("warning: some secret sources failed: " + json.dumps(bad), file=sys.stderr)
 
@@ -410,19 +411,18 @@ def _zcode_home(state: pathlib.Path, target: dict, mcp: McpCommand) -> None:
     api = {"anthropic": "anthropic-messages", "openai-responses": "openai-responses"}.get(style, "openai-chat-completions")
     home = state / "zcode"
     (home / ".zcode" / "cli").mkdir(parents=True, exist_ok=True)
-    (home / ".zcode" / "cli" / "config.json").write_text(json.dumps({"features": {"mcp": True}, "mcp": {"servers": {
-        "frontier": {"type": "stdio", "command": mcp.command, "args": mcp.args, "enabled": True, "timeoutMs": 3_600_000}}}},
-        indent=1) + "\n")
+    budget_mod.write_json(home / ".zcode" / "cli" / "config.json", {"features": {"mcp": True}, "mcp": {"servers": {
+        "frontier": {"type": "stdio", "command": mcp.command, "args": mcp.args, "enabled": True, "timeoutMs": 3_600_000}}}})
     rule = {"providerId": "frontier", "providerName": "Frontier gateway", "config": {
         "group": "standard-personal",
         "access": {"type": "api-key", "apiKey": os.environ.get(target["key_env"]) or credentials.PLACEHOLDER},
         "api": {"type": api, "baseUrl": target["base_url"]},
         "personalModelIds": [target["model"]]}}
     f = home / "provider_config.json"
-    f.write_text(json.dumps({"schemaVersion": 1, "config": {
+    budget_mod.write_json(f, {"schemaVersion": 1, "config": {
         "providerConfigRules": {"providerRules": [rule]},
         "modelConfigRules": {"providerModelRules": [], "manualProviderModelRules": []},
-        "defaultModelSelection": {"providerId": "frontier", "modelId": target["model"]}}}, indent=1) + "\n")
+        "defaultModelSelection": {"providerId": "frontier", "modelId": target["model"]}}})
     f.chmod(0o600)
 
 
@@ -507,13 +507,13 @@ def deliver(ctx, summary: str = "", force: bool = False) -> str:
            "missing": missing, "report_paths": paths, "publications": [p["url"] for p in pubs], "cleanup": cleaned,
            "summary": summary}
     (ws / "COSTS.md").write_text(costs_markdown(st, ctx.run.budget.resources(), pubs))
-    done.write_text(json.dumps(rec, indent=1) + "\n")
+    budget_mod.write_json(done, rec)
     ctx.run.budget.set_caps(frozen=True, frozen_llm_usd=st["llm"]["spent_usd"])
     commit(ws, f"Delivery\n\n{summary}".strip(), ("delivery",))
     from .hf import publish_delivery
 
     rec["hub_delivery"] = publish_delivery(ctx, rec)  # in a race: the repository on a private dataset of the Hub
-    done.write_text(json.dumps(rec, indent=1) + "\n")
+    budget_mod.write_json(done, rec)
     ctx.run.log(event="delivered", **{k: v for k, v in rec.items() if k != "cleanup"})
     return json.dumps(rec, indent=1)
 
@@ -528,7 +528,7 @@ def final_costs(run, ws: pathlib.Path) -> dict:
     rec = json.loads((state / "delivery.json").read_text())
     rec.update(final_llm_usd=st["llm"]["spent_usd"], llm_usd_after_delivery=st["llm"].get("after_delivery_usd", 0),
                final_runpod_usd=st["cloud"]["runpod"]["spent"], final_scaleway_eur=st["cloud"]["scaleway"]["spent"])
-    (state / "delivery.json").write_text(json.dumps(rec, indent=1) + "\n")
+    budget_mod.write_json(state / "delivery.json", rec)
     return rec
 
 

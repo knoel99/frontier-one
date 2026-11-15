@@ -9,13 +9,12 @@ run's state directory.
 from __future__ import annotations
 
 import datetime as dt
-import fcntl
 import json
 import os
 import pathlib
 import re
 
-from .budget import read_json, write_json
+from .budget import update_json
 from .credentials import PLACEHOLDER, auth_header
 from .http import request
 
@@ -96,10 +95,7 @@ def hf_publish(ctx, repo_name: str, folder: str, repo_type: str = "model", names
     rec = {"t": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), "repo_id": repo_id, "type": repo_type,
            "url": url, "visibility": visibility, "folder": folder, "commit": getattr(info, "oid", None)}
     rec["race"] = _file_in_race(api, settings, repo_id, repo_type)  # best effort: it never raises
-    f = ctx.run.log_dir / "publications.json"
-    with open(ctx.run.log_dir / ".publications.lock", "w") as lock:  # parallel publications all stay recorded
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        write_json(f, read_json(f, []) + [rec])
+    update_json(ctx.run.log_dir / "publications.json", lambda pubs: pubs.append(rec), [])  # parallel ones all stay
     ctx.run.log(event="hf_publish", **rec)
     return json.dumps(rec, indent=1)
 
@@ -155,7 +151,7 @@ def publish_delivery(ctx, rec: dict) -> dict:
     if not settings.get("hf_prefix") or not settings.get("allow_publish"):
         return {}
     ws = ctx.workspace
-    ls = subprocess.run(["git", "-C", str(ws), "ls-files", "-z", "-co", "--exclude-standard"], capture_output=True, text=True)
+    ls = subprocess.run(["git", "-C", str(ws), "ls-files", "-z", "-co", "--exclude-standard"], capture_output=True, text=True, check=False)
     files = [f for f in ls.stdout.split("\0") if f]  # -z: names with spaces stay whole
     if ls.returncode or not files:  # git busy or broken at that instant: every file but git's own
         files = [str(q.relative_to(ws)) for q in ws.rglob("*") if q.is_file() and ".git" not in q.relative_to(ws).parts]

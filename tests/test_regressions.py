@@ -93,6 +93,39 @@ def test_gateway_charges_a_stream_the_upstream_cut(tmp_path):
     assert e["frontier.price_exact"] is False and e["frontier.cost.usd"] > 0 and b.reserved() == 0
 
 
+def test_a_model_call_nobody_settled_is_charged_its_worst_case(tmp_path, monkeypatch):
+    """Eight fixes each closed one path on which a call the provider had run was not charged (an upstream that broke,
+    a harness that hung up, a stream without its final event, a judge call, a reservation released first). A call is
+    now settled inside `with budget.call(...)`: a path that forgets, or raises, charges the worst case."""
+    b = budget.Budget(tmp_path)
+    call, _ = b.call(0.5, "gateway", "harness", "zhipu", "glm-5.3")
+    with pytest.raises(RuntimeError), call:
+        raise RuntimeError("a path that settles nothing")
+    (e,) = b.llm_entries()
+    assert e["frontier.cost.usd"] == 0.5 and e["frontier.price_exact"] is False and b.reserved() == 0
+    call, _ = b.call(0.5, "gateway", "harness", "zhipu", "glm-5.3")
+    with call:
+        assert b.reserved() == 0.5
+        call.void()  # the provider did not run it
+    assert len(b.llm_entries()) == 1 and b.reserved() == 0
+    # the gateway: an answer it fails to read is charged all the same
+    monkeypatch.setattr(gateway, "usage_of", lambda obj: 1 / 0)
+    up = ThreadingHTTPServer(("127.0.0.1", 0), _NoUsage)
+    threading.Thread(target=up.serve_forever, daemon=True).start()
+    gw = gateway.Gateway(("127.0.0.1", 0), b, {"zhipu": (f"http://127.0.0.1:{up.server_address[1]}", "zhipu")})
+    gw.handle_error = lambda *a: None  # the handler's ZeroDivisionError is the point: keep it off the test output
+    threading.Thread(target=gw.serve_forever, daemon=True).start()
+    body = json.dumps({"model": "glm-5.3", "messages": [], "max_tokens": 1000}).encode()
+    req = urllib.request.Request(f"http://127.0.0.1:{gw.server_address[1]}/zhipu/api/paas/v4/chat/completions",
+                                 data=body, headers={"Content-Type": "application/json"})
+    urllib.request.urlopen(req, timeout=10).read()
+    gw.shutdown()
+    up.shutdown()
+    e = b.llm_entries()[-1]
+    assert len(b.llm_entries()) == 2 and e["frontier.cost.usd"] == budget.worst_case_usd("zhipu", "glm-5.3", len(body), 1000)
+    assert e["frontier.price_exact"] is False and b.reserved() == 0
+
+
 def test_gateway_reserves_at_the_requested_mode(cfg):
     def worst(**req):
         body = json.dumps({"input": "x", "max_output_tokens": 1000, **req}).encode()
@@ -439,7 +472,7 @@ def test_extra_skills_are_copied_next_to_the_frontier_skill(tmp_path):
     (src / "skills" / "drawing" / "SKILL.md").write_text("---\nname: drawing\n---\n")
     for cmd in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "s"]):
         subprocess.run(["git", "-C", str(src), *cmd], check=True)
-    rev = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    rev = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"], capture_output=True, text=True, check=False).stdout.strip()
     f = _mission(tmp_path)
     f.write_text(f.read_text() + f'\n[[skills]]\nrepo = "{src}"\nrev = "{rev}"\npath = "skills/drawing"\n')
     info = mission.prepare(f, ping=False, offers=False)
@@ -909,6 +942,38 @@ def test_raw_cloud_calls_leave_alone_what_the_run_did_not_create(run, monkeypatc
     assert tools.t_scaleway(ctx, "GET", f"/instance/v1/zones/fr-par-2/servers/{other}").startswith("HTTP")
 
 
+def test_raw_cloud_calls_the_framework_does_not_know_are_refused_under_a_budget(run, monkeypatch):
+    """The guards listed what is billed, and three fixes each added what a live check had found missing. Read on
+    2026-11-15: under a Scaleway cap, `scaleway POST /k8s/v1/regions/fr-par/clusters` (an API outside the bundled
+    catalog) was forwarded. The lists name what is free: the rest is refused."""
+    run.allow_spend = True
+    called = []
+    monkeypatch.setattr(tools, "scw_raw", lambda *a, **k: called.append(a) or (200, "{}"))
+    monkeypatch.setattr(tools, "mcp_call", lambda *a, **k: called.append(a) or (True, "{}"))
+    ctx = agent_mod.Ctx(run, None)
+    run.budget.set_caps(scaleway_eur=10, runpod_usd=10)
+    own, other = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
+    run.record({"provider": "scaleway", "kind": "instance", "id": own, "volumes": [], "ips": []})
+    run.record({"provider": "runpod", "kind": "pod", "id": "p1"})
+    for method, path in (("POST", "/k8s/v1/regions/fr-par/clusters"), ("POST", "/rdb/v1/regions/fr-par/instances"),
+                         ("POST", "/block/v1/zones/fr-par-1/snapshots/import-from-object-storage"),
+                         ("DELETE", f"/k8s/v1/regions/fr-par/clusters/{other}"),
+                         ("PATCH", f"/rdb/v1/regions/fr-par/instances/{other}")):
+        assert tools.t_scaleway(ctx, method, path, {}).startswith("refused"), path
+    for tool, args in (("create-something-new", {}), ("update-ssh-keys", {}), ("update-cluster", {"clusterId": "theirs"}),
+                       ("cancel-job", {"endpointId": "theirs", "jobId": "j"})):
+        assert tools.t_runpod_mcp(ctx, tool, args).startswith("refused"), tool
+    assert not called
+    for method, path in (("POST", "/instance/v1/zones/fr-par-2/placement_groups"),
+                         ("PATCH", f"/instance/v1/zones/fr-par-2/security_groups/{other}"),
+                         ("DELETE", f"/instance/v1/zones/fr-par-2/servers/{own}/private_nics/{other}"),
+                         ("POST", f"/instance/v1/zones/fr-par-2/servers/{own}/attach-volume")):
+        assert tools.t_scaleway(ctx, method, path, {}).startswith("HTTP"), path
+    for tool, args in (("create-template", {}), ("create-secret", {}), ("delete-template", {"id": "theirs"}),
+                       ("exec-pod", {"id": "p1", "body": {"command": ["ls"]}})):
+        assert tools.t_runpod_mcp(ctx, tool, args) == "{}", tool
+
+
 def test_a_sub_agent_call_is_charged_before_its_reservation_is_released(run, monkeypatch):
     """Released first, the reservation left a gap in which a parallel call could take the same room: both ran over
     the hard cap together."""
@@ -1092,7 +1157,7 @@ def test_a_snapshot_waits_for_a_busy_git(tmp_path):
     (ws / ".git" / "index.lock").unlink()
     ev = s.take(ws)
     assert ev["labels"] == ["5min"]
-    show = subprocess.run([*git, "show", "snapshot-5min:REPORT.md"], capture_output=True, text=True)
+    show = subprocess.run([*git, "show", "snapshot-5min:REPORT.md"], capture_output=True, text=True, check=False)
     assert show.stdout == "results so far\n"
 
 
@@ -1143,7 +1208,32 @@ def test_a_snapshot_waits_when_git_add_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(snapshots.subprocess, "run", busy_add)
     assert snapshots.commit(ws, "Snapshot 5min", ("snapshot-5min",), allow_empty=True) is False
     monkeypatch.setattr(snapshots.subprocess, "run", real)
-    assert subprocess.run([*git, "tag", "--list", "snapshot-5min"], capture_output=True, text=True).stdout == ""
+    assert subprocess.run([*git, "tag", "--list", "snapshot-5min"], capture_output=True, text=True, check=False).stdout == ""
+
+
+def test_a_git_status_or_tag_that_failed_is_not_a_commit(tmp_path, monkeypatch):
+    """A failed command was read as a success three times (a busy commit, a failed add, an OpenShell command). `commit`
+    still did it twice: with nothing to commit, a `git status` that failed printed nothing, which read as a clean
+    tree; and a tag that did not move was ignored."""
+    from frontier import snapshots
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    git = ["git", "-C", str(ws), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+    real = subprocess.run
+
+    def failing(word):
+        return lambda cmd, *a, **k: (subprocess.CompletedProcess(cmd, 128, "", "fatal: unable to lock")
+                                     if word in cmd else real(cmd, *a, **k))
+
+    for word in ("status", "tag"):
+        monkeypatch.setattr(snapshots.subprocess, "run", failing(word))
+        assert snapshots.commit(ws, "Snapshot 5min", ("snapshot-5min",)) is False, word
+    monkeypatch.setattr(snapshots.subprocess, "run", real)
+    assert snapshots.commit(ws, "Snapshot 5min", ("snapshot-5min",)) is True  # nothing to commit: the tree is committed
+    assert subprocess.run([*git, "tag", "--list", "snapshot-5min"], capture_output=True, text=True, check=True).stdout
 
 
 def test_a_harness_inside_the_mission_sandbox_drops_its_own_sandbox(tmp_path, monkeypatch):
@@ -1198,7 +1288,7 @@ def test_rp_upload_copies_a_workspace_directory_into_a_pod(tmp_path, monkeypatch
     def exec_pod(tool, args):
         cmd = args["body"]["command"][2]
         sent.append(cmd)
-        p = subprocess.run(["sh", "-c", cmd], capture_output=True, text=True)
+        p = subprocess.run(["sh", "-c", cmd], capture_output=True, text=True, check=False)
         return {"exitCode": p.returncode, "stdout": p.stdout, "stderr": p.stderr}
 
     monkeypatch.setattr(infra, "mcp_json", exec_pod)

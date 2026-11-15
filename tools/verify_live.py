@@ -151,7 +151,7 @@ def f9(st: pathlib.Path):
     srv = Server(state=str(st))
     via_mcp, err = srv.call("budget_status", {})
     p = subprocess.run([str(ROOT / "bin" / "frontier"), "call", "budget_status", "{}", "--state", str(st)],
-                       capture_output=True, text=True, timeout=120)
+                       capture_output=True, text=True, timeout=120, check=False)
     a, b = json.loads(via_mcp), json.loads(p.stdout)
     verdict("F9", "MCP server and shell fallback", not err and a["llm"]["cap_usd"] == b["llm"]["cap_usd"],
             f"budget_status through MCP and through `frontier call` agree (cap {a['llm']['cap_usd']} USD)")
@@ -401,7 +401,7 @@ def f14_live(root: pathlib.Path):
     verdict("F14", "parallel creations under one cloud cap", len(made) == 1 and len(refused) == 1,
             f"{len(made)} pod created ({made}), {len(refused)} refused: {refused}")
     time.sleep(hours * 3600 + 10)
-    p = subprocess.run([str(ROOT / "bin" / "frontier"), "reap", str(st)], capture_output=True, text=True, timeout=300)
+    p = subprocess.run([str(ROOT / "bin" / "frontier"), "reap", str(st)], capture_output=True, text=True, timeout=300, check=False)
     events = [e for e in budget.read_jsonl(st / "events.jsonl") if e.get("event") == "watchdog_delete"]
     gone = all(_rp_gone(pid) for pid in made)
     verdict("F15", "frontier reap", p.returncode == 0 and bool(made) and gone and len(events) == len(made),
@@ -421,10 +421,10 @@ def f7_live(root: pathlib.Path):
     (sub / "subject.md").write_text("# Subject\n\nThe experiment is the shell command `sleep 300`: run it first, in the "
                                     "foreground, and wait for it to finish. Then write its exit code in REPORT.md and deliver.\n")
     p = subprocess.run([sys.executable, "-m", "frontier", "mission", "start", str(f), "--no-ping"], cwd=ROOT,
-                       capture_output=True, text=True, timeout=600)
+                       capture_output=True, text=True, timeout=600, check=False)
     st = root / "missions" / "deadline-live"
     ends = [e for e in budget.read_jsonl(st / "events.jsonl") if e.get("event") == "session_end"]
-    left = subprocess.run(["pgrep", "-af", f"{st}|sleep 300"], capture_output=True, text=True).stdout.strip()
+    left = subprocess.run(["pgrep", "-af", f"{st}|sleep 300"], capture_output=True, text=True, check=False).stdout.strip()
     ok = bool(ends) and ends[-1].get("code") == launcher.DEADLINE_EXIT and ends[-1].get("stopped") == "deadline" and not left
     verdict("F7", "deadline stops a real harness session", ok,
             f"launcher exit {p.returncode}; session_end {ends[-1] if ends else None}; processes left: {left or 'none'}")
@@ -449,7 +449,7 @@ def f25(root: pathlib.Path):
     from frontier import llm
 
     p = subprocess.run([sys.executable, "-m", "frontier", "ping", "--provider", "cerebras", "--tier", "light"],
-                       capture_output=True, text=True, timeout=300, cwd=ROOT)
+                       capture_output=True, text=True, timeout=300, cwd=ROOT, check=False)
     st = root / "missions" / "cerebras"
     b = budget.Budget(st)
     b.set_caps(llm_usd=0.05)
@@ -498,7 +498,7 @@ def f27(root: pathlib.Path, st0: pathlib.Path):
     time.sleep(16)  # the 15-minute one has a grace of 15 s
     second = watchdog.take(ws)
     notices = [(e["label"], e["silent"]) for e in budget.read_jsonl(st / "events.jsonl") if e.get("event") == "snapshot_notice"]
-    tags = subprocess.run(["git", "-C", str(ws), "tag", "--list", "snapshot-*"], capture_output=True, text=True).stdout.split()
+    tags = subprocess.run(["git", "-C", str(ws), "tag", "--list", "snapshot-*"], capture_output=True, text=True, check=False).stdout.split()
     # merging: two milestones within one grace give one snapshot carrying both labels
     st2 = root / "missions" / "snapshots-merge"
     b2 = budget.Budget(st2)
@@ -556,9 +556,9 @@ def f29(root: pathlib.Path):
         (race / "missions" / f"team-{prov}" / "delivery.json").write_text(json.dumps(
             {"delivered_at": budget.now().isoformat(timespec="seconds"), "elapsed_hours": 0.5}))
     flag = subprocess.run([sys.executable, "-m", "frontier", "mission", "red-flag", str(race / "missions" / "team-zhipu"),
-                           "--minutes", "10", "--reason", "provider outage"], capture_output=True, text=True, cwd=ROOT)
+                           "--minutes", "10", "--reason", "provider outage"], capture_output=True, text=True, cwd=ROOT, check=False)
     bad_flag = subprocess.run([sys.executable, "-m", "frontier", "mission", "red-flag", str(race / "missions" / "team-zhipu"),
-                               "--minutes", "-1", "--reason", "x"], capture_output=True, text=True, cwd=ROOT)
+                               "--minutes", "-1", "--reason", "x"], capture_output=True, text=True, cwd=ROOT, check=False)
     out = root / "jury"
     res = jury.run(race / "missions", "Compute 6 x 7 and report it.", "# Race\n\nBudgets: 0.3 USD of LLM, 1 h.\n",
                    out, ["deepseek", "cerebras"], cap_usd=0.30)

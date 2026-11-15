@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import contextlib
 import datetime as dt
-import fcntl
 import json
 import os
 import pathlib
@@ -15,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from . import llm
-from .budget import Budget, append_chained, now, write_json
+from .budget import Budget, append_chained, now, update_json
 from .config import ROOT
 from .tools import GROUPS, INFRA_TOOLS, REGISTRY, Tool, _obj, all_tools
 
@@ -65,33 +63,25 @@ class Run:
         ok, why = self.budget.llm_allowed()
         return "" if ok else why
 
-    # ledger of the cloud resources created by any agent of the run (file-locked: shared between processes)
-    @contextlib.contextmanager
-    def _ledger(self):
-        f = self.log_dir / "resources.json"
-        with open(self.log_dir / ".resources.lock", "w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            items = json.loads(f.read_text()) if f.exists() else []
-            yield items
-            write_json(f, items)
-            fcntl.flock(lock, fcntl.LOCK_UN)
-
+    # resources.json: the ledger of the cloud resources created by any agent of the run, shared between processes
     @property
     def resources(self) -> list[dict]:
         return self.budget.resources()
 
     def record(self, resource: dict) -> None:
-        with self._ledger() as items:
-            items.append({**resource, "state": "alive", "created": now().isoformat(timespec="seconds")})
+        update_json(self.log_dir / "resources.json", lambda items: items.append(
+            {**resource, "state": "alive", "created": now().isoformat(timespec="seconds")}), [])
         self.log(event="resource_created", **resource)
 
     def mark(self, resource_id: str, state: str) -> None:
-        with self._ledger() as items:
+        def change(items: list[dict]) -> None:
             for r in items:
                 if r["id"] == resource_id:
                     r["state"] = state
                     if state == "deleted":
                         r.setdefault("deleted_at", now().isoformat(timespec="seconds"))
+
+        update_json(self.log_dir / "resources.json", change, [])
         self.log(event="resource_" + state, id=resource_id)
 
     def owns(self, resource_id: str) -> bool:

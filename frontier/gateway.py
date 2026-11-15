@@ -20,15 +20,16 @@ import json
 import pathlib
 import sys
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .milestones import Milestones, inject
-from .budget import Budget, append_chained, now, worst_case_usd
+from .budget import Budget, Call, append_chained, now, worst_case_usd
 from .config import load_config
-from .llm import usage_of
+from .llm import maybe_billed, usage_of
 
 DEFAULT_MAX_OUT = 32000  # output tokens assumed for a call that sets no limit
 
@@ -211,36 +212,37 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length else b""
         rest, body = remap(rest, body, self.server.model_map)
         body = strip_fields(body, (self.server.cfg["providers"].get(provider) or {}).get("strip_message_fields", []))
-        is_llm_call = is_generation(self.command, rest)
-        rid, worst = None, 0.0
-        if is_llm_call:
-            worst = worst_case(self.server.cfg, provider, rest, body)
-            rid, why = self.server.budget.reserve(worst, f"gateway {rest[:60]}")
-            if rid is None:  # recorded, so that the launcher does not restart a session only to be refused again
-                append_chained(self.server.budget.dir / "events.jsonl", {
-                    "t": now().isoformat(timespec="seconds"), "event": "llm_refused", "agent": self.server.agent,
-                    "why": why})
-                return self._send_json(402, {"error": {"type": "budget_exhausted", "code": "budget_exhausted", "message": why}})
+        if not is_generation(self.command, rest):
+            return self._forward(origin, rest, body, provider, None)
+        budget = self.server.budget
+        call, why = budget.call(worst_case(self.server.cfg, provider, rest, body), "gateway", self.server.agent, provider,
+                                model_of(body, rest, None), what=f"gateway {rest[:60]}")
+        if call is None:  # recorded, so that the launcher does not restart a session only to be refused again
+            append_chained(budget.dir / "events.jsonl", {
+                "t": now().isoformat(timespec="seconds"), "event": "llm_refused", "agent": self.server.agent, "why": why})
+            return self._send_json(402, {"error": {"type": "budget_exhausted", "code": "budget_exhausted", "message": why}})
+        with call:
             body = inject(rest, body, self.server.milestones.notice())  # 10, 25, 50, 80, 95, 98 % of a budget
             if self.server.snapshots:  # time and spend milestones: bring the report up to date for a snapshot
                 body = inject(rest, body, self.server.snapshots.notice())
-            body = self._with_stream_usage(rest, body)
-        try:
-            self._forward(origin, rest, body, provider, is_llm_call, worst)
-        finally:
-            self.server.budget.release(rid)
+            self._forward(origin, rest, self._with_stream_usage(rest, body), provider, call)
 
-    def _forward(self, origin: str, rest: str, body: bytes, provider: str, is_llm_call: bool, worst: float) -> None:
+    def _forward(self, origin: str, rest: str, body: bytes, provider: str, call: Call | None) -> None:
+        """Send the request upstream and its answer back. `call` is the model call to settle, None for any other
+        request."""
         headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP}
         headers["Accept-Encoding"] = "identity"
         req = urllib.request.Request(origin + rest, data=body if self.command in ("POST", "PUT") else None,
                                      method=self.command, headers=headers)
+        t0 = time.time()
         try:
             resp = urllib.request.urlopen(req, timeout=3600)
             status = resp.status
         except urllib.error.HTTPError as e:
             resp, status = e, e.code
-        except (urllib.error.URLError, TimeoutError) as e:
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as e:
+            if call and not maybe_billed(0, t0):  # failed at once: the provider did not run it
+                call.void()
             return self._send_json(502, {"error": {"message": f"gateway: upstream unreachable: {e}"}})
         ctype = resp.headers.get("Content-Type", "")
         streaming = "text/event-stream" in ctype or "stream" in rest.lower() and "json" not in ctype
@@ -276,7 +278,7 @@ class Handler(BaseHTTPRequestHandler):
                     resp.close()
                     cut = True
                     break
-                if is_llm_call:
+                if call:
                     buf = chunk.strip()
                     if buf.startswith(b"data:"):
                         try:
@@ -297,7 +299,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
             except gone:
                 self.close_connection = True
-            if is_llm_call and 200 <= status < 300:
+            if call and 200 <= status < 300:
                 try:
                     last_obj = json.loads(data)
                     objs = last_obj if isinstance(last_obj, list) else [last_obj]  # Gemini can answer a JSON array
@@ -306,16 +308,17 @@ class Handler(BaseHTTPRequestHandler):
                     last_obj = objs[-1] if objs else None
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     pass
-        if is_llm_call and 200 <= status < 300 and (cut or not usage):  # billed, but by how much is unknown
-            model = model_of(body, rest, last_obj if isinstance(last_obj, dict) else None)
-            self.server.budget.charge_llm("gateway", self.server.agent, provider, model, usage, usd=worst, exact=False)
-        elif is_llm_call and usage:
-            model = model_of(body, rest, last_obj if isinstance(last_obj, dict) else None)
+        if not call:
+            return
+        model = model_of(body, rest, last_obj if isinstance(last_obj, dict) else None)
+        if not 200 <= status < 300:
+            call.void()  # an error answer is not billed
+        elif cut or not usage:
+            call.charge_worst(usage, model)
+        else:
             served = usage.pop("served_tier", "") or resp.headers.get("x-gemini-service-tier", "")
-            conf = self.server.cfg.get("providers", {}).get(provider, {})
-            mode, px = mode_of(conf, served)
-            reported = usage.pop("cost_usd", None)
-            self.server.budget.charge_llm("gateway", self.server.agent, provider, model, usage, mode, px, usd=reported)
+            mode, px = mode_of(self.server.cfg.get("providers", {}).get(provider, {}), served)
+            call.charge(usage, mode, px, usd=usage.pop("cost_usd", None), model=model)
 
     @staticmethod
     def _with_stream_usage(path: str, body: bytes) -> bytes:

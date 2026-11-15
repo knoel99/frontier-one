@@ -199,7 +199,7 @@ def _usage(obj: dict) -> dict:
             **{k: v for k, v in u.items() if k in ("input", "output", "reasoning", "cached", "cache_write")}}
 
 
-def _maybe_billed(code: int, t0: float) -> bool:
+def maybe_billed(code: int, t0: float) -> bool:
     """A server error or cut connection after a long wait means the provider probably ran the request (a proxy cut it
     at 180 s on 2026-11-15 while the model kept generating); retrying would pay for it again, unseen by the ledger.
     429 (refused before any work) is always worth a retry."""
@@ -208,7 +208,7 @@ def _maybe_billed(code: int, t0: float) -> bool:
 
 def _post(url: str, headers: dict, body: dict, timeout: float = 600, retries: int = 4, sse: bool = False):
     """POST JSON and return the decoded answer, or with `sse` the events of a streamed answer. Retries a refused or
-    failed call with backoff, unless the provider probably ran it (`_maybe_billed`)."""
+    failed call with backoff, unless the provider probably ran it (`maybe_billed`)."""
     data = json.dumps(body).encode()
     accept = {"Accept": "text/event-stream"} if sse else {}
     for attempt in range(retries + 1):
@@ -220,13 +220,13 @@ def _post(url: str, headers: dict, body: dict, timeout: float = 600, retries: in
                 return _events(r, events) if sse else json.loads(r.read())
         except urllib.error.HTTPError as e:
             text = e.read().decode(errors="replace")[:2000]
-            billed = _maybe_billed(e.code, t0)
+            billed = maybe_billed(e.code, t0)
             if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries and not billed:
                 time.sleep(min(60, 2 ** (attempt + 1)))
                 continue
             raise LLMError(f"HTTP {e.code} from {url}: {text}", maybe_billed=billed) from None
         except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as e:
-            billed = bool(events) or _maybe_billed(0, t0)  # a stream that started was run: never sent again
+            billed = bool(events) or maybe_billed(0, t0)  # a stream that started was run: never sent again
             if attempt < retries and not billed:
                 time.sleep(min(60, 2 ** (attempt + 1)))
                 continue

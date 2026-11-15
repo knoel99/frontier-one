@@ -280,7 +280,7 @@ def open_gateway(state: pathlib.Path, s: dict, h: dict):
 def harness_setup(info: dict, h: dict, gateway: str | None, run: Run) -> None:
     if h.get("setup"):  # once per machine and key, e.g. `codex login`
         _, env = build_session(info, h, "", gateway)
-        p = subprocess.run(["bash", "-c", h["setup"]], cwd=info["workspace"], env=env, capture_output=True, text=True)
+        p = subprocess.run(["bash", "-c", h["setup"]], cwd=info["workspace"], env=env, capture_output=True, text=True, check=False)
         run.log(event="harness_setup", code=p.returncode, output=(p.stdout + p.stderr)[-2000:])
         print(f"setup: exit {p.returncode}")
 
@@ -320,9 +320,7 @@ def session(state_dir: str, n: int) -> int:
     """`frontier mission session <state> <n>`: one session where the state and workspace are local, e.g. inside an
     OpenShell sandbox (the host launcher runs this through `openshell sandbox exec`)."""
     state = pathlib.Path(state_dir)
-    s = json.loads((state / "mission.json").read_text())
-    s["workspace"] = os.getcwd()
-    (state / "mission.json").write_text(json.dumps(s, indent=1) + "\n")
+    s = budget_mod.update_json(state / "mission.json", lambda s: s.update(workspace=os.getcwd()))
     mission.apply_settings(s)
     info = {"mission": s.get("conf", {}), "settings": s, "state": state, "workspace": pathlib.Path(os.getcwd()),
             "in_sandbox": True}

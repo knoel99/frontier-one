@@ -43,10 +43,17 @@ def _digest(prev: str, entry: dict) -> str:
     return hashlib.sha256((prev + json.dumps(entry, sort_keys=True, separators=(",", ":"))).encode()).hexdigest()
 
 
+@contextlib.contextmanager
+def locked(lock_file: pathlib.Path):
+    """Exclusive use of what `lock_file` guards, across threads and processes, until the block ends."""
+    with open(lock_file, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield  # closing the file releases the lock
+
+
 def append_chained(path: pathlib.Path, entry: dict) -> str:
     """Append a JSON line carrying `prev` (hash of the previous line) and `hash`; returns the new hash."""
-    with open(path.with_name("." + path.name + ".lock"), "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with locked(path.with_name("." + path.name + ".lock")):
         prev = ""
         if path.exists() and path.stat().st_size:
             with open(path, "rb") as f:
@@ -60,7 +67,6 @@ def append_chained(path: pathlib.Path, entry: dict) -> str:
         body["hash"] = _digest(prev, body)
         with open(path, "a") as f:
             f.write(json.dumps(body, default=str) + "\n")
-        fcntl.flock(lock, fcntl.LOCK_UN)
         return body["hash"]
 
 
@@ -73,6 +79,16 @@ def write_json(path: pathlib.Path, obj, indent: int | None = 1) -> None:
 
 def read_json(path: pathlib.Path, default=None):
     return json.loads(path.read_text()) if path.exists() else default
+
+
+def update_json(path: pathlib.Path, change, default=None):
+    """Read a JSON state file, apply `change` to its content and write it back, under the file's lock: two processes
+    never lose each other's update. Returns what was written. Without a `default` the file must exist."""
+    with locked(path.with_name(f".{path.stem}.lock")):
+        obj = json.loads(path.read_text()) if default is None else read_json(path, default)
+        change(obj)
+        write_json(path, obj)
+        return obj
 
 
 def read_jsonl(path: pathlib.Path) -> list[dict]:
@@ -144,6 +160,43 @@ def worst_case_usd(provider: str, model: str, prompt_chars: int, max_output_toke
     return usd
 
 
+class Call:
+    """A model call in flight. Its worst case is reserved until the `with` block ends, so that parallel calls cannot
+    overrun the cap together. Inside the block the call is settled: charged what it used, or void when the provider
+    did not run it. A call left unsettled (an exception, a path that forgot) is charged its worst case as an estimate:
+    a call is never free by omission. The charge is written before the reservation is released, so that a parallel
+    call never sees the room in between."""
+
+    def __init__(self, budget: Budget, rid: str, worst: float, source: str, agent: str, provider: str, model: str, mode: str):
+        self.budget, self.rid, self.worst = budget, rid, worst
+        self.source, self.agent, self.provider, self.model, self.mode = source, agent, provider, model, mode
+        self.settled = False
+
+    def charge(self, usage: dict, mode: str | None = None, price_x: float = 1.0, usd: float | None = None,
+               exact: bool = True, model: str = "") -> float:
+        self.settled = True
+        return self.budget.charge_llm(self.source, self.agent, self.provider, model or self.model, usage,
+                                      self.mode if mode is None else mode, price_x, usd, exact)
+
+    def charge_worst(self, usage: dict | None = None, model: str = "") -> float:
+        """Billed, but by how much is unknown."""
+        return self.charge(usage or {}, usd=self.worst, exact=False, model=model)
+
+    def void(self) -> None:
+        """The provider did not run the call (refused, unreachable): nothing to charge."""
+        self.settled = True
+
+    def __enter__(self) -> Call:
+        return self
+
+    def __exit__(self, *exc) -> None:
+        try:
+            if not self.settled:
+                self.charge_worst()
+        finally:
+            self.budget.release(self.rid)
+
+
 class Budget:
     def __init__(self, state_dir: pathlib.Path):
         self.dir = pathlib.Path(state_dir)
@@ -156,11 +209,11 @@ class Budget:
         return json.loads(f.read_text()) if f.exists() else {}
 
     def set_caps(self, **caps) -> None:
-        with open(self.dir / ".budgets.lock", "w") as lock:  # read, merge, write: two callers never lose an update
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            merged = {**self.caps, **{k: v for k, v in caps.items() if v is not None}}
-            merged.setdefault("start", now().isoformat(timespec="seconds"))
-            write_json(self.dir / "budgets.json", merged)
+        def merge(old: dict) -> None:
+            old.update({k: v for k, v in caps.items() if v is not None})
+            old.setdefault("start", now().isoformat(timespec="seconds"))
+
+        update_json(self.dir / "budgets.json", merge, {})
 
     # ------------------------------------------------------------ LLM
     # Entries use the OpenTelemetry GenAI attribute names (gen_ai.*) plus frontier.* ones, and form a hash chain:
@@ -191,8 +244,7 @@ class Budget:
     # calls (sub-agents, harness traffic through the gateway, several processes) cannot overrun the cap together.
     def _reservations(self, fn) -> object:
         f = self.dir / "reservations.json"
-        with open(self.dir / ".reservations.lock", "w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        with locked(self.dir / ".reservations.lock"):
             try:  # a process killed while writing the old way left an empty file: it holds no reservation
                 items = json.loads(f.read_text() or "{}") if f.exists() else {}
             except json.JSONDecodeError:
@@ -201,7 +253,6 @@ class Budget:
             items = {k: v for k, v in items.items() if (at - parse_time(v["t"])).total_seconds() < RESERVATION_TTL_S}
             out = fn(items)
             write_json(f, items, indent=None)
-            fcntl.flock(lock, fcntl.LOCK_UN)
             return out
 
     def reserved(self) -> float:
@@ -238,26 +289,30 @@ class Budget:
                            "(a cheaper model, a lower reasoning level or fewer output tokens may still fit)")
         return True, ""
 
+    def call(self, worst: float, source: str, agent: str, provider: str, model: str, mode: str = "",
+             what: str = "") -> tuple[Call | None, str]:
+        """Hold the worst case of a model call about to be made: (the call, to settle inside `with`, "") or (None, why
+        it does not fit)."""
+        rid, why = self.reserve(worst, what or f"{agent} {provider}/{model}")
+        return (Call(self, rid, worst, source, agent, provider, model, mode), "") if rid else (None, why)
+
     def metered_chat(self, source: str, agent: str, spec, messages: list[dict], tools: list[dict], max_out: int):
-        """One model call under the cap: reserve its worst case, charge what it used (its worst case when it failed
-        after the provider probably ran it), and only then release the reservation, so that a parallel call never
-        sees the room in between. Returns (reply, USD), or (None, why the call does not fit)."""
+        """One model call under the cap. Returns (reply, USD), or (None, why the call does not fit)."""
         from . import llm
 
         worst = worst_case_usd(spec.provider, spec.model, len(json.dumps(messages, default=str)) + len(json.dumps(tools)),
                                max_out, spec.price_x)
-        rid, why = self.reserve(worst, f"{agent} {spec.label()}")
-        if rid is None:
+        call, why = self.call(worst, source, agent, spec.provider, spec.model, spec.mode, f"{agent} {spec.label()}")
+        if call is None:
             return None, why
-        try:
-            reply = llm.chat(spec, messages, tools, max_out)
-            return reply, self.charge_llm(source, agent, spec.provider, spec.model, reply.usage, spec.mode, spec.price_x)
-        except llm.LLMError as e:
-            if e.maybe_billed:  # charged at the worst case, as the gateway does for a call it could not meter
-                self.charge_llm(source, agent, spec.provider, spec.model, {}, spec.mode, spec.price_x, usd=worst, exact=False)
-            raise
-        finally:
-            self.release(rid)
+        with call:
+            try:
+                reply = llm.chat(spec, messages, tools, max_out)
+            except llm.LLMError as e:
+                if not e.maybe_billed:
+                    call.void()
+                raise  # probably billed: left unsettled, charged at its worst case
+            return reply, call.charge(reply.usage, spec.mode, spec.price_x)
 
     def llm_allowed(self, next_call_usd: float = 0.0) -> tuple[bool, str]:
         """Hard cap: refused when what is spent, plus the calls in flight, plus `next_call_usd` exceeds the budget."""
@@ -295,16 +350,10 @@ class Budget:
             total += (r.get(key) or 0) * left
         return round(total, 4)
 
-    @contextlib.contextmanager
     def cloud_lock(self):
         """Held from a creation's budget check until the resource is in the ledger, across threads and processes,
         so that two parallel creations cannot both pass the same check."""
-        with open(self.dir / ".cloud.lock", "w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
+        return locked(self.dir / ".cloud.lock")
 
     def cloud_allowed(self, provider: str, price_per_hour: float | None, max_hours: float) -> tuple[bool, str]:
         cap_key, cur, _ = CLOUD_CURRENCY[provider]

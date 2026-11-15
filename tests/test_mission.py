@@ -76,6 +76,16 @@ def test_cloud_budget_counts_spent_committed_and_new(tmp_path):
     assert not b.cloud_allowed("runpod", 0.1, 1)[0] and not b.llm_allowed(1.0)[0]  # beyond the post-delivery grace
 
 
+def test_the_grace_after_delivery_counts_only_what_was_spent_after_it(tmp_path):
+    b = budget.Budget(tmp_path)
+    b.set_caps(llm_usd=5.0)
+    b.charge_llm("gateway", "harness", "openai", "gpt-6-luna", {}, usd=1.0)  # spent before the delivery
+    b.set_caps(frozen=True, frozen_llm_usd=b.llm_spent())
+    assert b.llm_allowed(budget.POST_DELIVERY_GRACE_USD - 0.05)[0]
+    b.charge_llm("gateway", "harness", "openai", "gpt-6-luna", {}, usd=0.1)  # the harness closing its turn
+    assert not b.llm_allowed(budget.POST_DELIVERY_GRACE_USD - 0.05)[0] and b.llm_allowed(0.1)[0]
+
+
 def test_watchdog_deletes_overdue_resources(tmp_path, cfg, monkeypatch):
     run = Run(cfg, workspace=tmp_path, log_dir=tmp_path / "s")
     old = (budget.now() - budget.dt.timedelta(hours=3)).isoformat()
@@ -252,7 +262,7 @@ def test_deliver_checks_freezes_and_reports(tmp_path, cfg, monkeypatch):
     rec = json.loads(mission.deliver(ctx, "done"))
     assert rec["missing"] == [] and rec["llm_usd"] > 0 and (ws / "COSTS.md").exists()
     git = ["git", "-C", str(ws), "log", "-1", "--format=%s", "delivery"]
-    assert subprocess.run(git, capture_output=True, text=True).stdout.strip() == "Delivery"
+    assert subprocess.run(git, capture_output=True, text=True, check=False).stdout.strip() == "Delivery"
     assert not run.budget.llm_allowed(1.0)[0] and run.budget.llm_allowed(0.01)[0]  # frozen, small grace to close the turn
     assert mission.deliver(ctx).startswith("already delivered")
 
@@ -490,7 +500,7 @@ def test_snapshots_notice_merge_tag_and_event(tmp_path, monkeypatch):
     first = s.take(ws)  # the silent one is due at once, the told one merged into it as it falls in its grace
     assert first["labels"] == ["5min", "15min"] and first["minutes"] >= 16
     assert s.take(ws) is None
-    tags = subprocess.run(["git", "-C", str(ws), "tag"], capture_output=True, text=True).stdout.split()
+    tags = subprocess.run(["git", "-C", str(ws), "tag"], capture_output=True, text=True, check=False).stdout.split()
     assert tags == ["snapshot-15min", "snapshot-5min"]
     monkeypatch.setattr(b, "llm_spent", lambda: 12.0)
     assert ("spend", 10) in s.crossed() and ("spend", 20) not in s.crossed()
