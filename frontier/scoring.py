@@ -64,10 +64,13 @@ def artifacts(rubrics: dict) -> float | None:
 
 
 def relative(value: float, peers: list[float]) -> float:
-    """Doublings of advance on the median peer: 50 at par, 25 points per doubling."""
-    if not peers or value <= 0:
+    """Doublings of advance on the median peer: 50 at par, 25 points per doubling (nothing spent is the best case)."""
+    if not peers:
         return 50.0
-    return clip(50.0 + 25.0 * math.log2(statistics.median(peers) / value))
+    median = statistics.median(peers)
+    if value <= 0 or median <= 0:  # log2 of 0: at par when both are 0, else the extreme
+        return 50.0 if value <= 0 and median <= 0 else 100.0 if value <= 0 else 0.0
+    return clip(50.0 + 25.0 * math.log2(median / value))
 
 
 def efficiency(teams: dict[str, dict]) -> dict[str, dict]:

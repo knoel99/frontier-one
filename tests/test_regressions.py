@@ -765,6 +765,8 @@ def test_scoring_log_scales_and_relative_efficiency():
     assert scoring.log_score(5, 5) == 100 and scoring.log_score(10, 5) == 90 and scoring.log_score(40, 5) == 70
     assert scoring.log_score(5 * 2 ** 12, 5) == 0
     assert scoring.relative(10, [40]) == 100 and scoring.relative(40, [40]) == 50 and scoring.relative(160, [40]) == 0
+    # a team or a peer that spent nothing (an unmetered harness) neither crashes the jury nor gets par
+    assert scoring.relative(0, [40]) == 100 and scoring.relative(40, [0]) == 0 and scoring.relative(0, [0]) == 50
     teams = {"fast": {"quality": 15, "usd": 2, "minutes": 20, "classified": True},
              "slow": {"quality": 12, "usd": 8, "minutes": 80, "classified": True},
              "empty": {"quality": 2, "usd": 1, "minutes": 5, "classified": True},
