@@ -228,6 +228,3 @@ def all_tools() -> list[str]:
     for names in GROUPS.values():
         out += [n for n in names if n not in out]
     return out
-
-
-DEFAULT_TOOLS = BASE_TOOLS  # kept for callers that want the workspace tools only

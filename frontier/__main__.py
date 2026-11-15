@@ -11,7 +11,7 @@ from . import infra, llm
 from .agent import Agent, Run, load_role
 from .budget import read_json
 from .config import load_config
-from .tools import DEFAULT_TOOLS, REGISTRY, t_api_docs
+from .tools import GROUPS, REGISTRY, t_api_docs
 
 
 def cmd_run(a, cfg) -> int:
@@ -163,8 +163,8 @@ def cmd_cleanup(a, cfg) -> int:
 
 def cmd_tools(a, cfg) -> int:
     for n in REGISTRY:
-        tag = "all " if n in DEFAULT_TOOLS else "infra"
-        print(f"[{tag}] {n:20s} {REGISTRY[n].description[:110]}")
+        group = next((g for g, names in GROUPS.items() if n in names), "other")
+        print(f"[{group:7s}] {n:20s} {REGISTRY[n].description[:110]}")
     return 0
 
 
