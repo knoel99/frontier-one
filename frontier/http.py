@@ -70,19 +70,27 @@ def scw(method: str, path: str, body=None, query: dict | None = None, content_ty
 # ---------------------------------------------------------------- Runpod MCP
 
 
-def mcp_call(tool: str, arguments: dict | None = None, timeout: float = 180) -> tuple[bool, str]:
-    """Call a Runpod MCP tool. Returns (ok, text)."""
-    payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": tool, "arguments": arguments or {}}}
+def mcp_rpc(method: str, params: dict | None = None, timeout: float = 180) -> dict:
+    """One JSON-RPC call to the Runpod MCP server: its decoded answer, plain JSON or server-sent events."""
+    payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
     code, text = request("POST", os.environ.get("RUNPOD_MCP_URL", "https://mcp.runpod.io/"),
                          {**auth_header("runpod"), "Accept": "application/json, text/event-stream"}, payload, timeout)
     if code != 200:
-        return False, f"HTTP {code} {text[:1500]}"
+        raise APIError(f"HTTP {code} {text[:1500]}")
     if "\ndata:" in text or text.startswith(("event:", "data:")):  # server-sent events: last data line
         text = [ln[5:].strip() for ln in text.splitlines() if ln.startswith("data:")][-1]
     try:
-        r = json.loads(text)
+        return json.loads(text)
     except json.JSONDecodeError:
-        return False, text[:1500]
+        raise APIError(text[:1500]) from None
+
+
+def mcp_call(tool: str, arguments: dict | None = None, timeout: float = 180) -> tuple[bool, str]:
+    """Call a Runpod MCP tool. Returns (ok, text)."""
+    try:
+        r = mcp_rpc("tools/call", {"name": tool, "arguments": arguments or {}}, timeout)
+    except APIError as e:
+        return False, str(e)
     if "error" in r:
         return False, json.dumps(r["error"])
     res = r.get("result", {})

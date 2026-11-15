@@ -130,6 +130,9 @@ def test_anthropic_format(cfg, monkeypatch):
     assert b["system"] == "sys" and b["output_config"] == {"effort": "low"}
     assert [x["type"] for x in b["messages"][-1]["content"]] == ["tool_result", "tool_result"]
     assert r.content == "ok"
+    llm.chat(llm.resolve(cfg, "anthropic", "frontier", "none", mode="fast"), HIST, [TOOL])
+    b = seen["body"]  # reasoning off: no thinking, but the fast mode billed at price_x is still asked for
+    assert b["speed"] == "fast" and "thinking" not in b and "output_config" not in b
 
 
 # ---------------------------------------------------------------- catalog
@@ -249,6 +252,8 @@ def test_main_agent_has_every_tool_and_sub_agents_never_more(run, monkeypatch):
     small = agent_mod.Agent(run, "openai", "light", "low", tools=["shell"], depth=1)
     agent_mod.t_spawn_agent(agent_mod.Ctx(run, small), task="t", tools=["scw_create_instance", "shell"])
     assert seen[-1][0] == ["shell"]  # never a tool the parent lacks
+    agent_mod.t_spawn_agent(ctx, task="t", tools=[])
+    assert seen[-1][0] == []  # an empty list is no tools, not the parent's
     assert agent_mod.t_spawn_agent(ctx, task="t", mode="nope").startswith("refused")
 
 
@@ -374,3 +379,13 @@ def test_mcp_spawn_agent(tmp_path, monkeypatch):
     srv = mcp.Server()
     text, err = srv.call("spawn_agent", {"task": "t", "provider": "mistral", "tier": "light", "reasoning": "low"})
     assert not err and "mistral/mistral-small-2603@low" in text
+
+
+def test_runpod_mcp_answers_in_json_or_server_sent_events(monkeypatch):
+    answers = iter(['{"jsonrpc": "2.0", "id": 1, "result": {"tools": []}}',
+                    'event: message\ndata: {"jsonrpc": "2.0", "id": 1, "result": {"tools": [{"name": "list-pods"}]}}\n\n'])
+    monkeypatch.setattr(http, "request", lambda *a, **kw: (200, next(answers)))
+    assert http.mcp_rpc("tools/list")["result"] == {"tools": []}
+    assert http.mcp_rpc("tools/list")["result"]["tools"][0]["name"] == "list-pods"
+    monkeypatch.setattr(http, "request", lambda *a, **kw: (502, "bad gateway"))
+    assert http.mcp_call("list-pods") == (False, "HTTP 502 bad gateway")

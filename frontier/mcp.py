@@ -26,12 +26,13 @@ import os
 import pathlib
 import sys
 import threading
+import tomllib
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 from . import infra, llm
 from .agent import Agent, Ctx, Run, roles_summary
-from .config import load_config
+from .config import ROOT, load_config
 from .tools import GROUPS as TOOL_GROUPS
 from .tools import REGISTRY
 
@@ -66,7 +67,9 @@ WATCHDOG_S = 60
 # The harness has its own shell and file tools: the server exposes the rest.
 GROUPS = {"agents": ["spawn_agent", "frontier_plan", "frontier_roles"], **{k: v for k, v in TOOL_GROUPS.items() if k != "base"}}
 DEFAULT_GROUPS = ",".join(GROUPS)
-SERVER_INFO = {"name": "frontier", "version": "0.3.0"}
+_PYPROJECT = ROOT / "pyproject.toml"
+SERVER_INFO = {"name": "frontier",
+               "version": tomllib.loads(_PYPROJECT.read_text())["project"]["version"] if _PYPROJECT.exists() else "unknown"}
 
 
 def _plan(cfg) -> str:

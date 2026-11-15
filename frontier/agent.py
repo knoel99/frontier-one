@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from . import llm
-from .budget import Budget, append_chained, now, worst_case_usd
+from .budget import Budget, append_chained, now, worst_case_usd, write_json
 from .config import ROOT
 from .tools import GROUPS, INFRA_TOOLS, REGISTRY, Tool, _obj, all_tools
 
@@ -78,7 +78,7 @@ class Run:
             fcntl.flock(lock, fcntl.LOCK_EX)
             items = json.loads(f.read_text()) if f.exists() else []
             yield items
-            f.write_text(json.dumps(items, indent=1) + "\n")
+            write_json(f, items)
             fcntl.flock(lock, fcntl.LOCK_UN)
 
     @property
@@ -241,6 +241,11 @@ class Agent:
             t0 = time.time()
             try:
                 reply = llm.chat(self.spec, self.messages, tool_specs, max_out)
+            except llm.LLMError as e:
+                if e.maybe_billed:  # charged at the worst case, as the gateway does for a call it could not meter
+                    self.run.budget.charge_llm("spawn_agent", self.id, self.spec.provider, self.spec.model, {},
+                                               self.spec.mode, self.spec.price_x, usd=worst, exact=False)
+                raise
             finally:
                 self.run.budget.release(rid)
             usd = self.run.charge(reply.usage, self.spec, self.id)
@@ -295,7 +300,10 @@ def t_spawn_agent(ctx: Ctx, task: str, tier: str = "", reasoning: str = "", prov
     reasoning = reasoning or r.get("reasoning") or "medium"
     provider = provider or r.get("provider") or parent.spec.provider
     # Tools: those named in the call, else the role's, else the parent's; never one the parent does not have.
-    wanted = expand_tools(tools) if tools else expand_tools(r.get("tools") or []) or list(parent.tools)
+    # An empty list is a request for no tools, not for the default.
+    if tools is None:
+        tools = r.get("tools")
+    wanted = list(parent.tools) if tools is None else expand_tools(tools)
     tools = [t for t in wanted if t in parent.tools]
     if not ctx.run.take_agent_slot():
         return "refused: the run already started its maximum number of sub-agents (limits.max_agents)"

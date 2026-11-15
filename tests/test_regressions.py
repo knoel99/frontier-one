@@ -64,6 +64,40 @@ def test_gateway_charges_the_worst_case_when_usage_is_unknown(tmp_path):
     assert e["frontier.price_exact"] is False and b.reserved() == 0
 
 
+class _CutStream(BaseHTTPRequestHandler):
+    """An upstream that breaks mid-stream: one chunk of a chunked SSE answer, then the connection drops."""
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):  # noqa: N802
+        self.rfile.read(int(self.headers["Content-Length"]))
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+        d = b'data: {"id": "x", "model": "glm-5.3"}\n\n'
+        self.wfile.write(b"%x\r\n" % len(d) + d + b"\r\nff\r\npartial")
+        self.close_connection = True
+
+
+def test_gateway_charges_a_stream_the_upstream_cut(tmp_path):
+    up = ThreadingHTTPServer(("127.0.0.1", 0), _CutStream)
+    threading.Thread(target=up.serve_forever, daemon=True).start()
+    b = budget.Budget(tmp_path)
+    gw = gateway.Gateway(("127.0.0.1", 0), b, {"zhipu": (f"http://127.0.0.1:{up.server_address[1]}", "zhipu")})
+    threading.Thread(target=gw.serve_forever, daemon=True).start()
+    body = json.dumps({"model": "glm-5.3", "messages": [], "max_tokens": 1000, "stream": True}).encode()
+    req = urllib.request.Request(f"http://127.0.0.1:{gw.server_address[1]}/zhipu/api/paas/v4/chat/completions",
+                                 data=body, headers={"Content-Type": "application/json"})
+    urllib.request.urlopen(req, timeout=10).read()
+    gw.shutdown()
+    up.shutdown()
+    (e,) = b.llm_entries()  # the provider billed the partial generation: so does the ledger, at the worst case
+    assert e["frontier.price_exact"] is False and e["frontier.cost.usd"] > 0 and b.reserved() == 0
+
+
 def test_gateway_reserves_at_the_requested_mode(cfg):
     def worst(**req):
         body = json.dumps({"input": "x", "max_output_tokens": 1000, **req}).encode()
@@ -681,6 +715,51 @@ def test_a_slow_server_failure_is_not_retried(monkeypatch):
     assert len(calls) == 3  # a fast failure is still retried
 
 
+def test_a_stream_cut_after_it_started_is_not_retried_and_is_charged(run, monkeypatch):
+    """A stream that started was run by the provider: sending it again would pay for it twice, unseen."""
+    calls = []
+
+    class Cut:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def __iter__(self):
+            yield b'data: {"type": "response.created"}\n'
+            raise ConnectionResetError("reset mid-stream")
+
+    monkeypatch.setattr(llm.time, "sleep", lambda s: None)
+    monkeypatch.setattr(llm.urllib.request, "urlopen", lambda req, timeout=0: calls.append(1) or Cut())
+    with pytest.raises(llm.LLMError) as e:
+        llm._post_sse("https://x/y", {}, {})
+    assert len(calls) == 1 and e.value.maybe_billed
+
+    def billed(*a, **kw):
+        raise llm.LLMError("network error", maybe_billed=True)
+
+    monkeypatch.setattr(llm, "chat", billed)
+    a = agent_mod.Agent(run, "openai", "light", "low", tools=[])
+    with pytest.raises(llm.LLMError):
+        a.run_task("t")
+    (entry,) = run.budget.llm_entries()
+    assert entry["frontier.price_exact"] is False and entry["frontier.cost.usd"] > 0 and run.budget.reserved() == 0
+
+
+def test_shared_state_files_are_replaced_whole(run):
+    """budgets.json and resources.json are read by other processes (gateway, dashboard): never written in place."""
+    run.budget.set_caps(llm_usd=5)
+    run.record({"provider": "runpod", "id": "p1"})
+    files = [run.log_dir / "budgets.json", run.log_dir / "resources.json"]
+    inodes = [f.stat().st_ino for f in files]
+    run.budget.set_caps(llm_usd=6)
+    run.record({"provider": "runpod", "id": "p2"})
+    assert all(f.stat().st_ino != i for f, i in zip(files, inodes, strict=True))  # a new file, renamed over the old
+    assert run.budget.caps["llm_usd"] == 6 and [r["id"] for r in run.resources] == ["p1", "p2"]
+    assert not list(run.log_dir.glob("*.tmp"))
+
+
 def test_scoring_log_scales_and_relative_efficiency():
     from frontier import scoring
     assert scoring.log_score(5, 5) == 100 and scoring.log_score(10, 5) == 90 and scoring.log_score(40, 5) == 70
@@ -728,3 +807,26 @@ def test_red_flag_appends_a_chained_event_the_jury_reads(tmp_path):
     ev = [json.loads(ln) for ln in (tmp_path / "events.jsonl").read_text().splitlines()]
     assert ev[-1]["event"] == "red_flag" and ev[-1]["minutes"] == 27.0
     assert verify_chain(tmp_path / "events.jsonl") is True
+
+
+def test_jury_sees_the_team_files_only_and_all_its_code(tmp_path):
+    """Judges read the team's work: never the harness files the framework wrote, and every file of code it delivered."""
+    import subprocess
+
+    from frontier import jury
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    for name, text in {"résultat.py": "x = 1\n", "model.rs": "fn main() {}\n", "report.md": "# R\n",
+                       ".mcp.json": "{}\n", "opencode.json": "{}\n", ".opencode/agents/reviewer.md": "role\n"}.items():
+        (ws / name).parent.mkdir(parents=True, exist_ok=True)
+        (ws / name).write_text(text)
+    subprocess.run(["git", "init", "-q", str(ws)], check=True)
+    subprocess.run(["git", "-C", str(ws), "add", "-A"], check=True)
+    assert sorted(jury._tracked(ws)) == ["model.rs", "report.md", "résultat.py"]
+    f = {k: 0 for k in ("delivered", "minutes", "neutralised_minutes", "duration_hours", "llm_usd", "llm_cap_usd",
+                        "simulation_usd", "rented_usd", "local_cpu_core_hours", "simulation_cap_usd", "sessions",
+                        "deliverables", "ledgers_intact")}
+    text = jury.team_file(ws, f, "Team A", "")
+    assert "### résultat.py" in text and "### model.rs" in text
+    assert "opencode.json" not in text and ".mcp.json" not in text and "role" not in text
+    assert jury.deliverables(tmp_path / "missing", tmp_path)["code"] is False

@@ -64,6 +64,17 @@ def append_chained(path: pathlib.Path, entry: dict) -> str:
         return body["hash"]
 
 
+def write_json(path: pathlib.Path, obj, indent: int | None = 1) -> None:
+    """Write whole, then rename: a reader in another process never sees a half-written file."""
+    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex[:8]}.tmp")
+    tmp.write_text(json.dumps(obj, indent=indent) + "\n")
+    tmp.replace(path)
+
+
+def read_json(path: pathlib.Path, default=None):
+    return json.loads(path.read_text()) if path.exists() else default
+
+
 def read_jsonl(path: pathlib.Path) -> list[dict]:
     if not path.exists():
         return []
@@ -147,7 +158,7 @@ class Budget:
     def set_caps(self, **caps) -> None:
         merged = {**self.caps, **{k: v for k, v in caps.items() if v is not None}}
         merged.setdefault("start", now().isoformat(timespec="seconds"))
-        (self.dir / "budgets.json").write_text(json.dumps(merged, indent=1) + "\n")
+        write_json(self.dir / "budgets.json", merged)
 
     # ------------------------------------------------------------ LLM
     # Entries use the OpenTelemetry GenAI attribute names (gen_ai.*) plus frontier.* ones, and form a hash chain:
@@ -187,9 +198,7 @@ class Budget:
             at = now()
             items = {k: v for k, v in items.items() if (at - parse_time(v["t"])).total_seconds() < RESERVATION_TTL_S}
             out = fn(items)
-            tmp = f.with_name(f.name + ".tmp")  # written whole, then renamed: never a half-written file
-            tmp.write_text(json.dumps(items) + "\n")
-            tmp.replace(f)
+            write_json(f, items, indent=None)
             fcntl.flock(lock, fcntl.LOCK_UN)
             return out
 

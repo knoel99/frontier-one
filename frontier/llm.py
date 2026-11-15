@@ -11,6 +11,7 @@ provider needs replayed on the next turn (reasoning_content, Gemini thought sign
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import time
@@ -26,7 +27,9 @@ TIERS = ["frontier", "standard", "light"]
 
 
 class LLMError(RuntimeError):
-    pass
+    def __init__(self, msg: str, maybe_billed: bool = False):
+        super().__init__(msg)
+        self.maybe_billed = maybe_billed  # the provider probably ran the call: the caller charges an estimate
 
 
 @dataclass
@@ -139,6 +142,60 @@ def _key(spec: ModelSpec) -> str:
 SLOW_FAILURE_S = 30  # a failure after this long: the provider most likely processed (and billed) the request
 
 
+def usage_of(obj) -> dict:
+    """Normalised usage found in one JSON object of a response (any of the four wire formats), or {}."""
+    if not isinstance(obj, dict):
+        return {}
+    if obj.get("type") == "message_start":  # Anthropic stream
+        obj = obj.get("message") or {}
+    if obj.get("type") in ("response.completed", "response.incomplete", "response.failed"):  # OpenAI Responses stream
+        obj = obj.get("response") or {}
+    out: dict = {}
+    u = obj.get("usage")
+    if isinstance(u, dict):
+        if "prompt_tokens" in u or "completion_tokens" in u:  # Chat Completions
+            out["input"] = u.get("prompt_tokens") or 0
+            out["output"] = u.get("completion_tokens") or 0
+            out["cached"] = (u.get("prompt_tokens_details") or {}).get("cached_tokens") or u.get("prompt_cache_hit_tokens") or 0
+            out["reasoning"] = (u.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0
+        elif "input_tokens_details" in u or "output_tokens_details" in u or "total_tokens" in u:  # Responses
+            out["input"] = u.get("input_tokens") or 0
+            out["output"] = u.get("output_tokens") or 0
+            out["cached"] = (u.get("input_tokens_details") or {}).get("cached_tokens") or 0
+            out["reasoning"] = (u.get("output_tokens_details") or {}).get("reasoning_tokens") or 0
+        else:  # Anthropic (message, message_start, message_delta)
+            if "input_tokens" in u or "cache_read_input_tokens" in u:
+                out["input"] = ((u.get("input_tokens") or 0) + (u.get("cache_read_input_tokens") or 0)
+                                + (u.get("cache_creation_input_tokens") or 0))
+                out["cached"] = u.get("cache_read_input_tokens") or 0
+                out["cache_write"] = u.get("cache_creation_input_tokens") or 0
+            if "output_tokens" in u:
+                out["output"] = u.get("output_tokens") or 0
+    if isinstance(u, dict) and isinstance(u.get("cost"), (int, float)):  # OpenRouter reports the cost itself
+        out["cost_usd"] = float(u["cost"])
+    if isinstance(u, dict) and isinstance(u.get("cost_in_usd_ticks"), (int, float)):  # xAI: 1 tick = 1e-10 USD
+        out["cost_usd"] = u["cost_in_usd_ticks"] * 1e-10
+    served = obj.get("service_tier") or (u.get("service_tier") if isinstance(u, dict) else None)
+    if isinstance(u, dict) and u.get("speed"):  # Anthropic fast mode
+        served = u["speed"]
+    if served:
+        out["served_tier"] = served
+    um = obj.get("usageMetadata")
+    if isinstance(um, dict):  # Gemini (cumulative in a stream)
+        out["input"] = um.get("promptTokenCount") or 0
+        out["output"] = (um.get("candidatesTokenCount") or 0) + (um.get("thoughtsTokenCount") or 0)
+        out["reasoning"] = um.get("thoughtsTokenCount") or 0
+        out["cached"] = um.get("cachedContentTokenCount") or 0
+    return out
+
+
+def _usage(obj: dict) -> dict:
+    """The usage of a model answer for the ledger: input, output, reasoning and cached tokens (0 when absent)."""
+    u = usage_of(obj)
+    return {"input": 0, "output": 0, "reasoning": 0, "cached": 0,
+            **{k: v for k, v in u.items() if k in ("input", "output", "reasoning", "cached", "cache_write")}}
+
+
 def _maybe_billed(code: int, t0: float) -> bool:
     """A server error or cut connection after a long wait means the provider probably ran the request (a proxy cut it
     at 180 s on 2026-11-15 while the model kept generating); retrying would pay for it again, unseen by the ledger.
@@ -146,60 +203,50 @@ def _maybe_billed(code: int, t0: float) -> bool:
     return code != 429 and time.time() - t0 > SLOW_FAILURE_S
 
 
-def _post(url: str, headers: dict, body: dict, timeout: float = 600, retries: int = 4) -> dict:
+def _post(url: str, headers: dict, body: dict, timeout: float = 600, retries: int = 4, sse: bool = False):
+    """POST JSON and return the decoded answer, or with `sse` the events of a streamed answer. Retries a refused or
+    failed call with backoff, unless the provider probably ran it (`_maybe_billed`)."""
     data = json.dumps(body).encode()
+    accept = {"Accept": "text/event-stream"} if sse else {}
     for attempt in range(retries + 1):
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **headers})
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **accept, **headers})
         t0 = time.time()
+        events: list[dict] = []
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
-                return json.loads(r.read())
+                return _events(r, events) if sse else json.loads(r.read())
         except urllib.error.HTTPError as e:
             text = e.read().decode(errors="replace")[:2000]
-            if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries and not _maybe_billed(e.code, t0):
+            billed = _maybe_billed(e.code, t0)
+            if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries and not billed:
                 time.sleep(min(60, 2 ** (attempt + 1)))
                 continue
-            raise LLMError(f"HTTP {e.code} from {url}: {text}") from None
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
-            if attempt < retries and not _maybe_billed(0, t0):
+            raise LLMError(f"HTTP {e.code} from {url}: {text}", maybe_billed=billed) from None
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as e:
+            billed = bool(events) or _maybe_billed(0, t0)  # a stream that started was run: never sent again
+            if attempt < retries and not billed:
                 time.sleep(min(60, 2 ** (attempt + 1)))
                 continue
-            raise LLMError(f"network error on {url}: {e}") from None
+            raise LLMError(f"network error on {url}: {e}", maybe_billed=billed) from None
     raise LLMError("unreachable")
+
+
+def _events(r, events: list[dict]) -> list[dict]:
+    """The `data:` JSON of each server-sent event of a response, appended to `events` as they come."""
+    for raw in r:
+        line = raw.decode(errors="replace").strip()
+        if line.startswith("data:") and line[5:].strip() not in ("", "[DONE]"):
+            try:
+                events.append(json.loads(line[5:].strip()))
+            except json.JSONDecodeError:
+                continue
+    return events
 
 
 def _post_sse(url: str, headers: dict, body: dict, timeout: float = 600, retries: int = 4) -> list[dict]:
-    """POST a streamed request and return its events (the `data:` JSON of each server-sent event). A long call is
-    streamed so that bytes keep flowing: a proxy that cuts a connection idle for a few minutes (this happened at
-    180 s on 2026-11-15) never sees it idle. Retries as `_post` does, until the stream has started."""
-    data = json.dumps(body).encode()
-    for attempt in range(retries + 1):
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json",
-                                                              "Accept": "text/event-stream", **headers})
-        t0 = time.time()
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                events = []
-                for raw in r:
-                    line = raw.decode(errors="replace").strip()
-                    if line.startswith("data:") and line[5:].strip() not in ("", "[DONE]"):
-                        try:
-                            events.append(json.loads(line[5:].strip()))
-                        except json.JSONDecodeError:
-                            continue
-                return events
-        except urllib.error.HTTPError as e:
-            text = e.read().decode(errors="replace")[:2000]
-            if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries and not _maybe_billed(e.code, t0):
-                time.sleep(min(60, 2 ** (attempt + 1)))
-                continue
-            raise LLMError(f"HTTP {e.code} from {url}: {text}") from None
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
-            if attempt < retries and not _maybe_billed(0, t0):
-                time.sleep(min(60, 2 ** (attempt + 1)))
-                continue
-            raise LLMError(f"network error on {url}: {e}") from None
-    raise LLMError("unreachable")
+    """POST a streamed request and return its events. A long call is streamed so that bytes keep flowing: a proxy that
+    cuts a connection idle for a few minutes (this happened at 180 s on 2026-11-15) never sees it idle."""
+    return _post(url, headers, body, timeout, retries, sse=True)
 
 
 def responses_from_events(events: list[dict]) -> dict:
@@ -272,11 +319,7 @@ def _chat_openai(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
         except json.JSONDecodeError:
             args = {"_unparsed": fn.get("arguments")}
         calls.append({"id": c.get("id") or uuid.uuid4().hex[:12], "name": fn.get("name"), "arguments": args})
-    u = r.get("usage") or {}
-    det = u.get("completion_tokens_details") or {}
-    cached = (u.get("prompt_tokens_details") or {}).get("cached_tokens") or u.get("prompt_cache_hit_tokens") or 0
-    usage = {"input": u.get("prompt_tokens", 0), "output": u.get("completion_tokens", 0),
-             "reasoning": det.get("reasoning_tokens", 0), "cached": cached}
+    usage = _usage(r)
     content = msg.get("content") or ""
     if isinstance(content, list):  # Mistral can return typed chunks (thinking + text)
         content = "".join(x.get("text", "") for x in content if isinstance(x, dict) and x.get("type") == "text")
@@ -333,10 +376,7 @@ def _chat_responses(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
             except json.JSONDecodeError:
                 args = {"_unparsed": it.get("arguments")}
             calls.append({"id": it["call_id"], "name": it["name"], "arguments": args})
-    u = r.get("usage") or {}
-    usage = {"input": u.get("input_tokens", 0), "output": u.get("output_tokens", 0),
-             "reasoning": (u.get("output_tokens_details") or {}).get("reasoning_tokens", 0),
-             "cached": (u.get("input_tokens_details") or {}).get("cached_tokens", 0)}
+    usage = _usage(r)
     replay = [{k: v for k, v in it.items() if k not in ("status",)} for it in output]
     am = {"role": "assistant", "content": text, "tool_calls": calls, "_raw": {"output": replay}}
     return Reply(text, calls, usage, am, r.get("status", ""))
@@ -392,10 +432,7 @@ def _chat_gemini(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
     text = "".join(p.get("text", "") for p in parts if "text" in p and not p.get("thought"))
     calls = [{"id": uuid.uuid4().hex[:12], "name": p["functionCall"]["name"], "arguments": p["functionCall"].get("args", {})}
              for p in parts if "functionCall" in p]
-    u = r.get("usageMetadata") or {}
-    usage = {"input": u.get("promptTokenCount", 0),
-             "output": u.get("candidatesTokenCount", 0) + u.get("thoughtsTokenCount", 0),
-             "reasoning": u.get("thoughtsTokenCount", 0), "cached": u.get("cachedContentTokenCount", 0)}
+    usage = _usage(r)
     am = {"role": "assistant", "content": text, "tool_calls": calls, "_raw": {"parts": parts}}
     return Reply(text, calls, usage, am, cand.get("finishReason", ""))
 
@@ -427,19 +464,17 @@ def _chat_anthropic(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
         body["system"] = system
     if tools:
         body["tools"] = [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]} for t in tools]
-    if spec.reasoning != "none":
-        _merge(body, json.loads(json.dumps(spec.extra)))
-        if spec.effort_value is not None and spec.effort_field:
-            _set_path(body, spec.effort_field, spec.effort_value)
+    _merge(body, json.loads(json.dumps(spec.extra)))  # the speed mode's fields too: they are billed (price_x)
+    if spec.reasoning == "none":
+        body.pop("thinking", None)
+    elif spec.effort_value is not None and spec.effort_field:
+        _set_path(body, spec.effort_field, spec.effort_value)
     headers = {"x-api-key": _key(spec), "anthropic-version": "2023-06-01"}
     r = _post(f"{spec.base_url}/messages", headers, body)
     blocks = r.get("content") or []
     text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
     calls = [{"id": b["id"], "name": b["name"], "arguments": b.get("input", {})} for b in blocks if b.get("type") == "tool_use"]
-    u = r.get("usage") or {}
-    usage = {"input": u.get("input_tokens", 0) + u.get("cache_read_input_tokens", 0) + u.get("cache_creation_input_tokens", 0),
-             "output": u.get("output_tokens", 0), "reasoning": 0, "cached": u.get("cache_read_input_tokens", 0),
-             "cache_write": u.get("cache_creation_input_tokens", 0)}
+    usage = _usage(r)
     am = {"role": "assistant", "content": text, "tool_calls": calls, "_raw": {"content": blocks}}
     return Reply(text, calls, usage, am, r.get("stop_reason", ""))
 

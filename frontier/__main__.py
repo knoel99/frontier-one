@@ -9,6 +9,7 @@ import sys
 
 from . import infra, llm
 from .agent import Agent, Run, load_role
+from .budget import read_json
 from .config import load_config
 from .tools import DEFAULT_TOOLS, REGISTRY, t_api_docs
 
@@ -22,7 +23,7 @@ def cmd_run(a, cfg) -> int:
     role = load_role(a.role) if a.role else {}
     agent = Agent(run, a.provider or role.get("provider") or cfg.get("default_provider", "openai"),
                   a.tier or role.get("tier") or "frontier", a.reasoning or role.get("reasoning") or "high",
-                  tools=a.tools.split(",") if a.tools else role.get("tools") or None,
+                  tools=a.tools.split(",") if a.tools else role.get("tools"),
                   instructions=role.get("instructions", ""), max_turns=a.max_turns or None, name=a.role or "main")
     print(f"run {run.run_id}: {agent.spec.label()} (tier {agent.spec.tier}); log {run.log_dir}/events.jsonl", file=sys.stderr)
     try:
@@ -146,7 +147,7 @@ def cmd_harnesses(a, cfg) -> int:
 def cmd_reap(a, cfg) -> int:
     """Dead-man sweep of a mission or run state directory, e.g. from cron: */10 * * * * frontier reap <state>."""
     d = pathlib.Path(a.state)
-    settings = json.loads((d / "mission.json").read_text()) if (d / "mission.json").exists() else {}
+    settings = read_json(d / "mission.json", {})
     run = Run(cfg, workspace=settings.get("workspace", "."), log_dir=d, run_id=d.name, settings=settings)
     print(json.dumps(infra.reap(run), indent=1))
     return 0
