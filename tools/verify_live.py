@@ -378,6 +378,58 @@ def leak_scan(root: pathlib.Path):
     verdict("F2", "no key value on disk", not hits, f"files holding a test value: {hits or 'none'}")
 
 
+@check("F14", "parallel creations under one cloud cap, and frontier reap")
+def f14_live(root: pathlib.Path):
+    """Two rp_create_pod at once under a cap that holds one: exactly one pod; then `frontier reap` (the CLI) deletes
+    it once past its max_hours."""
+    import concurrent.futures
+
+    info = mission.prepare(write_mission(root, "parallel", hours=0.5), ping=False, offers=False)
+    st = info["state"]
+    os.environ["FRONTIER_ALLOW_SPEND"] = "1"
+    srv = Server(state=str(st))
+    offer = next(o for o in json.loads(srv.call("rp_offers", {})[0])["offers"] if o.get("usd_per_gpu_hour"))
+    hours = 0.01  # 36 s
+    budget.Budget(st).set_caps(runpod_usd=offer["usd_per_gpu_hour"] * hours * 1.5)  # room for one, not two
+    args = {"name": "frontier-verify-parallel", "gpu_type_id": offer["gpu_type_id"], "max_hours": hours,
+            "image": "python:3.12-slim", "disk_gb": 10, "command": "sleep infinity"}
+    with concurrent.futures.ThreadPoolExecutor(2) as ex:
+        outs = list(ex.map(lambda _: srv.call("rp_create_pod", args), range(2)))
+    made = [json.loads(o)["id"] for o, err in outs if not err and o.lstrip().startswith("{")]
+    CREATED.extend(("runpod", pid) for pid in made)
+    refused = [o[:120] for o, _ in outs if o.startswith("refused")]
+    verdict("F14", "parallel creations under one cloud cap", len(made) == 1 and len(refused) == 1,
+            f"{len(made)} pod created ({made}), {len(refused)} refused: {refused}")
+    time.sleep(hours * 3600 + 10)
+    p = subprocess.run([str(ROOT / "bin" / "frontier"), "reap", str(st)], capture_output=True, text=True, timeout=300)
+    events = [e for e in budget.read_jsonl(st / "events.jsonl") if e.get("event") == "watchdog_delete"]
+    gone = all(_rp_gone(pid) for pid in made)
+    verdict("F15", "frontier reap", p.returncode == 0 and bool(made) and gone and len(events) == len(made),
+            f"reap exit {p.returncode}; watchdog_delete events {len(events)}; get-pod 404 for {made}: {gone}")
+
+
+@check("F7", "deadline stops a real harness session")
+def f7_live(root: pathlib.Path):
+    """A Codex mission of 90 s whose experiment is a 300 s command: the launcher ends the session at the deadline (exit
+    124, `stopped: deadline`) and no process of the session is left."""
+    sub = root / "files" / "deadline-live"
+    sub.mkdir(parents=True, exist_ok=True)
+    f = write_mission(root, "deadline-live", hours=0.025, llm_usd=0.1,
+                      extra='[harness]\nname = "codex"\ntier = "light"\nreasoning = "low"\nmax_sessions = 1\n')
+    text = f.read_text().replace('[harness]\nname = "codex"\n[llm]', '[llm]', 1)  # one [harness] section only
+    f.write_text(text)
+    (sub / "subject.md").write_text("# Subject\n\nThe experiment is the shell command `sleep 300`: run it first, in the "
+                                    "foreground, and wait for it to finish. Then write its exit code in REPORT.md and deliver.\n")
+    p = subprocess.run([sys.executable, "-m", "frontier", "mission", "start", str(f), "--no-ping"], cwd=ROOT,
+                       capture_output=True, text=True, timeout=600)
+    st = root / "missions" / "deadline-live"
+    ends = [e for e in budget.read_jsonl(st / "events.jsonl") if e.get("event") == "session_end"]
+    left = subprocess.run(["pgrep", "-af", f"{st}|sleep 300"], capture_output=True, text=True).stdout.strip()
+    ok = bool(ends) and ends[-1].get("code") == launcher.DEADLINE_EXIT and ends[-1].get("stopped") == "deadline" and not left
+    verdict("F7", "deadline stops a real harness session", ok,
+            f"launcher exit {p.returncode}; session_end {ends[-1] if ends else None}; processes left: {left or 'none'}")
+
+
 # ---------------------------------------------------------------- features added since 2026-11-14
 
 
@@ -621,6 +673,9 @@ def main() -> int:
         f6(root)
         f7(root)
         f14(root)
+        if not a.skip_cloud:
+            f14_live(root)
+        f7_live(root)
         f18(st, root)
         f25(root)
         f26(root)
