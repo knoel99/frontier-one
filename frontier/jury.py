@@ -253,19 +253,22 @@ def validate(v: dict) -> None:
         raise ValueError(f"adequacy must be one of {sorted(scoring.ADEQUACY)}")
 
 
-def judge(spec: llm.ModelSpec, brief: str, subject: str, context: str, dossier: str,
-          calibration: str = "") -> tuple[dict, dict]:
+def judge(b: Budget, spec: llm.ModelSpec, brief: str, subject: str, context: str, dossier: str,
+          calibration: str = "", who: str = "judge") -> dict:
+    """A judge's verdict; each of its calls, a retry included, is reserved and charged in the jury's ledger."""
     cal = f"# Calibration example (not a competitor)\n\n{calibration}\n\n" if calibration else ""
     msgs = [{"role": "system", "content": brief},
             {"role": "user", "content": f"# Race context\n\n{context}\n\n# The subject\n\n{subject}\n\n{cal}"
                                         f"# The team's file\n\n{dossier}"}]
     last = None
     for _ in range(2):  # one retry when the answer is not the JSON asked for
-        r = llm.chat(spec, msgs, [], max_tokens=16_000)
+        r, why = b.metered_chat("jury", who, spec, msgs, [], 16_000)
+        if r is None:
+            raise ValueError(why)
         try:
             out = _json_of(r.content)
             validate(out)
-            return out, r.usage
+            return out
         except (ValueError, KeyError, TypeError) as e:
             last = e
             msgs += [r.raw_message, {"role": "user", "content": "Answer with the JSON object only, as specified."}]
@@ -314,12 +317,8 @@ def run(root: pathlib.Path, subject: str, context: str, out: pathlib.Path, judge
 
     def one(item):
         name, p = item
-        if b.llm_spent() >= cap_usd:
-            return name, p, None, "jury budget spent"
         try:
-            verdict, usage = judge(specs[p], brief, subject, general, teams_out[name]["file"], calibration)
-            b.charge_llm("jury", f"judge:{p}", p, specs[p].model, usage)
-            return name, p, verdict, None
+            return name, p, judge(b, specs[p], brief, subject, general, teams_out[name]["file"], calibration, f"judge:{p}"), None
         except Exception as e:  # noqa: BLE001 - a failed judge is recorded, the others still count
             return name, p, None, f"{type(e).__name__}: {str(e)[:300]}"
 

@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from . import llm
-from .budget import Budget, append_chained, now, worst_case_usd, write_json
+from .budget import Budget, append_chained, now, write_json
 from .config import ROOT
 from .tools import GROUPS, INFRA_TOOLS, REGISTRY, Tool, _obj, all_tools
 
@@ -57,11 +57,6 @@ class Run:
         """Append to events.jsonl, a hash-chained log (budget.verify_chain detects an edited line)."""
         event = {"t": now().isoformat(timespec="seconds"), **event}
         append_chained(self.log_dir / "events.jsonl", json.loads(json.dumps(event, default=str)))
-
-    def charge(self, usage: dict, spec: llm.ModelSpec, agent: str = "") -> float:
-        with self._lock:
-            self.tokens += usage.get("input", 0) + usage.get("output", 0)
-        return self.budget.charge_llm("spawn_agent", agent, spec.provider, spec.model, usage, spec.mode, spec.price_x)
 
     def over_budget(self) -> str:
         """Why no further model call may be made, or ''."""
@@ -226,29 +221,18 @@ class Agent:
                      task=task[:2000])
         final = ""
         for turn in range(self.max_turns):
-            max_out = self.run.limits.get("max_output_tokens", 16000)
-            tool_specs = [t.spec() for t in self.tools.values()]
-            worst = worst_case_usd(self.spec.provider, self.spec.model,
-                                   len(json.dumps(self.messages, default=str)) + len(json.dumps(tool_specs)), max_out,
-                                   self.spec.price_x)
             if why := self.run.over_budget():
                 final = f"[stopped: {why}]\n" + final
                 break
-            rid, why = self.run.budget.reserve(worst, f"{self.id} {self.spec.label()}")
-            if rid is None:
-                final = f"[stopped: {why}]\n" + final
-                break
             t0 = time.time()
-            try:  # charged before the reservation is released: a parallel call never sees the room in between
-                reply = llm.chat(self.spec, self.messages, tool_specs, max_out)
-                usd = self.run.charge(reply.usage, self.spec, self.id)
-            except llm.LLMError as e:
-                if e.maybe_billed:  # charged at the worst case, as the gateway does for a call it could not meter
-                    self.run.budget.charge_llm("spawn_agent", self.id, self.spec.provider, self.spec.model, {},
-                                               self.spec.mode, self.spec.price_x, usd=worst, exact=False)
-                raise
-            finally:
-                self.run.budget.release(rid)
+            reply, usd = self.run.budget.metered_chat("spawn_agent", self.id, self.spec, self.messages,
+                                                      [t.spec() for t in self.tools.values()],
+                                                      self.run.limits.get("max_output_tokens", 16000))
+            if reply is None:
+                final = f"[stopped: {usd}]\n" + final
+                break
+            with self.run._lock:
+                self.run.tokens += reply.usage.get("input", 0) + reply.usage.get("output", 0)
             self.usage["usd"] = round(self.usage.get("usd", 0) + usd, 6)
             for k in ("input", "output", "reasoning"):
                 self.usage[k] += reply.usage.get(k, 0)

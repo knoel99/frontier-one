@@ -946,3 +946,24 @@ def test_a_stream_that_ends_without_its_final_event_is_charged(run, monkeypatch)
         agent_mod.Agent(run, "openai", "light", "low", tools=[]).run_task("hi")
     (e,) = run.budget.llm_entries()
     assert e["frontier.price_exact"] is False and e["frontier.cost.usd"] > 0 and run.budget.reserved() == 0
+
+
+def test_every_judge_call_is_charged_and_held_under_the_jury_cap(tmp_path, cfg, monkeypatch):
+    """A judge that first answered in prose was charged for its retry only; parallel judges only checked the spend
+    already written, so six of them in flight overran the cap together."""
+    from frontier import jury
+
+    rub = {"scientific_quality": {"rubrics": {k: {"score": 50} for k in ("soundness", "significance", "positioning", "clarity")},
+                                  "adequacy": "on_subject"},
+           "artifacts": {"rubrics": {k: {"score": 50} for k in ("reproducibility", "code", "data", "traceability")}}}
+    answers = iter(["I think the team did well.", json.dumps(rub)])
+    monkeypatch.setattr(llm, "chat", lambda spec, m, t, max_tokens=0: llm.Reply(
+        next(answers), [], {"input": 1000, "output": 100}, {"role": "assistant", "content": "x"}))
+    b = budget.Budget(tmp_path)
+    b.set_caps(llm_usd=100)
+    spec = llm.resolve(cfg, "openai", "frontier", "high")
+    assert jury.judge(b, spec, "brief", "subject", "context", "file") == rub
+    assert [e["gen_ai.agent.name"] for e in b.llm_entries()] == ["judge", "judge"] and b.reserved() == 0
+    b.set_caps(llm_usd=b.llm_spent() + 0.0001)  # no worst case fits in what is left
+    with pytest.raises(ValueError, match="LLM budget"):
+        jury.judge(b, spec, "brief", "subject", "context", "file")
