@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -438,7 +439,7 @@ FILE_EXT = ("py", "ipynb", "json", "jsonl", "csv", "tsv", "npz", "npy", "pt", "p
             "txt", "yml", "yaml", "toml", "cfg", "sh", "png", "pdf", "svg", "jpg", "tex", "bib", "log", "pkl")
 _EXT = "|".join(FILE_EXT)
 # a directory (ends with /) or a file name with a file extension; "1/Re", "dE/dt" or a model id "org/model" are not
-_PATHLIKE = __import__("re").compile(rf"^([\w.*-]+/)+$|^([\w.*-]+/)*[\w*-][\w.*-]*\.({_EXT})$")
+_PATHLIKE = re.compile(rf"^([\w.*-]+/)+$|^([\w.*-]+/)*[\w*-][\w.*-]*\.({_EXT})$")
 
 
 def report_files(ws: pathlib.Path) -> list[pathlib.Path]:
@@ -453,8 +454,6 @@ def report_files(ws: pathlib.Path) -> list[pathlib.Path]:
 def report_paths(text: str) -> list[str]:
     """File or directory paths a report names: code spans, link targets and bare file names, but not the images it
     embeds nor URLs. A report refers to its own figures, tables and sections and to the delivery by its Hub URL."""
-    import re
-
     text = re.sub(r"!\[[^\]]*\]\([^)]*\)(\{[^}]*\})?", "", text)  # embedded figures need their file
     text = re.sub(r"\\includegraphics(\[[^\]]*\])?\{[^}]*\}", "", text)
     found = []

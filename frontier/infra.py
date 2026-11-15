@@ -347,7 +347,7 @@ def _delete_rp_pod(run, pod_id: str) -> dict:
         mcp_json("delete-pod", {"id": pod_id})
         state = "deleted"
     except APIError as e:
-        state = "already gone" if "404" in str(e) or "not found" in str(e).lower() else f"error: {e}"
+        state = "already gone" if gone(e) else f"error: {e}"
         if state.startswith("error"):
             return {"id": pod_id, "state": state}
     run.mark(pod_id, "deleted")
@@ -367,6 +367,11 @@ def rp_delete_pod(ctx, pod_id: str, not_created_by_this_run: bool = False) -> st
 def infra_resources(ctx) -> str:
     """Resources created by this run (all agents), with state and price."""
     return _j(ctx.run.resources)
+
+
+def gone(err: Exception) -> bool:
+    """A Runpod error that says the resource no longer exists."""
+    return "404" in str(err) or "not found" in str(err).lower()
 
 
 def _delete(run, r: dict) -> dict:

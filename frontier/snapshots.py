@@ -86,10 +86,14 @@ class Snapshots:
     def _events(self, kind: str) -> list[dict]:
         return [e for e in read_jsonl(self.b.dir / "events.jsonl") if e.get("event") == kind]
 
+    def _minutes(self) -> float | None:
+        """Minutes since the mission started, or None before it has a start."""
+        start = parse_time(self.b.caps.get("start"))
+        return (now() - start).total_seconds() / 60 if start else None
+
     def crossed(self) -> list[tuple[str, float]]:
         """Milestones reached so far: [("time", minutes) | ("spend", usd)]."""
-        start = parse_time(self.b.caps.get("start"))
-        minutes = (now() - start).total_seconds() / 60 if start else 0.0
+        minutes = self._minutes() or 0.0
         llm, sim = spend(self.b, self.price)
         out = [("time", m) for m in _extend(self.s["time_minutes"], minutes) if minutes >= m]
         return out + [("spend", u) for u in _extend(self.s["spend_usd"], llm + sim) if llm + sim >= u]
@@ -101,8 +105,7 @@ class Snapshots:
         with self.lock:
             seen = {(e["kind"], float(e["value"])) for e in self._events("snapshot_notice")}
             new = [c for c in self.crossed() if c not in seen]
-            start = parse_time(self.b.caps.get("start"))
-            minutes = (now() - start).total_seconds() / 60 if start else 0.0
+            minutes = self._minutes() or 0.0
             for kind, value in new:
                 nf = float(self.s["notice_from_minutes"])
                 silent = value < nf if kind == "time" else minutes < nf
@@ -142,10 +145,10 @@ class Snapshots:
         labels = [e["label"] for e in due]
         commit(ws, "Snapshot " + ", ".join(labels), tuple(f"snapshot-{lab}" for lab in labels), allow_empty=True)
         head = subprocess.run(["git", "-C", str(ws), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-        start = parse_time(self.b.caps.get("start"))
         llm, sim = spend(self.b, self.price)
+        minutes = self._minutes()
         ev = {"t": now().isoformat(timespec="seconds"), "event": "snapshot", "labels": labels, "commit": head,
-              "minutes": round((now() - start).total_seconds() / 60, 2) if start else None,
+              "minutes": round(minutes, 2) if minutes is not None else None,
               "llm_usd": round(llm, 4), "simulation_usd": round(sim, 4),
               "core_seconds": round(core_seconds(self.b.dir), 1)}
         append_chained(self.b.dir / "events.jsonl", ev)
