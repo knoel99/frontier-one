@@ -251,11 +251,16 @@ class Handler(BaseHTTPRequestHandler):
         usage: dict = {}
         last_obj: dict | None = None
         cut = False  # the harness hung up, or the upstream broke, mid-stream: the usage, sent last, was not seen
+        gone = (BrokenPipeError, ConnectionResetError)  # the harness hung up: the call is billed all the same
         if streaming:
             self.send_header("Connection", "close")
-            self.end_headers()
             self.close_connection = True
-            while True:
+            try:
+                self.end_headers()
+            except gone:
+                resp.close()
+                cut = True
+            while not cut:
                 try:
                     chunk = resp.readline()
                 except (OSError, http.client.HTTPException):  # reset, timeout, IncompleteRead: billed all the same
@@ -267,7 +272,7 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     self.wfile.write(chunk)
                     self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError):
+                except gone:
                     resp.close()
                     cut = True
                     break
@@ -286,9 +291,12 @@ class Handler(BaseHTTPRequestHandler):
                 data = resp.read()
             except (OSError, http.client.HTTPException):
                 data, cut = b"", True
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
+            try:
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            except gone:
+                self.close_connection = True
             if is_llm_call and 200 <= status < 300:
                 try:
                     last_obj = json.loads(data)

@@ -891,3 +891,48 @@ def test_a_sub_agent_call_is_charged_before_its_reservation_is_released(run, mon
     monkeypatch.setattr(run.budget, "release", lambda rid: seen.append(run.budget.llm_spent()) or real_release(rid))
     agent_mod.Agent(run, "openai", "light", "low", tools=[]).run_task("hi")
     assert seen and seen[0] > 0  # the spend was in the ledger when the room was given back
+
+
+class _SlowAnswer(BaseHTTPRequestHandler):
+    """A JSON answer with its usage, sent after the client has hung up."""
+
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):  # noqa: N802
+        self.rfile.read(int(self.headers["Content-Length"]))
+        time.sleep(0.5)
+        data = b'{"model": "glm-5.3", "usage": {"prompt_tokens": 1000, "completion_tokens": 100}}' + b" " * 300_000
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
+def test_gateway_charges_an_answer_the_harness_hung_up_on(tmp_path):
+    """A harness that times out on a long call: the provider billed it, the write to the harness fails, and the
+    charge came after that write."""
+    import socket
+    import struct
+
+    up = ThreadingHTTPServer(("127.0.0.1", 0), _SlowAnswer)
+    threading.Thread(target=up.serve_forever, daemon=True).start()
+    b = budget.Budget(tmp_path)
+    gw = gateway.Gateway(("127.0.0.1", 0), b, {"zhipu": (f"http://127.0.0.1:{up.server_address[1]}", "zhipu")})
+    threading.Thread(target=gw.serve_forever, daemon=True).start()
+    body = json.dumps({"model": "glm-5.3", "messages": [], "max_tokens": 1000}).encode()
+    c = socket.create_connection(gw.server_address)
+    c.sendall(b"POST /zhipu/api/paas/v4/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n"
+              b"Content-Length: %d\r\n\r\n" % len(body) + body)
+    time.sleep(0.1)
+    c.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))  # hang up with a reset
+    c.close()
+    for _ in range(50):
+        if b.llm_entries():
+            break
+        time.sleep(0.1)
+    gw.shutdown()
+    up.shutdown()
+    (e,) = b.llm_entries()
+    assert e["gen_ai.usage.input_tokens"] == 1000 and e["frontier.price_exact"] is True and b.reserved() == 0
