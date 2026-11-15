@@ -330,6 +330,7 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
                 "tier": m["harness"].get("tier", "frontier"), "reasoning": m["harness"].get("reasoning", "high"),
                 "allow_spend": True, "allow_publish": "huggingface" in m and credentials.available(origin, hf_env),
                 "publish_visibility": hf.get("visibility", "private"), "hf_namespace": hf.get("namespace", ""),
+                "hf_prefix": hf.get("prefix", ""), "hf_collection": hf.get("collection", ""),
                 "mission_file": m["_file"], "subject": subject, "state": str(state),
                 "sandbox": "" if sandbox_kind(m) == "none" else sandbox_kind(m),
                 "conf": {k: v for k, v in m.items() if k != "_file"}}
@@ -427,6 +428,10 @@ def deliver(ctx, summary: str = "", force: bool = False) -> str:
     subprocess.run(["git", "-C", str(ws), "add", "-A"], check=False)
     subprocess.run(["git", "-C", str(ws), "commit", "-q", "-m", f"Delivery\n\n{summary}".strip()], check=False)
     subprocess.run(["git", "-C", str(ws), "tag", "-f", "delivery"], check=False, capture_output=True)
+    from .hf import publish_delivery
+
+    rec["hub_delivery"] = publish_delivery(ctx, rec)  # in a race: the repository on a private dataset of the Hub
+    done.write_text(json.dumps(rec, indent=1) + "\n")
     ctx.run.log(event="delivered", **{k: v for k, v in rec.items() if k != "cleanup"})
     return json.dumps(rec, indent=1)
 
