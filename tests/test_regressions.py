@@ -614,3 +614,18 @@ def test_deliver_refuses_a_report_that_names_paths(run, tmp_path):
     out = deliver(Ctx(run, None))
     assert out.startswith("refused: the report names files") and "results/metrics.json" in out
     assert not (run.log_dir / "delivery.json").exists()
+
+
+def test_jury_measures_cost_and_time_and_ranks_delivered_teams_first():
+    from frontier.jury import aggregate, measured_scores
+    f = {"delivered": True, "llm_usd": 1.0, "llm_cap_usd": 5.0, "gpu_usd": 0.0, "gpu_cap_usd": 5.0,
+         "elapsed_hours": 0.75, "duration_hours": 1.5}
+    assert measured_scores(f) == {"cost_control": 9.0, "delivery_time": 5.0}
+    assert measured_scores({**f, "delivered": False}) == {"cost_control": 0.0, "delivery_time": 0.0}
+    j = lambda q, c: {"scientific_quality": {"score": q}, "compliance": {"score": c}}  # noqa: E731
+    teams = {"a": {"facts": {**f, "team": "a"}, "measured": measured_scores(f), "judges": {"x": j(4, 4), "y": j(6, 8)}},
+             "b": {"facts": {**f, "team": "b", "delivered": False}, "measured": {"cost_control": 0.0, "delivery_time": 0.0},
+                   "judges": {"x": j(10, 10)}}}
+    res = aggregate(teams, 1.0)
+    assert res["ranking"] == ["a", "b"]  # a delivered team ranks before one that did not, whatever its grades
+    assert res["teams"]["a"]["scores"]["scientific_quality"] == 5.0 and res["teams"]["a"]["final"] == (5 + 9 + 5 + 6) / 4
