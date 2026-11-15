@@ -47,6 +47,9 @@ command = ["agy", "-p", "{prompt}", "--model", "{model}", "--effort", "{effort}"
 effort = "provider"
 env = { GEMINI_API_KEY = "{key}" }
 route = { GOOGLE_GEMINI_BASE_URL = "{gateway}/google" }   # antigravity.google/docs/settings; wire method UNCONFIRMED
+# Its safety monitor calls a model hard-wired in the binary (MODEL_TIER_FLASH, seen in its log 2026-11-15) whatever
+# --model says; it sends the whole trajectory each turn. The gateway sends those calls to the team's light tier.
+model_map = { "gemini-3.8-flash" = "light" }
 wire = "gemini"
 usage = "json-usage"
 

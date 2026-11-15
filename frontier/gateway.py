@@ -152,6 +152,26 @@ def is_generation(method: str, rest: str) -> bool:
     return method == "POST" and rest.split("?", 1)[0].rstrip("/").endswith(GENERATION)
 
 
+def remap(path: str, body: bytes, model_map: dict[str, str]) -> tuple[str, bytes]:
+    """Send a call for a model the harness picks by itself (a hard-wired helper model) to the one the mission maps it to:
+    the model in the Gemini path (/models/<model>:...) or the body's `model` field."""
+    if not model_map:
+        return path, body
+    if "/models/" in path:
+        head, tail = path.split("/models/", 1)
+        m, sep, after = tail.partition(":")
+        if m in model_map:
+            return f"{head}/models/{model_map[m]}{sep}{after}", body
+    try:
+        obj = json.loads(body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return path, body
+    if isinstance(obj, dict) and obj.get("model") in model_map:
+        obj["model"] = model_map[obj["model"]]
+        return path, json.dumps(obj).encode()
+    return path, body
+
+
 def model_of(req_body: bytes, path: str, resp_obj: dict | None) -> str:
     try:
         m = json.loads(req_body or b"{}").get("model")
@@ -171,9 +191,9 @@ class Gateway(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, addr, budget: Budget, routes: dict[str, tuple[str, str]], agent: str = "harness",
-                 cfg: dict | None = None):
+                 cfg: dict | None = None, model_map: dict[str, str] | None = None):
         super().__init__(addr, Handler)
-        self.budget, self.routes, self.agent = budget, routes, agent
+        self.budget, self.routes, self.agent, self.model_map = budget, routes, agent, dict(model_map or {})
         self.cfg = cfg if cfg is not None else load_config()
 
 
@@ -215,6 +235,7 @@ class Handler(BaseHTTPRequestHandler):
         rest = "/" + (parts[1] if len(parts) > 1 else "")
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
+        rest, body = remap(rest, body, self.server.model_map)
         is_llm_call = is_generation(self.command, rest)
         rid, worst = None, 0.0
         if is_llm_call:
@@ -318,13 +339,14 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
 
-def serve(state: str, port: int = 0, extra_routes: dict[str, str] | None = None, agent: str = "harness") -> Gateway:
+def serve(state: str, port: int = 0, extra_routes: dict[str, str] | None = None, agent: str = "harness",
+          model_map: dict[str, str] | None = None) -> Gateway:
     cfg = load_config()
     routes = routes_from_config(cfg)
     for name, url in (extra_routes or {}).items():
         u = urllib.parse.urlsplit(url)
         routes[name] = (f"{u.scheme}://{u.netloc}", name.split("-")[0])
-    gw = Gateway(("127.0.0.1", port), Budget(pathlib.Path(state)), routes, agent, cfg)
+    gw = Gateway(("127.0.0.1", port), Budget(pathlib.Path(state)), routes, agent, cfg, model_map)
     threading.Thread(target=gw.serve_forever, daemon=True).start()
     return gw
 

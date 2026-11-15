@@ -440,3 +440,16 @@ def test_mission_status_gives_the_team_its_dashboard_with_rate_and_projection(tm
     assert d["llm"]["hours_until_cap_at_this_rate"] == pytest.approx((5 - 0.2) / 1.2, rel=0.01)
     assert d["cloud"]["runpod"]["committed_until_max_hours"] > 0 and d["machines"][0]["id"] == "p9"
     assert set(d) >= {"tokens", "sub_agents", "tool_calls", "sessions", "hours_left"}
+
+
+def test_gateway_remaps_a_hard_wired_helper_model():
+    from frontier.gateway import remap
+    from frontier.launcher import model_map
+    mm = model_map({"provider": "google"}, {"model_map": {"gemini-3.8-flash": "light"}})
+    assert mm == {"gemini-3.8-flash": "gemini-4-hydrogen"}
+    path, body = remap("/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse", b"{}", mm)
+    assert path == "/v1beta/models/gemini-4-hydrogen:streamGenerateContent?alt=sse" and body == b"{}"
+    assert remap("/v1beta/models/gemini-4-argon:generateContent", b"{}", mm)[0].endswith("gemini-4-argon:generateContent")
+    _, body = remap("/v1/chat/completions", b'{"model": "gemini-3.8-flash"}', mm)
+    assert json.loads(body)["model"] == "gemini-4-hydrogen"
+    assert remap("/x", b"not json", mm) == ("/x", b"not json")

@@ -229,16 +229,24 @@ def _watchdog(run: Run, stop: threading.Event) -> None:
             print(f"watchdog: {e}", file=sys.stderr)
 
 
+def model_map(s: dict, h: dict) -> dict[str, str]:
+    """The recipe's `model_map` (a model the harness calls by itself -> a tier of the team's provider, or a model id),
+    resolved to model ids, so that a helper model hard-wired in the harness runs on a model of the mission's choice."""
+    tiers = load_config()["providers"].get(s["provider"], {}).get("tiers", {})
+    return {src: tiers.get(dst, dst) for src, dst in (h.get("model_map") or {}).items()}
+
+
 def open_gateway(state: pathlib.Path, s: dict, h: dict):
     """Start the metering gateway when the harness can be routed through it: (server, base URL) or (None, None)."""
     if not routable(h):
         print("this harness cannot be routed through the gateway: its main-thread spend comes from its own usage "
               "report when it gives one (config/harnesses.toml `usage`)")
         return None, None
+    mm = model_map(s, h)
     try:
-        gw = serve(str(state), s.get("gateway_port", 0), agent=f"harness:{s['harness']}")
+        gw = serve(str(state), s.get("gateway_port", 0), agent=f"harness:{s['harness']}", model_map=mm)
     except OSError:  # the port chosen at preparation is taken: harnesses configured by file will miss the gateway
-        gw = serve(str(state), 0, agent=f"harness:{s['harness']}")
+        gw = serve(str(state), 0, agent=f"harness:{s['harness']}", model_map=mm)
         print(f"warning: port {s.get('gateway_port')} busy, gateway on {gw.server_address[1]}")
     gateway = f"http://127.0.0.1:{gw.server_address[1]}"
     print(f"metering gateway {gateway}")
