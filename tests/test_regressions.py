@@ -900,7 +900,9 @@ def test_raw_cloud_calls_leave_alone_what_the_run_did_not_create(run, monkeypatc
         assert tools.t_runpod_mcp(ctx, tool, args).startswith("refused"), tool
     for method, path in (("DELETE", f"/instance/v1/zones/fr-par-2/servers/{other}"),
                          ("POST", f"/instance/v1/zones/fr-par-2/servers/{other}/action"),
-                         ("DELETE", f"/block/v1/zones/fr-par-2/volumes/{other}"), ("PATCH", f"/instance/v1/zones/fr-par-2/ips/{other}")):
+                         ("DELETE", f"/block/v1/zones/fr-par-2/volumes/{other}"), ("PATCH", f"/instance/v1/zones/fr-par-2/ips/{other}"),
+                         ("DELETE", f"/serverless-jobs/v1alpha1/regions/fr-par/job-definitions/{other}"),  # level 4 check
+                         ("POST", f"/serverless-jobs/v1alpha1/regions/fr-par/job-runs/{other}/stop")):
         assert tools.t_scaleway(ctx, method, path, {}).startswith("refused"), path
     assert not called
     assert tools.t_runpod_mcp(ctx, "list-pods", {}) == "{}"  # reading is not touching
