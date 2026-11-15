@@ -229,7 +229,8 @@ class Agent:
         self.messages.append({"role": "user", "content": task})
         self.run.log(event="agent_start", agent=self.id, parent=self.parent, depth=self.depth, model=self.spec.model,
                      provider=self.spec.provider, tier=self.spec.tier, reasoning=self.spec.reasoning,
-                     effort_value=self.spec.effort_value, tools=list(self.tools), task=task[:2000])
+                     effort_value=self.spec.effort_value, mode=self.spec.mode or "standard", tools=list(self.tools),
+                     task=task[:2000])
         final = ""
         for turn in range(self.max_turns):
             max_out = self.run.limits.get("max_output_tokens", 16000)

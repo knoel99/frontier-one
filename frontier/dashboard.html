@@ -24,9 +24,14 @@ svg{width:100%;height:60px}.ok{color:var(--acc)}.ko{color:var(--bad)}
 window <select id="gwin"><option value="0">all</option><option value="21600">last 6 h</option><option value="3600">last hour</option>
 <option value="900">last 15 min</option></select> · bars: harness sessions, sub-agents, cloud machines; hover for details</div>
 <div id="gantt" style="overflow-x:auto"></div></div>
+<div class="card" style="margin-bottom:12px"><h2>Models over time</h2>
+<div class="mute">One row per team and model, one mark per model call (key checks at the start left out). <span style="color:#e11d48">▮</span> fast modes
+(fast, priority, ultrafast, highspeed, flashx) · <span style="color:#8a8a84">■</span> flex · other colours: standard, by team.
+Hover for time, mode, source and cost.</div>
+<div id="models" style="overflow-x:auto"></div></div>
 <div class="card" style="margin-bottom:12px"><h2>Sub-agents (latest first)</h2>
 <div class="mute" id="subsum"></div><div style="overflow:auto"><table><thead><tr><th>start</th><th>team</th><th>agent</th>
-<th>model</th><th>effort</th><th>time</th><th>calls</th><th>tools</th><th>in (cached)</th><th>out (reasoning)</th><th>USD</th>
+<th>model</th><th>effort</th><th>mode</th><th>time</th><th>calls</th><th>tools</th><th>in (cached)</th><th>out (reasoning)</th><th>USD</th>
 <th>status</th><th>task</th></tr></thead><tbody id="subs"></tbody></table></div></div>
 <div class="card"><h2>All actions (latest first)</h2><table class="feed"><tbody id="feed"></tbody></table></div>
 </main><script>
@@ -56,7 +61,19 @@ function team(t){const s=t.status,l=s.llm,c=s.cloud,tk=t.tokens;
 async function load(){const d=window.__STATE__||await (await fetch('api/state')).json();
  document.getElementById('meta').textContent=`${d.teams.length} team(s) · ${d.root} · updated ${d.time}`;
  document.getElementById('teams').innerHTML=d.teams.map(team).join('');
- document.getElementById('feed').innerHTML=d.feed.map(a=>`<tr><td>${esc(a.t.slice(11,19))}</td><td><b>${esc(a.team)}</b></td><td><span class="tag">${esc(a.kind)}</span></td><td>${esc(a.text)}</td></tr>`).join('');subs(d);window.__D__=d;gantt(d);}
+ document.getElementById('feed').innerHTML=d.feed.map(a=>`<tr><td>${esc(a.t.slice(11,19))}</td><td><b>${esc(a.team)}</b></td><td><span class="tag">${esc(a.kind)}</span></td><td>${esc(a.text)}</td></tr>`).join('');subs(d);window.__D__=d;gantt(d);models(d);}
+const FAST=new Set(['fast','priority','ultrafast','highspeed','flashx']);
+const TEAMPAL=['#0f766e','#b45309','#7c3aed','#1d4ed8','#4d7c0f','#a21caf','#0e7490','#854d0e','#475569','#065f46'];
+function models(d){const cs=(d.model_calls||[]).filter(c=>c.source!=='launcher'),el=document.getElementById('models');if(!cs.length){el.innerHTML='<div class="mute">no model call yet</div>';return}
+ const ts=cs.map(c=>Date.parse(c.t)),t0=Math.min(...ts),t1=Math.max(Date.parse(d.time),...ts),span=Math.max(t1-t0,1000);
+ const teams=[...new Set(cs.map(c=>c.team))],names=[...new Set(cs.map(c=>`${c.team} · ${c.model}`))].sort();
+ const W=1100,L=260,RH=20,H=names.length*RH+28,x=t=>L+(W-L-10)*(t-t0)/span;
+ let s=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:700px;height:${H}px;font-size:11px">`;
+ for(let i=0;i<=6;i++){const tt=t0+span*i/6,xx=x(tt);s+=`<line x1="${xx}" x2="${xx}" y1="0" y2="${H-16}" stroke="var(--line)"/><text x="${xx}" y="${H-3}" fill="var(--mute)" text-anchor="middle">${new Date(tt).toISOString().slice(11,16)}</text>`}
+ names.forEach((n,i)=>{s+=`<text x="4" y="${i*RH+14}" fill="var(--ink)">${esc(n)}</text>`});
+ for(const c of cs){const i=names.indexOf(`${c.team} · ${c.model}`),f=FAST.has(c.mode),col=f?'#e11d48':c.mode==='flex'?'#8a8a84':TEAMPAL[teams.indexOf(c.team)%TEAMPAL.length];
+  s+=`<rect x="${x(Date.parse(c.t))-1.5}" y="${i*RH+(f?1:4)}" width="3" height="${f?RH-2:RH-8}" fill="${col}"><title>${esc(c.team)} · ${esc(c.model)}\n${esc(c.t)} · mode ${esc(c.mode)} · ${esc(c.source)} · ${fmt(c.usd)} USD</title></rect>`}
+ el.innerHTML=s+'</svg>'}
 const PAL=['#0f766e','#b45309','#7c3aed','#be123c','#1d4ed8','#4d7c0f','#a21caf','#0e7490','#9a3412'];
 function gantt(d){const acts=d.activities||[],by=document.getElementById('gby').value,now=Date.parse(d.time);
  const el=document.getElementById('gantt');if(!acts.length){el.innerHTML='<div class="mute">no activity yet</div>';return}
@@ -75,7 +92,7 @@ function subs(d){const rows=d.subagents||[];const tot=rows.reduce((a,r)=>a+(r.us
  document.getElementById('subsum').textContent=`${rows.filter(r=>r.kind==='spawn_agent').length} spawn_agent run(s), ${fmt(tot)} USD; `+
   `${rows.filter(r=>r.kind==='native').length} native harness sub-agent(s) (their cost is in the harness's traffic)`;
  document.getElementById('subs').innerHTML=rows.map(r=>`<tr title="${esc(r.answer||'')}"><td>${esc((r.start||'').slice(11,19))}</td><td>${esc(r.team)}</td>`+
-  `<td>${esc(r.agent)}${r.parent&&r.parent!=='harness'?`<div class="mute">← ${esc(r.parent)}</div>`:''}</td><td>${esc(r.model)}</td><td>${esc(r.effort||'')}</td>`+
+  `<td>${esc(r.agent)}${r.parent&&r.parent!=='harness'?`<div class="mute">← ${esc(r.parent)}</div>`:''}</td><td>${esc(r.model)}</td><td>${esc(r.effort||'')}</td><td>${r.mode&&r.mode!=='standard'&&r.mode!=='harness'?`<span class="tag" style="color:#be123c;border-color:#be123c">${esc(r.mode)}</span>`:esc(r.mode||'')}</td>`+
   `<td>${dur(r.seconds)}</td><td>${r.calls??'–'}</td><td>${r.tool_calls??'–'}</td><td>${r.input??'–'}${r.cached?` (${r.cached})`:''}</td>`+
   `<td>${r.output??'–'}${r.reasoning?` (${r.reasoning})`:''}</td><td>${r.usd==null?'–':fmt(r.usd)}</td>`+
   `<td><span class="tag ${r.status==='done'?'ok':''}">${esc(r.status)}</span></td><td>${esc(r.task)}</td></tr>`).join('');}
