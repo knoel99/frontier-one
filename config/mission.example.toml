@@ -45,8 +45,18 @@ deny = []
 
 [grading]
 # Shown to the AI as the evaluation. Weights are optional; without them the criteria are listed unweighted.
-criteria = ["scientific quality", "cost control", "delivery time", "compliance with the subject's instructions"]
-weights = []
+criteria = ["scientific quality", "code and data", "efficiency: total spend and time, absolute and against the other teams"]
+weights = [50, 25, 25]
+
+[snapshots]
+# At these times and total spends (model calls + simulations, local CPU billed), a notice asks the AI to bring its
+# report up to date; grace_minutes later the workspace is committed and tagged snapshot-<label> (frontier/snapshots.py).
+# Both lists go on doubling past their last value. Milestones before notice_from_minutes are snapshotted silently.
+enabled = true
+grace_minutes = 5
+notice_from_minutes = 15
+time_minutes = [5, 15, 30, 60, 120, 240, 480]
+spend_usd = [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000]
 
 [secrets]
 # Where each key and setting comes from, by its standard variable name (config/providers.toml: `key_env` of a model

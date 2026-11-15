@@ -12,12 +12,22 @@ Carry out the research that the internship subject describes, and deliver its re
 
 {{criteria}}
 
-- **Scientific quality**: the soundness, novelty and rigour of the work as reported, judged on the evidence in the
-  repository: claims backed by runs whose code and outputs are here, measured results told apart from published
-  ones (with references) and from conjectures, limits stated.
-- **Cost control**: the LLM and cloud spend, measured by the framework's ledgers against the budgets below.
-- **Delivery time**: the time from the start of the mission to your call of `deliver`.
-- **Compliance with the subject's instructions**: every instruction followed, or the departure justified.
+- **Scientific quality**: soundness and rigour, significance and originality, positioning in the literature, clarity
+  and limits, judged on the evidence in the repository (claims backed by runs whose code and outputs are here,
+  measured results told apart from published ones and from conjectures), times the adequacy to the subject.
+- **Code and data**: reproducibility of the reported results from the delivered commands, the code (runs, documented,
+  tested, pinned dependencies, licence), the data and models (findable, accessible, open formats, licence and
+  provenance), and the traceability from every figure and number to what produced it.
+- **Efficiency**: your total spend (model calls and simulations, on rented machines and on this machine, whose CPU time
+  is measured and billed) and your time to `deliver`, both measured by the framework; on an absolute scale where every
+  doubling costs the same, and against the teams whose science is of the same order.
+
+Scientific quality and code and data are graded by an anonymous jury on absolute scales, the same for any research
+whatever its means. A team that did not call `deliver` is classified when its repository holds 90 % of the
+deliverables; the stewards take points off for infractions found in the ledgers. At fixed times (5, 15 and 30 minutes,
+then 1, 2, 4, 8 hours and so on) and spends (5, 10, 20, 50, 100 USD and so on), a notice asks you to bring the report up
+to date with what you have; the framework then takes a snapshot of the repository, which the jury grades to draw your
+quality against time and against spend.
 
 ## Budgets and time
 
@@ -55,6 +65,11 @@ All in this repository (commit as you go), then call `deliver`:
   and tables, and to the delivered code, data and models by their Hub repositories; it names no file or directory of
   the repository (those belong in `DELIVERY.md`). Its figures are embedded, not cited by path. `deliver` refuses a
   report that names paths, and lists them.
+- Optional, and never required: besides the report in the form the subject asks for (an internship or thesis
+  report), the work may also be delivered as a scientific article in the two-column layout of the papers on arXiv
+  (title, authors, abstract, introduction, method, results, discussion, references), or as several short articles,
+  each on one phase or result of the report. Each follows the same rules as the report. The jury grades the work,
+  whatever its form.
 - The code that produced every reported result.
 - The models or datasets worth sharing, on the Hugging Face Hub (`hf_publish`), when the work produces any: each with
   its card (SPDX `license`; for a model `library_name`, for a dataset `task_categories`; what it is, how it was made,

@@ -137,25 +137,94 @@ def _key(spec: ModelSpec) -> str:
     return os.environ.get(spec.key_env) or PROXY_PLACEHOLDER
 
 
+SLOW_FAILURE_S = 30  # a failure after this long: the provider most likely processed (and billed) the request
+
+
+def _maybe_billed(code: int, t0: float) -> bool:
+    """A server error or cut connection after a long wait means the provider probably ran the request (a proxy cut it
+    at 180 s on 2026-11-15 while the model kept generating); retrying would pay for it again, unseen by the ledger.
+    429 (refused before any work) is always worth a retry."""
+    return code != 429 and time.time() - t0 > SLOW_FAILURE_S
+
+
 def _post(url: str, headers: dict, body: dict, timeout: float = 600, retries: int = 4) -> dict:
     data = json.dumps(body).encode()
     for attempt in range(retries + 1):
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **headers})
+        t0 = time.time()
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return json.loads(r.read())
         except urllib.error.HTTPError as e:
             text = e.read().decode(errors="replace")[:2000]
-            if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries:
+            if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries and not _maybe_billed(e.code, t0):
                 time.sleep(min(60, 2 ** (attempt + 1)))
                 continue
             raise LLMError(f"HTTP {e.code} from {url}: {text}") from None
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
-            if attempt < retries:
+            if attempt < retries and not _maybe_billed(0, t0):
                 time.sleep(min(60, 2 ** (attempt + 1)))
                 continue
             raise LLMError(f"network error on {url}: {e}") from None
     raise LLMError("unreachable")
+
+
+def _post_sse(url: str, headers: dict, body: dict, timeout: float = 600, retries: int = 4) -> list[dict]:
+    """POST a streamed request and return its events (the `data:` JSON of each server-sent event). A long call is
+    streamed so that bytes keep flowing: a proxy that cuts a connection idle for a few minutes (this happened at
+    180 s on 2026-11-15) never sees it idle. Retries as `_post` does, until the stream has started."""
+    data = json.dumps(body).encode()
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json",
+                                                              "Accept": "text/event-stream", **headers})
+        t0 = time.time()
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                events = []
+                for raw in r:
+                    line = raw.decode(errors="replace").strip()
+                    if line.startswith("data:") and line[5:].strip() not in ("", "[DONE]"):
+                        try:
+                            events.append(json.loads(line[5:].strip()))
+                        except json.JSONDecodeError:
+                            continue
+                return events
+        except urllib.error.HTTPError as e:
+            text = e.read().decode(errors="replace")[:2000]
+            if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries and not _maybe_billed(e.code, t0):
+                time.sleep(min(60, 2 ** (attempt + 1)))
+                continue
+            raise LLMError(f"HTTP {e.code} from {url}: {text}") from None
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            if attempt < retries and not _maybe_billed(0, t0):
+                time.sleep(min(60, 2 ** (attempt + 1)))
+                continue
+            raise LLMError(f"network error on {url}: {e}") from None
+    raise LLMError("unreachable")
+
+
+def responses_from_events(events: list[dict]) -> dict:
+    """The final response object of a streamed Responses call (its last response.completed / incomplete event)."""
+    for ev in reversed(events):
+        if ev.get("type") in ("response.completed", "response.incomplete", "response.failed") and ev.get("response"):
+            if ev["type"] == "response.failed":
+                raise LLMError(f"response failed: {json.dumps(ev['response'].get('error'))[:500]}")
+            return ev["response"]
+    raise LLMError("streamed response ended without a final event")
+
+
+def gemini_from_chunks(chunks: list[dict]) -> dict:
+    """One generateContent answer from the chunks of streamGenerateContent: every part in order (thought signatures
+    kept), the last finish reason and usage."""
+    parts, finish, usage = [], "", {}
+    for c in chunks:
+        if c.get("error"):
+            raise LLMError(f"gemini stream error: {json.dumps(c['error'])[:500]}")
+        cand = (c.get("candidates") or [{}])[0]
+        parts += (cand.get("content") or {}).get("parts") or []
+        finish = cand.get("finishReason") or finish
+        usage = c.get("usageMetadata") or usage
+    return {"candidates": [{"content": {"role": "model", "parts": parts}, "finishReason": finish}], "usageMetadata": usage}
 
 
 # ---------------------------------------------------------------- OpenAI Chat Completions (and compatibles)
@@ -252,7 +321,8 @@ def _chat_responses(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
     _merge(body, json.loads(json.dumps(spec.extra)))
     if spec.effort_value is not None and spec.effort_field:
         _set_path(body, spec.effort_field, spec.effort_value)
-    r = _post(f"{spec.base_url}/responses", {"Authorization": f"Bearer {_key(spec)}"}, body)
+    body["stream"] = True  # see _post_sse
+    r = responses_from_events(_post_sse(f"{spec.base_url}/responses", {"Authorization": f"Bearer {_key(spec)}"}, body))
     output = r.get("output") or []
     text, calls = "", []
     for it in output:
@@ -314,8 +384,10 @@ def _chat_gemini(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
     _merge(body, json.loads(json.dumps(spec.extra)))
     if spec.effort_value is not None and spec.effort_field:
         _set_path(body, spec.effort_field, spec.effort_value)
-    url = f"{spec.base_url}/models/{spec.model}:generateContent"
-    r = _post(url, {"x-goog-api-key": _key(spec)}, body)
+    if "thinkingConfig" in body.get("generationConfig", {}):  # thought summaries stream while the model thinks; without
+        body["generationConfig"]["thinkingConfig"]["includeThoughts"] = True  # them nothing comes for minutes (182 s cut)
+    url = f"{spec.base_url}/models/{spec.model}:streamGenerateContent?alt=sse"  # see _post_sse
+    r = gemini_from_chunks(_post_sse(url, {"x-goog-api-key": _key(spec)}, body))
     cand = (r.get("candidates") or [{}])[0]
     parts = (cand.get("content") or {}).get("parts") or []
     text = "".join(p.get("text", "") for p in parts if "text" in p and not p.get("thought"))

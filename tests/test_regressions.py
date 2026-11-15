@@ -614,3 +614,122 @@ def test_deliver_refuses_a_report_that_names_paths(run, tmp_path):
     out = deliver(Ctx(run, None))
     assert out.startswith("refused: the report names files") and "results/metrics.json" in out
     assert not (run.log_dir / "delivery.json").exists()
+
+
+def test_jury_files_are_anonymous():
+    from frontier.config import load_config
+    from frontier.jury import identity_names, incidents_of, leaks, pseudonyms, redact
+    names = identity_names(load_config())
+    text = ("Produced by Claude Sonnet 5.5 in Claude Code; data on knoel/milady-20261115-race-moonshot-delivery; "
+            "model qwen3.8-flash via DashScope; the dsh harness. We continue with the grokking curve.")
+    out, n = redact(text, names)
+    assert not leaks(out, names) and n >= 5
+    assert "Produced by [redacted] in [redacted];" in out and "5.5" not in out and "continue" in out
+    head, inc = incidents_of("General.\n\n## Incidents\n\nIntro.\n\n### xai\n\nStopped at budget.\n\n### openai\n\nnone.\n")
+    assert head == "General." and inc == {"xai": "Stopped at budget.", "openai": "none."}
+    labels = pseudonyms(["a", "b", "c"])
+    assert sorted(labels.values()) == ["Team A", "Team B", "Team C"]
+
+
+def test_gateway_strips_message_fields_a_provider_refuses():
+    """Cerebras refuses the reasoning_content OpenCode sends back in the history (400, 2026-11-15)."""
+    from frontier.gateway import strip_fields
+    body = json.dumps({"model": "m", "messages": [{"role": "user", "content": "hi"},
+                                                  {"role": "assistant", "content": "ok", "reasoning_content": "..."}]}).encode()
+    out = json.loads(strip_fields(body, ["reasoning_content", "reasoning"]))
+    assert out["messages"][1] == {"role": "assistant", "content": "ok"}
+    assert strip_fields(body, []) == body and strip_fields(b"x", ["a"]) == b"x"
+    cfg = load_config()
+    assert cfg["providers"]["cerebras"]["strip_message_fields"] == ["reasoning_content", "reasoning"]
+    assert llm.resolve(cfg, "cerebras", "standard", "high").model == cfg["providers"]["cerebras"]["tiers"]["frontier"]
+
+
+def test_opencode_runs_in_the_workspace_whatever_the_launcher_directory():
+    from frontier.launcher import harness_conf
+    assert ["--dir", "{workspace}"] == harness_conf("opencode", "cerebras")["command"][3:5]
+
+
+def test_streamed_answers_are_rebuilt_whole():
+    """Responses and Gemini calls are streamed (a proxy cut idle connections at 180 s on 2026-11-15)."""
+    done = {"output": [{"type": "message", "content": [{"type": "output_text", "text": "ok"}]}], "status": "completed"}
+    assert llm.responses_from_events([{"type": "response.output_text.delta", "delta": "o"},
+                                      {"type": "response.completed", "response": done}]) == done
+    with pytest.raises(llm.LLMError):
+        llm.responses_from_events([{"type": "response.output_text.delta"}])
+    g = llm.gemini_from_chunks([{"candidates": [{"content": {"parts": [{"text": "a", "thoughtSignature": "s"}]}}]},
+                                {"candidates": [{"content": {"parts": [{"text": "b"}]}, "finishReason": "STOP"}],
+                                 "usageMetadata": {"promptTokenCount": 3}}])
+    assert [x["text"] for x in g["candidates"][0]["content"]["parts"]] == ["a", "b"]
+    assert g["candidates"][0]["finishReason"] == "STOP" and g["usageMetadata"] == {"promptTokenCount": 3}
+
+
+def test_a_slow_server_failure_is_not_retried(monkeypatch):
+    """Race jury 2026-11-15: a proxy cut calls at 180 s and every one was retried 4 times, each billed by the provider."""
+    real_time = llm.time.time  # the module's own function, kept before it is patched
+    calls = []
+
+    def slow_502(req, timeout=0):
+        calls.append(1)
+        raise urllib.error.HTTPError(req.full_url, 502, "upstream request failed", {}, io.BytesIO(b"cut"))
+
+    clock = iter([0.0, 200.0] * 10)
+    monkeypatch.setattr(llm.time, "time", lambda: next(clock))
+    monkeypatch.setattr(llm.time, "sleep", lambda s: None)
+    monkeypatch.setattr(llm.urllib.request, "urlopen", slow_502)
+    with pytest.raises(llm.LLMError):
+        llm._post("https://x/y", {}, {})
+    assert len(calls) == 1
+    calls.clear()
+    monkeypatch.setattr(llm.time, "time", real_time)
+    with pytest.raises(llm.LLMError):
+        llm._post("https://x/y", {}, {}, retries=2)
+    assert len(calls) == 3  # a fast failure is still retried
+
+
+def test_scoring_log_scales_and_relative_efficiency():
+    from frontier import scoring
+    assert scoring.log_score(5, 5) == 100 and scoring.log_score(10, 5) == 90 and scoring.log_score(40, 5) == 70
+    assert scoring.log_score(5 * 2 ** 12, 5) == 0
+    assert scoring.relative(10, [40]) == 100 and scoring.relative(40, [40]) == 50 and scoring.relative(160, [40]) == 0
+    teams = {"fast": {"quality": 15, "usd": 2, "minutes": 20, "classified": True},
+             "slow": {"quality": 12, "usd": 8, "minutes": 80, "classified": True},
+             "empty": {"quality": 2, "usd": 1, "minutes": 5, "classified": True},
+             "out": {"quality": 30, "usd": 1, "minutes": 5, "classified": False}}
+    e = scoring.efficiency(teams)
+    assert e["fast"]["peers"] == ["slow"] and e["fast"]["relative"] == 100  # 4x cheaper and 4x faster than its peer
+    assert e["slow"]["relative"] == 0 and e["out"]["efficiency"] == 0
+    assert e["empty"]["guard"] == 0.2 and e["empty"]["efficiency"] == 15.0  # no peer (relative 50), scaled down by its science
+    assert scoring.science({"soundness": 20, "significance": 10, "positioning": 40, "clarity": 50}, "partial") == \
+        pytest.approx((20 * 20 + 15 * 10 + 5 * 40 + 10 * 50) / 50 * 0.5)
+    assert scoring.final(20, 40, 60, penalty=5) == pytest.approx((50 * 20 + 25 * 40 + 25 * 60) / 100 - 5)
+    assert scoring.final(20, 40, 60, disqualified=True) == 0
+
+
+def test_jury_aggregate_ranks_classified_teams_first_and_keeps_ungraded_work_unranked():
+    from frontier.jury import aggregate
+    rub = lambda q, a: {"scientific_quality": {"rubrics": {k: {"score": q} for k in ("soundness", "significance",  # noqa: E731
+                                                                                     "positioning", "clarity")},
+                                               "adequacy": "on_subject"},
+                        "artifacts": {"rubrics": {k: {"score": a} for k in ("reproducibility", "code", "data", "traceability")}}}
+    f = {"team": "a", "classified": True, "delivered": True, "total_usd": 3.0, "minutes": 40, "penalties": [],
+         "disqualified": False}
+    teams = {"a": {"facts": f, "judges": {"x": rub(10, 30), "y": rub(14, 30)}, "has_work": True},
+             "b": {"facts": {**f, "team": "b", "classified": False, "delivered": False}, "judges": {"x": rub(60, 60)},
+                   "has_work": True},
+             "c": {"facts": {**f, "team": "c"}, "judges": {}, "has_work": True}}
+    res = aggregate(teams, 0.0)
+    assert res["ranking"][:2] == ["a", "b"] and res["teams"]["c"]["final"] is None and res["teams"]["c"]["rank"] is None
+    assert res["teams"]["a"]["scores"]["scientific_quality"] == 12.0  # the judges' median, rubric by rubric
+
+
+
+def test_red_flag_appends_a_chained_event_the_jury_reads(tmp_path):
+    from frontier.__main__ import red_flag
+    from frontier.budget import verify_chain
+
+    (tmp_path / "events.jsonl").write_text("")
+    assert red_flag(tmp_path, 27, "framework failure") == 0
+    assert red_flag(tmp_path, None, "x") == 2
+    ev = [json.loads(ln) for ln in (tmp_path / "events.jsonl").read_text().splitlines()]
+    assert ev[-1]["event"] == "red_flag" and ev[-1]["minutes"] == 27.0
+    assert verify_chain(tmp_path / "events.jsonl") is True

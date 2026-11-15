@@ -58,7 +58,12 @@ def _capture(monkeypatch, response):
         seen.update(url=url, headers=headers, body=body)
         return response
 
+    def fake_sse(url, headers, body, **kw):  # streamed styles: one final event (Responses) or one chunk (Gemini)
+        seen.update(url=url, headers=headers, body=body)
+        return [{"type": "response.completed", "response": response}] if "output" in response else [response]
+
     monkeypatch.setattr(llm, "_post", fake_post)
+    monkeypatch.setattr(llm, "_post_sse", fake_sse)
     return seen
 
 

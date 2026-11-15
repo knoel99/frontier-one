@@ -173,6 +173,21 @@ def remap(path: str, body: bytes, model_map: dict[str, str]) -> tuple[str, bytes
     return path, body
 
 
+def strip_fields(body: bytes, fields: list[str]) -> bytes:
+    """Drop message fields a provider refuses (config/providers.toml `strip_message_fields`) from a request."""
+    if not fields:
+        return body
+    try:
+        obj = json.loads(body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return body
+    msgs = obj.get("messages") if isinstance(obj, dict) else None
+    if not isinstance(msgs, list) or not any(isinstance(m, dict) and set(fields) & m.keys() for m in msgs):
+        return body
+    obj["messages"] = [{k: v for k, v in m.items() if k not in fields} if isinstance(m, dict) else m for m in msgs]
+    return json.dumps(obj).encode()
+
+
 def model_of(req_body: bytes, path: str, resp_obj: dict | None) -> str:
     try:
         m = json.loads(req_body or b"{}").get("model")
@@ -197,6 +212,11 @@ class Gateway(ThreadingHTTPServer):
         self.budget, self.routes, self.agent, self.model_map = budget, routes, agent, dict(model_map or {})
         self.milestones = Milestones(budget)
         self.cfg = cfg if cfg is not None else load_config()
+        self.snapshots = None  # a mission's launcher writes snapshots.json: then its milestones are told here
+        if (budget.dir / "snapshots.json").exists():
+            from .snapshots import Snapshots
+
+            self.snapshots = Snapshots(budget, float(self.cfg.get("limits", {}).get("local_cpu_usd_per_core_hour", 0)))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -238,6 +258,7 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
         rest, body = remap(rest, body, self.server.model_map)
+        body = strip_fields(body, (self.server.cfg["providers"].get(provider) or {}).get("strip_message_fields", []))
         is_llm_call = is_generation(self.command, rest)
         rid, worst = None, 0.0
         if is_llm_call:
@@ -249,6 +270,8 @@ class Handler(BaseHTTPRequestHandler):
                     "why": why})
                 return self._send_json(402, {"error": {"type": "budget_exhausted", "code": "budget_exhausted", "message": why}})
             body = inject(rest, body, self.server.milestones.notice())  # 10, 25, 50, 80, 95, 98 % of a budget
+            if self.server.snapshots:  # time and spend milestones: bring the report up to date for a snapshot
+                body = inject(rest, body, self.server.snapshots.notice())
             body = self._with_stream_usage(rest, body)
         try:
             self._forward(origin, rest, body, provider, is_llm_call, worst)

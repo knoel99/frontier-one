@@ -24,6 +24,7 @@
 default_provider = "openai"
 
 [providers.openai]
+names = ["OpenAI", "GPT", "ChatGPT", "Codex"]  # brands, model families, harness: what the jury redacts
 style = "openai-responses"   # Chat Completions refuses function tools together with reasoning_effort on gpt-6*
 base_url = "https://api.openai.com/v1"
 key_env = "OPENAI_API_KEY"
@@ -48,6 +49,7 @@ models = ["gpt-6-astra"]  # served on gpt-6-astra; gpt-6.1-terra and gpt-6-luna 
 note = "fastest tier, separate rate limits"
 
 [providers.anthropic]
+names = ["Anthropic", "Claude", "Sonnet", "Opus", "Haiku", "Fable"]  # brands, model families, harness: what the jury redacts
 style = "anthropic"
 base_url = "https://api.anthropic.com/v1"
 key_env = "ANTHROPIC_API_KEY"
@@ -62,6 +64,7 @@ models = ["claude-fable-5-2"]
 note = "up to 2.5x output tokens per second, same time to first token; own rate limit; usage.speed reports it (platform.claude.com fast-mode, 2026-11-14)"
 
 [providers.google]
+names = ["Google", "Gemini", "Antigravity", "agy", "DeepMind"]  # brands, model families, harness: what the jury redacts
 style = "gemini"
 base_url = "https://generativelanguage.googleapis.com/v1beta"
 key_env = "GEMINI_API_KEY"
@@ -78,6 +81,7 @@ price_x = 1.8
 note = "preview; latency in seconds, never shed; over its dynamic limit served and billed at standard; needs billing tier 2 or 3. On this account every Gemini 4 model answered priority requests at standard (checked live 2026-11-14): no faster, billed at standard"
 
 [providers.xai]
+names = ["xAI", "Grok"]  # brands, model families, harness: what the jury redacts
 style = "openai-chat"
 base_url = "https://api.x.ai/v1"
 key_env = "XAI_API_KEY"
@@ -90,6 +94,7 @@ price_x = 2.0
 note = "lower latency under load; billed 2x only when the response says service_tier = priority (docs.x.ai priority-processing)"
 
 [providers.mistral]
+names = ["Mistral", "Vibe", "Magistral", "Devstral"]  # brands, model families, harness: what the jury redacts
 style = "openai-chat"
 base_url = "https://api.mistral.ai/v1"
 key_env = "MISTRAL_API_KEY"
@@ -100,6 +105,7 @@ reasoning = { none = "none", low = "low", medium = "medium", high = "high", max 
 model_reasoning = { "mistral-medium-3.5" = { none = "none", low = "none", medium = "high" }, "mistral-small-2603" = { none = "none", low = "none", medium = "high" } }
 
 [providers.deepseek]
+names = ["DeepSeek", "dsh"]  # brands, model families, harness: what the jury redacts
 style = "openai-chat"
 base_url = "https://api.deepseek.com"
 key_env = "DEEPSEEK_API_KEY"
@@ -110,6 +116,7 @@ reasoning = { low = "low", medium = "high", high = "high", max = "max" }
 extra = { thinking = { type = "enabled" } }
 
 [providers.moonshot]
+names = ["Moonshot", "Kimi"]  # brands, model families, harness: what the jury redacts
 style = "openai-chat"
 base_url = "https://api.moonshot.ai/v1"
 key_env = "MOONSHOT_API_KEY"
@@ -121,6 +128,7 @@ model = { "kimi-k3.1-pro" = "kimi-k3.1-pro-highspeed" }
 note = "about 2-3x the speed at 2x the price (a separate model, priced in prices.toml)"
 
 [providers.alibaba]
+names = ["Alibaba", "Qwen", "DashScope", "Tongyi"]  # brands, model families, harness: what the jury redacts
 style = "openai-chat"
 base_url = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
 key_env = "DASHSCOPE_API_KEY"
@@ -128,7 +136,23 @@ effort_field = "reasoning_effort"
 tiers = { frontier = "qwen3.8-max-0902", standard = "qwen3.8-flash", light = "qwen3.8-27b" }
 reasoning = { low = "low", medium = "medium", high = "high", max = "xhigh" }
 
+[providers.cerebras]
+names = ["Cerebras"]  # brands, model families, harness: what the jury redacts
+style = "openai-chat"
+base_url = "https://api.cerebras.ai/v1"
+key_env = "CEREBRAS_API_KEY"
+effort_field = "reasoning_effort"
+# Checked live 2026-11-15: /models lists only these two. Artificial Analysis Intelligence Index v5.0.1: Qwen3.8 27B
+# 20 (xhigh) against 4 for gpt-oss-120b (high); gpt-oss-120b is about 3x faster and cheaper. Cerebras serves
+# qwen-3.8-27b with a 65,536-token context. No standard tier: it falls back to the frontier one.
+tiers = { frontier = "qwen-3.8-27b", light = "gpt-oss-120b" }
+# Harnesses send the assistant's reasoning back in the history; Cerebras refuses it (400 "reasoning_content is
+# unsupported", checked 2026-11-15 with OpenCode): the gateway drops these message fields before sending.
+strip_message_fields = ["reasoning_content", "reasoning"]
+reasoning = { low = "low", medium = "medium", high = "high", max = "high" }
+
 [providers.zhipu]
+names = ["Zhipu", "Z.ai", "GLM", "ZCode", "ChatGLM"]  # brands, model families, harness: what the jury redacts
 style = "openai-chat"
 base_url = "https://api.z.ai/api/paas/v4"
 key_env = "ZAI_API_KEY"
@@ -165,6 +189,9 @@ max_tokens_per_run = 3_000_000   # input + output tokens of the whole tree
 max_output_tokens = 16_000 # per model call
 max_reserved_output_tokens = 32_000  # gateway: output reserved per harness call at most (a call that outputs more
                                     # goes over the cap by the difference, once)
+# Local computation of a team (CPU time of its processes on the race machine) is billed as simulation at this price:
+# Scaleway POP2-2C-8G, fr-par-1, 0.0735 EUR per hour for 2 dedicated vCPU (public catalog, 2026-11-15), rounded.
+local_cpu_usd_per_core_hour = 0.04
 tool_output_chars = 20_000 # longer tool outputs are truncated (head and tail kept)
 shell_timeout_s = 600
 [providers.zhipu.modes.flashx]

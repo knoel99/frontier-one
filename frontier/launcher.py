@@ -226,10 +226,25 @@ def seconds_left(run: Run) -> float | None:
     return None if deadline is None else max(1.0, (deadline - budget_mod.now()).total_seconds())
 
 
-def _watchdog(run: Run, stop: threading.Event) -> None:
-    while not stop.wait(60):
+def _watchdog(run: Run, stop: threading.Event, ws: pathlib.Path | None = None) -> None:
+    """Every minute: the budgets of the cloud resources; every CPU_SAMPLE_S: the local CPU, and the snapshots due."""
+    from .snapshots import CPU_SAMPLE_S, CpuMeter, Snapshots
+
+    price = float(run.cfg.get("limits", {}).get("local_cpu_usd_per_core_hour", 0))
+    meter = CpuMeter(run.log_dir)
+    snaps = Snapshots(run.budget, price) if ws and (run.log_dir / "snapshots.json").exists() else None
+    tick = 0
+    while not stop.wait(CPU_SAMPLE_S):
+        tick += 1
         try:
-            infra.enforce(run)
+            meter.record()
+            if snaps:
+                snaps.notice()  # records the milestones even when no model call comes (the gateway tells them)
+                ev = snaps.take(ws)
+                if ev:
+                    print(f"snapshot {', '.join(ev['labels'])}: {ev['commit'][:10]}")
+            if tick % max(1, 60 // CPU_SAMPLE_S) == 0:
+                infra.enforce(run)
         except Exception as e:  # noqa: BLE001
             print(f"watchdog: {e}", file=sys.stderr)
 
@@ -343,7 +358,10 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
     run = Run(cfg, workspace=ws, allow_spend=True, run_id=state.name, log_dir=state, settings=s)
     gw = gateway = None
     stop = threading.Event()
-    threading.Thread(target=_watchdog, args=(run, stop), daemon=True).start()
+    from .snapshots import write_settings
+
+    write_settings(state, info["mission"].get("snapshots"))
+    threading.Thread(target=_watchdog, args=(run, stop, ws), daemon=True).start()
     sessions = max_sessions or int(info["mission"].get("harness", {}).get("max_sessions", 20))
     try:
         if box:  # inside the try: a failed setup still deletes what it created

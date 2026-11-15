@@ -213,3 +213,19 @@ output = 1.25
 source = "https://docs.z.ai/guides/overview/pricing"
 date = "2026-11-14"
 manual = true
+
+[models."qwen-3.8-27b"]
+provider = "cerebras"
+input = 0.99
+output = 1.49
+source = "openrouter endpoints of qwen/qwen3.8-27b, provider Cerebras (65,536-token context)"
+date = "2026-11-15"
+manual = true
+
+[models."gpt-oss-120b"]
+provider = "cerebras"
+input = 0.35
+output = 0.75
+source = "openrouter endpoints of openai/gpt-oss-120b, provider Cerebras"
+date = "2026-11-15"
+manual = true

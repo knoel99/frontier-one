@@ -32,7 +32,7 @@ from .harnesses import HARNESSES, McpCommand, artifacts
 STATE_ROOT = pathlib.Path.home() / ".frontier" / "missions"
 REQUIRED = ["DELIVERY.md", "COMPLIANCE.md", "DECISIONS.md"]
 NATIVE_HARNESS = {"anthropic": "claude", "openai": "codex", "google": "antigravity", "xai": "grok", "moonshot": "kimi",
-                  "alibaba": "qwen", "mistral": "vibe", "deepseek": "dsh", "zhipu": "zcode"}
+                  "alibaba": "qwen", "mistral": "vibe", "deepseek": "dsh", "zhipu": "zcode"}  # cerebras: no CLI of its own
 FALLBACK_HARNESS = "opencode"
 
 
@@ -236,9 +236,9 @@ def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict]
 
 def mission_brief(m: dict, caps: dict, subject: str) -> str:
     g = m.get("grading", {})
-    crit = g.get("criteria") or ["scientific quality", "cost control", "delivery time",
-                                 "compliance with the subject's instructions"]
-    w = g.get("weights") or []
+    crit = g.get("criteria") or ["scientific quality", "code and data",
+                                 "efficiency: total spend and time, absolute and against the other teams"]
+    w = g.get("weights") or ([] if g.get("criteria") else [50, 25, 25])
     criteria = "\n".join(f"{i + 1}. {c}" + (f" (weight {w[i]})" if i < len(w) else "") for i, c in enumerate(crit))
     budgets = "\n".join([
         f"- LLM: {caps.get('llm_usd', 'no cap')} USD on {', '.join(providers_of(m))}.",

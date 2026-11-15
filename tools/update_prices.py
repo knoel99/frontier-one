@@ -22,6 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 PRICES = ROOT / "config" / "prices.toml"
 PREFIX = {"openai": "openai", "anthropic": "anthropic", "google": "google", "xai": "x-ai", "mistral": "mistralai",
           "deepseek": "deepseek", "moonshot": "moonshotai", "alibaba": "qwen", "zhipu": "z-ai"}
+# cerebras serves other labs' open models at its own price: its entries are `manual` (read on its endpoints)
 # Our id -> OpenRouter id, where the names differ beyond version dots.
 ALIASES = {"deepseek-flash": "deepseek/deepseek-v4.1-flash-1017", "mistral-large-4": "mistralai/mistral-large-4-0",
            "mistral-medium-3.5": "mistralai/mistral-medium-3-5"}
