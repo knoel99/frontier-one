@@ -239,8 +239,9 @@ class Agent:
                 final = f"[stopped: {why}]\n" + final
                 break
             t0 = time.time()
-            try:
+            try:  # charged before the reservation is released: a parallel call never sees the room in between
                 reply = llm.chat(self.spec, self.messages, tool_specs, max_out)
+                usd = self.run.charge(reply.usage, self.spec, self.id)
             except llm.LLMError as e:
                 if e.maybe_billed:  # charged at the worst case, as the gateway does for a call it could not meter
                     self.run.budget.charge_llm("spawn_agent", self.id, self.spec.provider, self.spec.model, {},
@@ -248,7 +249,6 @@ class Agent:
                 raise
             finally:
                 self.run.budget.release(rid)
-            usd = self.run.charge(reply.usage, self.spec, self.id)
             self.usage["usd"] = round(self.usage.get("usd", 0) + usd, 6)
             for k in ("input", "output", "reasoning"):
                 self.usage[k] += reply.usage.get(k, 0)

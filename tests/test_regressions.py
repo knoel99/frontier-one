@@ -880,3 +880,14 @@ def test_raw_cloud_calls_cannot_create_outside_the_budget(run, monkeypatch):
     assert tools.t_scaleway(ctx, "POST", "/instance/v1/zones/fr-par-2/servers/s1/action", {"action": "poweroff"}).startswith("HTTP")
     assert tools.t_scaleway(ctx, "POST", "/instance/v1/zones/fr-par-2/security_groups", {}).startswith("HTTP")  # not billed
     assert tools.t_runpod_mcp(ctx, "delete-pod", {"id": "p"}) == "{}"
+
+
+def test_a_sub_agent_call_is_charged_before_its_reservation_is_released(run, monkeypatch):
+    """Released first, the reservation left a gap in which a parallel call could take the same room: both ran over
+    the hard cap together."""
+    monkeypatch.setattr(llm, "chat", lambda spec, m, t, max_tokens=0: llm.Reply(
+        "done", [], {"input": 100, "output": 10}, {"role": "assistant", "content": "done"}))
+    real_release, seen = run.budget.release, []
+    monkeypatch.setattr(run.budget, "release", lambda rid: seen.append(run.budget.llm_spent()) or real_release(rid))
+    agent_mod.Agent(run, "openai", "light", "low", tools=[]).run_task("hi")
+    assert seen and seen[0] > 0  # the spend was in the ledger when the room was given back
