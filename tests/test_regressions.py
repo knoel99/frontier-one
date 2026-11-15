@@ -843,3 +843,20 @@ def test_concurrent_set_caps_keep_every_update(tmp_path):
     for t in threads:
         t.join()
     assert set(keys) <= set(b.caps)
+
+
+def test_the_launcher_deletes_what_a_delivery_left_alive(tmp_path, cfg, monkeypatch):
+    """deliver's cleanup can leave a Scaleway terminate unconfirmed after 10 min: the launcher must retry it, not exit."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    r = agent_mod.Run(cfg, workspace=ws, log_dir=tmp_path / "state")
+    r.record({"provider": "scaleway", "kind": "instance", "id": "srv-1", "zone": "fr-par-2", "eur_per_hour": 1.0, "max_hours": 1})
+    r.mark("srv-1", "deleting")
+    (r.log_dir / "delivery.json").write_text("{}\n")
+    seen = []
+    monkeypatch.setattr(infra, "cleanup", lambda run: seen.append([x["id"] for x in run.alive()]) or [])
+    launcher.finish(r, ws)
+    assert seen == [["srv-1"]] and (ws / "COSTS.md").exists()
+    seen.clear()
+    launcher.finish(r, ws, keep_resources=True)
+    assert seen == []
