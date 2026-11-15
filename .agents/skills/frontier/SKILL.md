@@ -22,6 +22,7 @@ frontier call <tool> '<json arguments>'          # bin/frontier of the Frontier 
 - `rp_pod`: Details and state of a Runpod pod.
 - `rp_list_pods`: All Runpod pods of the account.
 - `rp_exec`: Run a shell command inside a RUNNING pod (no SSH); waits at most 25 s; a longer command keeps running: start it with nohup … & and poll its output file.
+- `rp_upload`: Copy a workspace file or directory (without .git) into a RUNNING pod under dest (default /workspace): compressed, sent in chunks, its SHA-256 checked on the pod.
 - `rp_logs`: Last lines of a pod's container and system logs.
 - `rp_delete_pod`: Delete a Runpod pod (stops billing).
 - `infra_resources`: Cloud resources created by this run (all agents), with state and hourly price.

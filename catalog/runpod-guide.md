@@ -1,7 +1,7 @@
 # Runpod: quick guide for agents
 
 Written for this framework on 2026-11-14 and checked with read-only calls that day. The ready-made functions
-(`rp_offers`, `rp_create_pod`, `rp_pod`, `rp_list_pods`, `rp_exec`, `rp_logs`, `rp_delete_pod`) implement the flows
+(`rp_offers`, `rp_create_pod`, `rp_pod`, `rp_list_pods`, `rp_exec`, `rp_upload`, `rp_logs`, `rp_delete_pod`) implement the flows
 below; for anything else call a tool of the Runpod MCP server with `runpod_mcp` (signatures: `api_docs doc=runpod/mcp`).
 
 ## Access
