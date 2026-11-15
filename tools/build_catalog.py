@@ -21,7 +21,10 @@ import re
 import sys
 import urllib.request
 
-OUT = pathlib.Path(__file__).resolve().parents[1] / "catalog"
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+OUT = ROOT / "catalog"
+sys.path.insert(0, str(ROOT))
+from frontier.http import mcp_rpc  # noqa: E402
 
 SCALEWAY_APIS = {
     "instance": ("instance/v1", "CPU and GPU virtual machines: servers, types, images, volumes, IPs, security groups, user data"),
@@ -38,8 +41,8 @@ RUNPOD_SKIP = ("organization", "cost-center", "delegation", "audit", "report_", 
 DESC = 70  # characters kept of a field description
 
 
-def get(url: str, data: bytes | None = None, headers: dict | None = None) -> bytes:
-    req = urllib.request.Request(url, data=data, headers={"User-Agent": "curl/8.5.0", **(headers or {})})
+def get(url: str) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": "curl/8.5.0"})
     with urllib.request.urlopen(req, timeout=60) as r:
         return r.read()
 
@@ -154,12 +157,9 @@ def scaleway(sources: dict) -> list[dict]:
 
 def runpod(sources: dict) -> list[dict]:
     url = os.environ.get("RUNPOD_MCP_URL", "https://mcp.runpod.io/")
-    key = os.environ.get("RUNPOD_API_KEY", "proxy-injected")
-    hdr = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream", "Authorization": f"Bearer {key}"}
 
-    def rpc(method, params=None):
-        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}).encode()
-        return json.loads(get(url, body, hdr))["result"]
+    def rpc(method, params=None):  # the framework's client: credentials and server-sent events handled there
+        return mcp_rpc(method, params, timeout=60)["result"]
 
     tools = rpc("tools/list")["tools"]
     sources["runpod/mcp"] = {"url": url, "tools": len(tools)}

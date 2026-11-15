@@ -379,3 +379,13 @@ def test_mcp_spawn_agent(tmp_path, monkeypatch):
     srv = mcp.Server()
     text, err = srv.call("spawn_agent", {"task": "t", "provider": "mistral", "tier": "light", "reasoning": "low"})
     assert not err and "mistral/mistral-small-2603@low" in text
+
+
+def test_runpod_mcp_answers_in_json_or_server_sent_events(monkeypatch):
+    answers = iter(['{"jsonrpc": "2.0", "id": 1, "result": {"tools": []}}',
+                    'event: message\ndata: {"jsonrpc": "2.0", "id": 1, "result": {"tools": [{"name": "list-pods"}]}}\n\n'])
+    monkeypatch.setattr(http, "request", lambda *a, **kw: (200, next(answers)))
+    assert http.mcp_rpc("tools/list")["result"] == {"tools": []}
+    assert http.mcp_rpc("tools/list")["result"]["tools"][0]["name"] == "list-pods"
+    monkeypatch.setattr(http, "request", lambda *a, **kw: (502, "bad gateway"))
+    assert http.mcp_call("list-pods") == (False, "HTTP 502 bad gateway")
