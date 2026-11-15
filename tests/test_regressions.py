@@ -974,6 +974,33 @@ def test_raw_cloud_calls_the_framework_does_not_know_are_refused_under_a_budget(
         assert tools.t_runpod_mcp(ctx, tool, args) == "{}", tool
 
 
+def test_a_raw_cloud_call_cannot_name_a_foreign_resource_in_its_body(run, monkeypatch):
+    """Left open on 2026-11-15: the ownership rule read the path and the top-level arguments only, so a raw call on the
+    run's own server could attach another team's volume, named in the body."""
+    run.allow_spend = True
+    called = []
+    monkeypatch.setattr(tools, "scw_raw", lambda *a, **k: called.append(a) or (200, "{}"))
+    monkeypatch.setattr(tools, "mcp_call", lambda *a, **k: called.append(a) or (True, "{}"))
+    ctx = agent_mod.Ctx(run, None)
+    run.budget.set_caps(scaleway_eur=10, runpod_usd=10)
+    own, vol, other = "11111111-1111-1111-1111-111111111111", "33333333-3333-3333-3333-333333333333", "22222222-2222-2222-2222-222222222222"
+    run.record({"provider": "scaleway", "kind": "instance", "id": own, "volumes": [vol], "ips": []})
+    run.record({"provider": "runpod", "kind": "pod", "id": "p1"})
+    server = f"/instance/v1/zones/fr-par-2/servers/{own}"
+    for method, path, body in (("POST", f"{server}/attach-volume", {"volume_id": other}),
+                               ("PATCH", server, {"volumes": {"1": {"id": other}}}),
+                               ("POST", f"{server}/attach-volume", {"volume_id": f"fr-par-2/{other}"})):
+        assert tools.t_scaleway(ctx, method, path, body).startswith("refused"), body
+    assert tools.t_scaleway(ctx, "POST", f"{server}/attach-volume", raw_body=json.dumps({"volume_id": other})).startswith("refused")
+    assert tools.t_runpod_mcp(ctx, "update-pod", {"id": "p1", "body": {"networkVolumeId": "theirs"}}).startswith("refused")
+    assert not called
+    for method, path, body in (("POST", f"{server}/attach-volume", {"volume_id": vol}),
+                               ("PATCH", server, {"security_group": {"id": other}, "placement_group": other}),
+                               ("POST", "/instance/v1/zones/fr-par-2/security_groups", {"project": other, "name": "sg"})):
+        assert tools.t_scaleway(ctx, method, path, body).startswith("HTTP"), body
+    assert tools.t_runpod_mcp(ctx, "update-pod", {"id": "p1", "body": {"templateId": "t1", "dataCenterIds": ["EU-RO-1"]}}) == "{}"
+
+
 def test_a_sub_agent_call_is_charged_before_its_reservation_is_released(run, monkeypatch):
     """Released first, the reservation left a gap in which a parallel call could take the same room: both ran over
     the hard cap together."""
