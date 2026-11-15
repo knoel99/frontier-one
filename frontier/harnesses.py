@@ -213,6 +213,11 @@ def artifacts(mcp: McpCommand, which: list[str] | None = None, target: dict | No
                 "- insert:\n    - id: mcp-frontier\n      name: '@deepseek-ai/dsh-mcp-client'\n      config:\n"
                 f"        serverName: frontier\n        transport: stdio\n        command: {mcp.command}\n"
                 f"        args: [{args}]\n        env: {{}}\n")
+            if target and target.get("model"):  # dsh reads its model here only: DSH_MODEL is ignored (dsh 0.2.2)
+                out[".dsh/frontier.patch.yml"] += (
+                    "- id: agent-default-model\n  config:\n    provider: deepseek-official\n"
+                    f"    model: {target['model']}\n"
+                    + (f"    reasoningEffort: {target['effort']}\n" if target.get("effort") else ""))
         elif key == "cursor_mcp":
             out[".cursor/mcp.json"] = _j({"mcpServers": {"frontier": {"type": "stdio", **server}}})
         elif key == "opencode":

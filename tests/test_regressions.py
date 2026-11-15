@@ -18,7 +18,7 @@ from test_frontier import FakeScaleway
 from test_mission import _mission
 
 from frontier import agent as agent_mod
-from frontier import budget, gateway, hf, infra, launcher, mcp, mission, sandbox, tools
+from frontier import budget, gateway, hf, infra, launcher, llm, mcp, mission, sandbox, tools
 from frontier.config import load_config
 
 
@@ -536,3 +536,18 @@ def test_dashboard_skips_json_lines_that_are_not_objects(tmp_path):
                    '"name": "Agent", "input": {"description": "read papers"}}]}}\n')
     out = subagents([], [], [log])
     assert [r["task"] for r in out if r["kind"] == "native"] == ["read papers"]
+
+
+def test_dsh_patch_sets_the_main_model_and_effort():
+    """Race 2026-11-15: dsh ignored DSH_MODEL and ran deepseek-flash, its profile default, instead of deepseek-v4-pro."""
+    from frontier.harnesses import McpCommand, artifacts
+    files = artifacts(McpCommand("frontier-mcp", ["--state", "/s"]), ["dsh"],
+                      {"provider": "deepseek", "model": "deepseek-v4-pro", "effort": "high", "gateway": "http://127.0.0.1:1"})
+    patch = files[".dsh/frontier.patch.yml"]
+    assert "- id: agent-default-model" in patch and "model: deepseek-v4-pro" in patch and "reasoningEffort: high" in patch
+
+
+def test_two_model_providers_run_their_frontier_model_on_standard():
+    cfg = load_config()
+    assert llm.resolve(cfg, "moonshot", "standard", "high").model == cfg["providers"]["moonshot"]["tiers"]["frontier"]
+    assert llm.resolve(cfg, "zhipu", "standard", "high").model == cfg["providers"]["zhipu"]["tiers"]["frontier"]

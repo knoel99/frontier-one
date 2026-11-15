@@ -149,12 +149,17 @@ def _offers_section(ctx) -> str:
     return "\n".join(lines)
 
 
-def _main_model(cfg: dict, m: dict) -> str:
+def _main_spec(cfg: dict, m: dict):
     try:
         return llm.resolve(cfg, m["llm"]["provider"], m["harness"].get("tier", "frontier"),
-                           m["harness"].get("reasoning", "high")).model
+                           m["harness"].get("reasoning", "high"))
     except (KeyError, llm.LLMError):
-        return "?"
+        return None
+
+
+def _main_model(cfg: dict, m: dict) -> str:
+    spec = _main_spec(cfg, m)
+    return spec.model if spec else "?"
 
 
 def install_skills(skills: list[dict], state: pathlib.Path, ws: pathlib.Path, files: dict) -> list[str]:
@@ -350,7 +355,9 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     (ws / "AGENTS.md").write_text(AGENTS_MD.format(frontier=f"{root_in}/bin/frontier", state=state_in))
     mcp = McpCommand(command=f"{root_in}/bin/frontier-mcp", args=["--state", str(state_in)])
     gateway = f"http://127.0.0.1:{settings['gateway_port']}"
-    target = {"provider": settings["provider"], "model": _main_model(cfg, m), "gateway": gateway,
+    spec = _main_spec(cfg, m)
+    target = {"provider": settings["provider"], "model": spec.model if spec else "?", "gateway": gateway,
+              "effort": spec.effort_value if spec else None,
               "key_env": cfg["providers"][settings["provider"]]["key_env"]}
     if m["harness"]["name"] == "zcode":
         _zcode_home(state, cfg, target, mcp)
