@@ -4,9 +4,12 @@
 
 Cost control and delivery time are measured from the framework's ledgers (`facts`, `measured_scores`); scientific
 quality and compliance are graded by a panel of LLM judges on several providers, a judge never grading a team of its
-own provider. Each judge reads the subject, the race context (budgets, time, and the incidents of the race, inside or
-outside each team's control) and the team's file (its report and records as the team left them, a listing of its
-repository and its small result files), and answers in JSON (`prompts/jury.md`). A criterion's grade is the median
+own provider. Grading is anonymous: each team gets a random pseudonym (Team A, B, ...), and every name that tells its
+author (providers, brands, model families and ids, harnesses, from config/providers.toml `names`, `tiers` and the
+harness list) is replaced by [redacted] in what a judge reads; a file in which a name is still found is not sent.
+Each judge reads the subject, the general race context, the incidents of that team (inside or outside its control)
+and the team's file (its report, records, delivered code, repository listing and small result files, as the team
+left them), and answers in JSON (`prompts/jury.md`). The pseudonyms are lifted only in the results. A criterion's grade is the median
 of the judges; the final score is the weighted mean of the four criteria (the mission's `[grading]` weights, else
 equal); delivered teams rank before the others. The jury's own calls are metered against `--cap-usd` in its ledger.
 """
@@ -17,6 +20,7 @@ import argparse
 import concurrent.futures
 import json
 import pathlib
+import random
 import re
 import statistics
 import subprocess
@@ -25,6 +29,7 @@ import sys
 from . import llm
 from .budget import CLOUD_CURRENCY, Budget, parse_time
 from .config import ROOT, load_config
+from .harnesses import HARNESSES
 from .mission import report_files
 
 CRITERIA = ("scientific_quality", "cost_control", "delivery_time", "compliance")
@@ -33,6 +38,64 @@ LABELS = {"scientific_quality": "Scientific quality", "cost_control": "Cost cont
 RECORDS = ("DELIVERY.md", "COMPLIANCE.md", "CHECKLIST.md", "DECISIONS.md")
 MAX_DOC = 30_000  # characters of one record in a judge's file
 MAX_RESULTS = 40_000  # characters of small result files in a judge's file
+MAX_CODE = 40_000  # characters of delivered code in a judge's file
+HIDDEN = (".agents/", ".claude/", ".codex/", ".gemini/", ".dsh/", ".kimi", ".qwen/", ".vibe/", ".grok/", ".zcode",
+          "subject/", "AGENTS.md", "MISSION.md", "TOOLS.md", "CLAUDE.md", "GEMINI.md", "QWEN.md")
+
+
+# ---------------------------------------------------------------- anonymity
+
+
+def identity_names(cfg: dict) -> list[str]:
+    """Every name that tells a team's author: provider keys and `names`, model ids, harness keys and names."""
+    out = set()
+    for key, p in cfg["providers"].items():
+        out.add(key)
+        out.update(p.get("names", []))
+        out.update(v for v in p.get("tiers", {}).values())
+        for mode in (p.get("modes") or {}).values():
+            if isinstance(mode, dict) and isinstance(mode.get("model"), dict):
+                out.update(mode["model"].values())
+    for h in HARNESSES.values():  # a provider's own harness ("Grok Build"); not generic ones named by common words
+        if h.provider in cfg["providers"]:
+            out.add(h.name)
+            out.add(re.sub(r"\s*\(.*\)$", "", h.title))
+    return sorted((n for n in out if n), key=len, reverse=True)
+
+
+def redact(text: str, names: list[str]) -> tuple[str, int]:
+    """Replace each name, with what is glued to it ("claude-sonnet-5-5", "race-openai-delivery"), by [redacted]. Names
+    of 4 characters or more are caught inside words too; shorter ones only as words of their own."""
+    n = 0
+    for name in names:
+        lead = "" if len(name) >= 4 else r"(?<![A-Za-z0-9])"
+        pat = re.compile(lead + re.escape(name) + r"[\w.-]*", re.I)
+        text, k = pat.subn("[redacted]", text)
+        n += k
+    # "Claude Sonnet 5.5" -> "[redacted] [redacted] 5.5": the names and the version that follows them become one mark
+    text = re.sub(r"\[redacted\](?:[\s/-]*\[redacted\])*(?:\s+v?\d+(?:\.\d+)*\b)?", "[redacted]", text)
+    return text, n
+
+
+def leaks(text: str, names: list[str]) -> list[str]:
+    return [n for n in names if (n.lower() in text.lower() if len(n) >= 4
+                                 else re.search(r"(?<![A-Za-z0-9])" + re.escape(n) + r"(?![A-Za-z0-9])", text, re.I))]
+
+
+def pseudonyms(teams: list[str]) -> dict[str, str]:
+    labels = [f"Team {chr(65 + i)}" for i in range(len(teams))]
+    random.SystemRandom().shuffle(labels)
+    return dict(zip(teams, labels, strict=True))
+
+
+def incidents_of(context: str) -> tuple[str, dict[str, str]]:
+    """The context's general part, and its `### <provider or mission>` sections under `## Incidents`, one per team."""
+    head, _, rest = context.partition("\n## Incidents")
+    parts = {}
+    for block in rest.split("\n### ")[1:]:
+        key, _, body = block.partition("\n")
+        parts[key.strip()] = body.strip()
+    return head.strip(), parts
 
 
 # ---------------------------------------------------------------- measured by the framework
@@ -83,9 +146,14 @@ def _clip(text: str, n: int) -> str:
     return text if len(text) <= n else text[:n] + f"\n[... {len(text) - n} more characters not shown]"
 
 
-def team_file(ws: pathlib.Path, f: dict) -> str:
-    """What a judge reads about one team, as the team left it."""
-    parts = ["## Facts measured by the framework", "", json.dumps(f, indent=1), ""]
+def team_file(ws: pathlib.Path, f: dict, label: str, incidents: str) -> str:
+    """What a judge reads about one team, as the team left it, before redaction."""
+    shown = {"team": label, "delivered": f["delivered"], "delivered_after_hours": f["elapsed_hours"],
+             "allowed_hours": f["duration_hours"], "llm_usd": f["llm_usd"], "llm_cap_usd": f["llm_cap_usd"],
+             "gpu_usd": f["gpu_usd"], "gpu_cap_usd": f["gpu_cap_usd"], "sessions": f["sessions"],
+             "ledgers_intact": f["ledgers_intact"]}
+    parts = [f"## {label}: facts measured by the framework", "", json.dumps(shown, indent=1), "",
+             f"## Incidents of {label} during the race", "", incidents or "None recorded.", ""]
     reps = report_files(ws)
     for p in reps:
         parts += [f"## Report ({p.name})", "", p.read_text(errors="replace"), ""]
@@ -95,16 +163,21 @@ def team_file(ws: pathlib.Path, f: dict) -> str:
         if (ws / name).exists():
             parts += [f"## {name}", "", _clip((ws / name).read_text(errors="replace"), MAX_DOC), ""]
     files = subprocess.run(["git", "-C", str(ws), "ls-files"], capture_output=True, text=True).stdout.split("\n")
-    files = [x for x in files if x and not x.startswith((".agents/", ".claude/", ".codex/", ".gemini/", ".dsh/",
-                                                         ".kimi", ".qwen/", ".vibe/", "subject/"))]
-    listing = [f"{x}  {(ws / x).stat().st_size} B" for x in files if (ws / x).is_file()]
-    parts += ["## Repository listing (path, size)", "", "\n".join(listing[:400]), ""]
+    files = [x for x in files if x and not x.startswith(HIDDEN) and (ws / x).is_file()]
+    parts += ["## Repository listing (path, size)", "", "\n".join(f"{x}  {(ws / x).stat().st_size} B" for x in files[:400]), ""]
+    code, used = [], 0
+    for x in files:
+        p = ws / x
+        if p.suffix in (".py", ".sh", ".jl", ".m", ".cpp", ".c") and used < MAX_CODE:
+            body = _clip(p.read_text(errors="replace"), MAX_CODE - used)
+            code.append(f"### {x}\n\n```\n{body}\n```\n")
+            used += len(body)
+    parts += ["## Delivered code", "", "\n".join(code) or "(none)", ""]
     small, used = [], 0
     for x in files:
         p = ws / x
-        if (p.is_file() and p.suffix in (".json", ".csv", ".md", ".txt") and p.stat().st_size <= 8_000
-                and x not in RECORDS and p not in reps and not x.startswith(("AGENTS", "MISSION", "TOOLS", "CLAUDE"))
-                and used < MAX_RESULTS):
+        if (p.suffix in (".json", ".csv", ".md", ".txt") and p.stat().st_size <= 8_000 and x not in RECORDS
+                and p not in reps and used < MAX_RESULTS):
             body = p.read_text(errors="replace")
             small.append(f"### {x}\n\n{body}\n")
             used += len(body)
@@ -150,6 +223,11 @@ def run(root: pathlib.Path, subject: str, context: str, out: pathlib.Path, judge
     if teams:
         states = [s for s in states if s.name in teams]
     specs = {p: llm.resolve(cfg, p, "frontier", "high") for p in judges}
+    names = identity_names(cfg)
+    general, incidents = incidents_of(context)
+    general = redact(general, names)[0]
+    labels = pseudonyms([st.name for st in states])
+    (out / "identities.json").write_text(json.dumps(labels, indent=1) + "\n")  # for the operator, never a judge
     teams_out: dict[str, dict] = {}
     work = []
     for st in states:
@@ -157,18 +235,25 @@ def run(root: pathlib.Path, subject: str, context: str, out: pathlib.Path, judge
         f = facts(st)
         ws = pathlib.Path(s["workspace"])
         has_work = any(report_files(ws)) or any((ws / r).exists() for r in RECORDS)
-        teams_out[st.name] = {"facts": f, "measured": measured_scores(f), "judges": {}, "errors": {},
-                              "has_work": has_work, "file": team_file(ws, f) if has_work else ""}
+        inc = incidents.get(st.name) or incidents.get(f["provider"]) or ""
+        text, n = redact(team_file(ws, f, labels[st.name], inc), names) if has_work else ("", 0)
+        leak = leaks(text, names)
+        (out / "files").mkdir(exist_ok=True)
+        (out / "files" / f"{labels[st.name]}.md").write_text(text)  # exactly what the judges read
+        teams_out[st.name] = {"label": labels[st.name], "facts": f, "measured": measured_scores(f), "judges": {},
+                              "errors": {}, "has_work": has_work, "redactions": n, "leaks": leak, "file": text}
         for p in judges:
-            if p != f["provider"] and has_work:
+            if p != f["provider"] and has_work and not leak:
                 work.append((st.name, p))
+            elif leak and p != f["provider"]:
+                teams_out[st.name]["errors"][p] = f"not sent: names still found after redaction ({', '.join(leak[:5])})"
 
     def one(item):
         name, p = item
         if b.llm_spent() >= cap_usd:
             return name, p, None, "jury budget spent"
         try:
-            verdict, usage = judge(specs[p], brief, subject, context, teams_out[name]["file"])
+            verdict, usage = judge(specs[p], brief, subject, general, teams_out[name]["file"])
             b.charge_llm("jury", f"judge:{p}", p, specs[p].model, usage)
             return name, p, verdict, None
         except Exception as e:  # noqa: BLE001 - a failed judge is recorded, the others still count
@@ -212,23 +297,25 @@ def markdown(res: dict, title: str = "Jury of the race") -> str:
     t = res["teams"]
     lines = [f"# {title}", "",
              "Cost control and delivery time are measured by the framework from its ledgers; scientific quality and "
-             "compliance are the median grade of LLM judges on other providers than the team's. Final score: mean of "
+             "compliance are the median grade of LLM judges on other providers than the team's, who graded anonymous "
+             "files (a pseudonym per team, every name of provider, model or harness redacted). Final score: mean of "
              "the four criteria" + (" with weights " + ", ".join(f"{LABELS[c]} {res['weights'][c]}" for c in CRITERIA)
                                     if len(set(res["weights"].values())) > 1 else ", equal weights") +
              "; delivered teams rank first. All grades out of 10.", "",
-             "| Rank | Team | Delivered | Final | Scientific quality | Compliance | Cost control | Delivery time | "
-             "LLM / GPU spent (USD) | Judges |",
-             "|---|---|---|---|---|---|---|---|---|---|"]
+             "| Rank | Team | Graded as | Delivered | Final | Scientific quality | Compliance | Cost control | "
+             "Delivery time | LLM / GPU spent (USD) | Judges |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]
     for n in res["ranking"]:
         x, f, s = t[n], t[n]["facts"], t[n]["scores"]
-        lines.append(f"| {x['rank']} | {f['team']} | {f['delivered_at'][11:16] + ' UTC' if f['delivered'] else 'no'} | "
+        lines.append(f"| {x['rank']} | {f['team']} | {x['label']} | "
+                     f"{f['delivered_at'][11:16] + ' UTC' if f['delivered'] else 'no'} | "
                      f"**{x['final']:g}** | {s['scientific_quality']:g}{_spread(x, 'scientific_quality')} | "
                      f"{s['compliance']:g}{_spread(x, 'compliance')} | {s['cost_control']:g} | {s['delivery_time']:g} | "
                      f"{f['llm_usd']:.2f} / {f['gpu_usd']:.2f} | {', '.join(x['judges']) or '—'} |")
     lines += ["", f"The jury's own model calls cost {res['jury_llm_usd']:.2f} USD.", ""]
     for n in res["ranking"]:
         x, f = t[n], t[n]["facts"]
-        lines += [f"## {x['rank']}. {f['team']}", "",
+        lines += [f"## {x['rank']}. {f['team']} ({x['label']})", "",
                   f"{f['harness']} on {f['provider']} ({f['tier']} tier, {f['reasoning']} reasoning). "
                   + (f"Delivered at {f['delivered_at'][11:16]} UTC after {f['elapsed_hours']:.2f} h of "
                      f"{f['duration_hours']:g} h." if f["delivered"] else "Did not deliver.")

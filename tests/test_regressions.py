@@ -629,3 +629,18 @@ def test_jury_measures_cost_and_time_and_ranks_delivered_teams_first():
     res = aggregate(teams, 1.0)
     assert res["ranking"] == ["a", "b"]  # a delivered team ranks before one that did not, whatever its grades
     assert res["teams"]["a"]["scores"]["scientific_quality"] == 5.0 and res["teams"]["a"]["final"] == (5 + 9 + 5 + 6) / 4
+
+
+def test_jury_files_are_anonymous():
+    from frontier.config import load_config
+    from frontier.jury import identity_names, incidents_of, leaks, pseudonyms, redact
+    names = identity_names(load_config())
+    text = ("Produced by Claude Sonnet 5.5 in Claude Code; data on knoel/milady-20261115-race-moonshot-delivery; "
+            "model qwen3.8-flash via DashScope; the dsh harness. We continue with the grokking curve.")
+    out, n = redact(text, names)
+    assert not leaks(out, names) and n >= 5
+    assert "Produced by [redacted] in [redacted];" in out and "5.5" not in out and "continue" in out
+    head, inc = incidents_of("General.\n\n## Incidents\n\nIntro.\n\n### xai\n\nStopped at budget.\n\n### openai\n\nnone.\n")
+    assert head == "General." and inc == {"xai": "Stopped at budget.", "openai": "none."}
+    labels = pseudonyms(["a", "b", "c"])
+    assert sorted(labels.values()) == ["Team A", "Team B", "Team C"]

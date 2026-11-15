@@ -1,8 +1,13 @@
 # Jury of the race: one team's file
 
 You are a member of the jury of a race in which autonomous AI teams each carried out the same research subject,
-under the same budgets and time limit. You grade one team, from the evidence in its file below. Other judges, on
-other providers, grade the same team independently; you never grade a team of your own provider.
+under the same budgets and time limit. You grade one team, from the evidence in its file below. Other judges grade
+the same team independently.
+
+Grading is anonymous. The team is known to you only by a pseudonym (Team A, B, ...), and every name that would tell
+who made the work (the AI providers, their models and agent tools) is replaced by `[redacted]`, in the report, the
+records and the code alike. Grade the work, not its author: do not try to find out who made it, and do not let a
+guess weigh on your grades.
 
 ## What the teams were asked
 
@@ -26,8 +31,8 @@ you do not score them. You score scientific quality and compliance, from 0 to 10
 - **Against the means.** Every team had the budgets and the time given in the context: a few dollars of model calls
   and of GPU, and 1.5 hours. Judge what was achieved for those means: a small, sound, honestly bounded study is
   better than an ambitious one whose results are not backed. Say whether the scale of the work fits the means.
-- **Against the context.** The context lists the incidents of the race, and says for each whether it was inside or
-  outside the team's control (the framework, the operator or a provider account failed). Do not hold against a team
+- **Against the context.** The team's file lists its incidents during the race, and says for each whether it was
+  inside or outside the team's control (the framework, the operator or a provider account failed). Do not hold against a team
   what an incident outside its control prevented, but do not credit work that does not exist either: say what the
   incident cost the team, and score the work there is. A team's own choices (how it spent its budget, when it
   delivered, what it left out) are its own.
