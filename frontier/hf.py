@@ -30,7 +30,16 @@ def _api():
         from huggingface_hub import HfApi
     except ImportError as e:
         raise RuntimeError("huggingface_hub is not installed: pip install huggingface_hub") from e
+    _bracketless_no_proxy()
     return HfApi(token=_token())
+
+
+def _bracketless_no_proxy() -> None:
+    """httpx refuses a bracketed IPv6 entry in NO_PROXY ("[::1]": InvalidURL, every Hub call fails; race 2026-11-15,
+    Kimi Code sets it): the entries are kept without their brackets."""
+    for k in ("NO_PROXY", "no_proxy"):
+        if "[" in os.environ.get(k, ""):
+            os.environ[k] = ",".join(e.strip().strip("[]") for e in os.environ[k].split(","))
 
 
 def card_problems(folder: pathlib.Path, repo_type: str) -> list[str]:
@@ -144,10 +153,13 @@ def publish_delivery(ctx, rec: dict) -> dict:
     if not settings.get("hf_prefix") or not settings.get("allow_publish"):
         return {}
     ws = ctx.workspace
-    files = subprocess.run(["git", "-C", str(ws), "ls-files", "-co", "--exclude-standard"], capture_output=True,
-                           text=True).stdout.split()
+    ls = subprocess.run(["git", "-C", str(ws), "ls-files", "-z", "-co", "--exclude-standard"], capture_output=True, text=True)
+    files = [f for f in ls.stdout.split("\0") if f]  # -z: names with spaces stay whole
+    if ls.returncode or not files:  # git busy or broken at that instant: every file but git's own
+        files = [str(q.relative_to(ws)) for q in ws.rglob("*") if q.is_file() and ".git" not in q.relative_to(ws).parts]
     with tempfile.TemporaryDirectory() as d:
         root = pathlib.Path(d) / "delivery"
+        root.mkdir()
         for rel in files:
             src = ws / rel
             if src.is_file() and not rel.startswith((".frontier/", ".git/")):

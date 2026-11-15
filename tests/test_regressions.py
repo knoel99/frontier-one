@@ -518,3 +518,11 @@ def test_the_operator_session_variables_do_not_reach_the_harness(monkeypatch, tm
     _, env = build_session(info, {"command": ["true"]}, "go", None)
     assert not [k for k in env if k.startswith(("CCR_", "CLAUDE_CODE_", "GLOBAL_AGENT_"))]
     assert env["HTTPS_PROXY"] == "http://127.0.0.1:2"
+
+
+def test_hub_calls_survive_a_bracketed_ipv6_no_proxy(monkeypatch):
+    """Race 2026-11-15: Kimi Code's NO_PROXY held "[::1]" and httpx refused every Hub call, so no delivery copy."""
+    from frontier import hf
+    monkeypatch.setenv("NO_PROXY", "localhost,[::1],api.example.com")
+    hf._bracketless_no_proxy()
+    assert os.environ["NO_PROXY"] == "localhost,::1,api.example.com"
