@@ -160,11 +160,6 @@ def _main_spec(cfg: dict, m: dict):
         return None
 
 
-def _main_model(cfg: dict, m: dict) -> str:
-    spec = _main_spec(cfg, m)
-    return spec.model if spec else "?"
-
-
 def install_skills(skills: list[dict], state: pathlib.Path, ws: pathlib.Path, files: dict) -> list[str]:
     """Extra Agent Skills given by the mission (`[[skills]]` repo, rev, path), fetched at their pinned revision on the
     host and copied next to the frontier skill, into every skills folder the harness reads."""
@@ -198,7 +193,7 @@ def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict]
         f"# Tools of the mission {m['mission'].get('name', '')}", "",
         f"Generated at {when} by the Frontier launcher. Prices and stock change: the tools give the live values.", "",
         "## Your harness", "",
-        f"{h.title} on `{_main_model(cfg, m)}` (provider `{m.get('llm', {}).get('provider')}`, tier "
+        f"{h.title} on `{getattr(_main_spec(cfg, m), 'model', '?')}` (provider `{m.get('llm', {}).get('provider')}`, tier "
         f"`{m['harness'].get('tier', 'frontier')}`, reasoning `{m['harness'].get('reasoning', 'high')}`); its LLM calls "
         "are charged to the LLM budget like those of the sub-agents. Its own tools (shell, files, web, native "
         "sub-agents, skills) are yours as well. The speed modes of its provider (under Models below) apply to its "
