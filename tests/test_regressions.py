@@ -1209,3 +1209,18 @@ def test_rp_upload_copies_a_workspace_directory_into_a_pod(tmp_path, monkeypatch
     assert out["calls"] == len(sent) > 3 and max(len(c) for c in sent) < 4096
     with pytest.raises(PermissionError):
         tools.REGISTRY["rp_upload"].fn(agent_mod.Ctx(run, None), "p", "../outside", str(pod))
+
+
+def test_the_gemini_recipe_selects_its_auth_and_trusts_the_workspace(tmp_path, monkeypatch):
+    """Harness check of 2026-11-15 (Gemini CLI 0.68): headless, the session died in 2 s with "Invalid auth method
+    selected" (exit 41), and the untrusted workspace turned yolo back into asking for approval."""
+    info = mission.prepare(_mission(tmp_path, harness="gemini", provider="google"), ping=False, offers=False)
+    h = launcher.harness_conf("gemini", "google")
+    _, env = launcher.build_session(info, h, "PROMPT", None)
+    assert env["GEMINI_CLI_TRUST_WORKSPACE"] == "true"
+    home = tmp_path / "home"
+    (home / ".gemini").mkdir(parents=True)
+    (home / ".gemini" / "settings.json").write_text('{"ui": {"theme": "x"}}')
+    subprocess.run(["bash", "-c", h["setup"]], env={**os.environ, "HOME": str(home)}, check=True)
+    settings = json.loads((home / ".gemini" / "settings.json").read_text())
+    assert settings == {"ui": {"theme": "x"}, "security": {"auth": {"selectedType": "gemini-api-key"}}}

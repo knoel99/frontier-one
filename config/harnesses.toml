@@ -55,9 +55,12 @@ usage = "json-usage"
 
 [gemini]
 install = "npm install -g @google/gemini-cli"
+# Gemini CLI 0.68 (checked 2026-11-15): headless, it needs its auth method chosen in ~/.gemini/settings.json (else
+# "Invalid auth method selected", exit 41) and the workspace trusted (else yolo falls back to asking for approval).
+setup = "python3 -c \"import json,pathlib; p=pathlib.Path.home()/'.gemini'/'settings.json'; p.parent.mkdir(exist_ok=True); d=json.loads(p.read_text()) if p.exists() else {}; d.setdefault('security',{}).setdefault('auth',{}).setdefault('selectedType','gemini-api-key'); p.write_text(json.dumps(d,indent=1))\""
 command = ["gemini", "-p", "{prompt}", "-m", "{model}", "--approval-mode=yolo", "--output-format", "json"]
 effort = "provider"
-env = { GEMINI_API_KEY = "{key}" }
+env = { GEMINI_API_KEY = "{key}", GEMINI_CLI_TRUST_WORKSPACE = "true" }
 route = { GOOGLE_GEMINI_BASE_URL = "{gateway}/google" }
 usage = "json-usage"
 
