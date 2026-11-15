@@ -8,11 +8,12 @@ Two sets:
 from __future__ import annotations
 
 import pathlib
+import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from . import catalog, hf, infra
+from . import budget, catalog, hf, infra
 from .http import mcp_call, request, scw_raw
 
 
@@ -97,9 +98,24 @@ def t_api_docs(ctx, action: str, query: str = "", id: str = "", doc: str = "") -
     return "action must be list, search or show"
 
 
+# Raw calls that start something billed: refused under a cloud budget, which only the ready-made functions price and
+# record in the ledger (a raw creation would bill outside the cap, and be left out of the cleanup).
+BILLED_SCALEWAY = re.compile(r":(Create(Server|Ip|Image|Snapshot|Volume|Deployment)|StartJobDefinition)$")
+BILLED_RUNPOD = {"create-pod", "create-endpoint", "create-network-volume", "deploy-hub-repo"}
+
+
+def _unmetered(ctx, provider: str, what: str) -> str | None:
+    if ctx.run.budget.caps.get(budget.CLOUD_CURRENCY[provider][0]) is None:
+        return None
+    return (f"refused: {what} would bill outside the {provider} budget and the run's ledger; use scw_create_instance or "
+            "rp_create_pod, which price it, reserve it and delete it at the end.")
+
+
 def t_scaleway(ctx, method: str, path: str, body: dict | None = None, query: dict | None = None, raw_body: str = "",
                content_type: str = "") -> str:
     if method.upper() != "GET" and (g := infra._need_spend(ctx, f"{method} {path}")):
+        return g
+    if BILLED_SCALEWAY.search(op := catalog.operation(method, path)) and (g := _unmetered(ctx, "scaleway", op)):
         return g
     code, text = scw_raw(method, path, raw_body or body, query, content_type)
     return f"HTTP {code}\n{text}"
@@ -107,6 +123,8 @@ def t_scaleway(ctx, method: str, path: str, body: dict | None = None, query: dic
 
 def t_runpod_mcp(ctx, tool: str, arguments: dict | None = None) -> str:
     if tool not in catalog.read_only_mcp_tools() and tool != "describe-tool" and (g := infra._need_spend(ctx, f"Runpod MCP tool {tool}")):
+        return g
+    if tool in BILLED_RUNPOD and (g := _unmetered(ctx, "runpod", f"Runpod MCP tool {tool}")):
         return g
     ok, text = mcp_call(tool, arguments)
     return text if ok else "ERROR: " + text

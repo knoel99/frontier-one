@@ -860,3 +860,23 @@ def test_the_launcher_deletes_what_a_delivery_left_alive(tmp_path, cfg, monkeypa
     seen.clear()
     launcher.finish(r, ws, keep_resources=True)
     assert seen == []
+
+
+def test_raw_cloud_calls_cannot_create_outside_the_budget(run, monkeypatch):
+    """With spending allowed, `scaleway POST .../servers` or `runpod_mcp create-pod` billed a machine that no budget
+    check saw, no ledger held and no cleanup deleted."""
+    run.allow_spend = True
+    called = []
+    monkeypatch.setattr(tools, "scw_raw", lambda *a, **k: called.append(a) or (200, "{}"))
+    monkeypatch.setattr(tools, "mcp_call", lambda *a, **k: called.append(a) or (True, "{}"))
+    ctx = agent_mod.Ctx(run, None)
+    assert tools.t_scaleway(ctx, "POST", "/instance/v1/zones/fr-par-2/servers", {}).startswith("HTTP 200")  # no cap
+    run.budget.set_caps(scaleway_eur=10, runpod_usd=10)
+    for path in ("/instance/v1/zones/{zone}/servers", "/block/v1/zones/fr-par-2/volumes", "instance/v1/zones/fr-par-1/ips"):
+        assert tools.t_scaleway(ctx, "POST", path, {}).startswith("refused"), path
+    assert tools.t_runpod_mcp(ctx, "create-pod", {}).startswith("refused")
+    assert tools.t_runpod_mcp(ctx, "deploy-hub-repo", {}).startswith("refused")
+    assert len(called) == 1
+    assert tools.t_scaleway(ctx, "POST", "/instance/v1/zones/fr-par-2/servers/s1/action", {"action": "poweroff"}).startswith("HTTP")
+    assert tools.t_scaleway(ctx, "POST", "/instance/v1/zones/fr-par-2/security_groups", {}).startswith("HTTP")  # not billed
+    assert tools.t_runpod_mcp(ctx, "delete-pod", {"id": "p"}) == "{}"
