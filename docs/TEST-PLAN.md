@@ -53,7 +53,7 @@ decision, not approved.
 | F20 | Runner activity | ledgers + runner logs | `rp_logs` | each runner's commands, output, duration and cost can be recovered after the run | 3 |
 | F21 | API docs and raw tools | `api_docs`, `scaleway`, `runpod_mcp` | `catalog.py`, `tools.py` | a catalog search, and one read-only raw call per cloud | 1 |
 | F22 | Harness files for 24 harnesses | `frontier harnesses` | `sync_harnesses.py` | `--check` passes; every file parses (existing tests) | 0 |
-| F23 | OpenShell sandbox | `[sandbox] kind = "openshell"` | `sandbox.py` | **BLOCKED here**: no Docker daemon in this session; only the dry run is checked | 0 |
+| F23 | OpenShell sandbox | `[sandbox] kind = "openshell"` | `sandbox.py` | the dry run; the generated image built with Docker; one session run in it as `openshell sandbox exec` would, delivered; with OpenShell installed: the policy, the key injection and a full mission | 0, 3 |
 | F24 | Code coverage of a real race | — | `coverage` across the launcher, gateway and MCP processes | a per-module coverage report of `frontier/` from the level 3 run | 3 |
 | F25 | Cerebras as a provider | `[llm] provider = "cerebras"`, `spawn_agent(provider="cerebras")`, a jury judge | `llm.py` (openai-chat), `strip_message_fields` | `frontier ping --provider cerebras` OK; a metered call priced in `llm.jsonl` (verify_live F25); a judge's grades in the jury (F29) | 1 |
 | F26 | Budget milestone notices | `budget_usd` of each service | `milestones.py`, the gateway's `inject` | a ledger at 12 % of its cap: one `budget_milestone` LLM 10 % event, and a real model repeats the notice the gateway added to its request (verify_live F26); events in the level 3 run | 1, 3 |

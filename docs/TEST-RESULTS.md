@@ -15,7 +15,7 @@ Harness of the live mission: Codex CLI 0.169.0 on OpenAI `gpt-6-luna`.
 
 ## Verdict
 
-**Frontier is usable, and seven more framework defects were found and fixed.** Levels 0 to 4 were run in order. Level 1 and 2
+**Frontier is usable, and ten more framework defects were found and fixed.** Levels 0 to 4 were run in order. Level 1 and 2
 (`tools/verify_live.py`, now with checks F25 to F29 for the new features) passed on every feature, F27 after its fixes.
 The live mission delivered in 12 minutes (0.198 h of 0.75) for 0.111 USD of LLM and 0.012 USD of GPU: one Codex
 session, three snapshots tagged in its repository, one budget milestone, a Runpod runner that ran the framework's 110
@@ -34,6 +34,9 @@ D5 to D7; each was settled by a new check or a fix before the verdicts below.
 | D5 | level 4 (F5) | OpenAI Responses usage reports `input_tokens_details.cache_write_tokens` (read live); the parser dropped it, so cache writes were billed at the input price: about 5 % of the level 3 harness's spend unbooked | PR #22: the field is read; re-checked live through the gateway (6,006 written tokens booked) |
 | D6 | level 4 (D2) | With the index locked only during `git add`, the add failed silently and the snapshot was still tagged on the old tree | PR #23: a failed add leaves the snapshot pending |
 | D7 | level 4 (D3 scope) | Under a Runpod cap, raw `create-cluster` and `create-global-volume` were forwarded: the guard knew the catalog's creators only, the live server has 125 tools | PR #24: both refused; the other creators of the live server bill no compute |
+| D8 | F23 with Docker | Inside the mission's sandbox, Codex's own sandbox (bubblewrap, `--sandbox workspace-write`) cannot create a namespace: every command and file write failed and the AI gave up | PR #26: a harness's `in_sandbox` table (Codex: `danger-full-access`), applied by `frontier mission session`; re-checked: the session in the image delivered |
+| D9 | harnesses live | Gemini CLI 0.68 died in 1.9 s ("Invalid auth method selected", exit 41), its untrusted workspace turning yolo back into approval prompts | PR #32: `GEMINI_CLI_TRUST_WORKSPACE=true` and a setup that selects `gemini-api-key`; re-checked: delivered |
+| D10 | harnesses live | Mistral Vibe 3.1.2 refused the mission's model ("Unknown model ... Available: mistral-medium-3.5") and could not be routed, so no Vibe session was metered | PR #33: the project `.vibe/config.toml` declares a provider on the gateway and the mission's model; re-checked: accepted, calls reach the gateway |
 
 The checks had three defects of their own (F25 spawned a sub-agent on a provider the mission does not allow; F28
 compared a rounded value; F27 crossed two milestones at once and its grace was shorter than a model call); they were
@@ -49,23 +52,23 @@ fixed in `tools/verify_live.py` (PR #19) before the verdicts below.
 | F4 | Session loop, headless harness | PASS | one session, exit 0 after 705 s, committed; a second session was not needed |
 | F5 | Gateway metering | PASS after D5 | the 59 gateway entries match Codex's report on input, cached, output and reasoning tokens, but carried no cache writes (201,708 tokens, about 5 % of the spend): fixed, re-checked live |
 | F6 | LLM hard cap | PASS | 402 without forwarding; stop reason "LLM budget" |
-| F7 | Deadline | PASS, partial | exit 124 after 5 s on a test command, not on a real harness session |
+| F7 | Deadline | PASS | a Codex mission of 90 s whose experiment is `sleep 300`: the session ended at the deadline (exit 124, `stopped: deadline`) and no process of it was left; exit 124 after 5 s on a test command |
 | F8 | MCP tools served to the harness | PASS | Codex called `budget_status` as an MCP tool through the launcher's own command and the gateway (`mcp_tool_call` item served by `frontier`); in the level 3 run the AI chose the shell fallback for every call |
 | F9 | Shell fallback | PASS | same answer as MCP at level 1; all 146 tool calls of the level 3 run |
 | F10 | Sub-agents on four providers and a role | PASS | openai, google, deepseek, zhipu and `reviewer` (streamed Responses and Gemini calls); in the level 3 run two of four DeepSeek reviews ended at their turn limit with an empty answer |
 | F11 | Speed mode (flex) | PASS | 1.3e-05 USD against 2.7e-05 at standard |
 | F12 | Runpod runner | PASS | a pod at level 1; in the level 3 run the AI's pod ran the framework's 110 tests (`110 passed in 11.23s`) and was deleted |
 | F13 | Scaleway runner | PASS | DEV1-S at Amsterdam: result read from its metadata, deleted with its volume, GET 404 |
-| F14 | Cloud budget cap | PASS, partial | creations over the cap refused on both clouds; parallel creations by a unit test only |
-| F15 | Watchdog | PASS | a pod past `max_hours` deleted by `infra.enforce` (called by the check, not by the launcher's thread) |
+| F14 | Cloud budget cap | PASS | creations over the cap refused on both clouds; two `rp_create_pod` at once under a cap that holds one: one created, one refused (live) |
+| F15 | Watchdog | PASS | a pod past `max_hours` deleted by `infra.enforce`; `frontier reap <state>` (the CLI) deleted another past its `max_hours` (get-pod 404) |
 | F16 | Hugging Face publishing | PASS | bad card refused; private dataset created, then deleted and read back |
 | F17 | Delivery | PASS | `delivery.json`, `COSTS.md`, tag `delivery`, final costs; one `deliver` refused by design (report naming repository files) before the accepted one |
 | F18 | Tamper-evident ledgers | PASS, partial | an edited line is detected and every ledger of the campaign is intact; a ledger cut at its end still verifies (the chain has no anchored head) |
 | F19 | Dashboard | PASS | live page served (HTTP 200) during the run; the static snapshot renders without page errors and its figures equal the ledgers |
 | F20 | Runner activity | PASS | `runners/<id>.log`: creation, every command and output, logs before deletion |
 | F21 | API docs and raw calls | PASS | catalog search, read-only Scaleway and Runpod calls |
-| F22 | Files for 24 harnesses | PASS | `sync_harnesses --check`; only Codex was run live |
-| F23 | OpenShell sandbox | BLOCKED | no Docker daemon running in the session |
+| F22 | Files for 24 harnesses | PASS, partial | `sync_harnesses --check`; run live through `frontier mission start`: Codex, dsh, OpenCode (DeepSeek), Qwen Code, Kimi Code and Gemini CLI (after D9) delivered, metered by the gateway; Vibe reached the gateway after D10 and was then refused by its account (see below); not run: Claude Code (no Anthropic key), Antigravity, Grok Build and Hermes (`curl \| bash` installers), ZCode (built, its run refused by the session's permission policy) |
+| F23 | OpenShell sandbox | PASS, partial | with Docker: the launcher's dry run, the generated image built, and one session run in it as `openshell sandbox exec` would, which delivered after D8; OpenShell itself could not be installed here (its install script was refused by the session's permission policy), so its L7 policy, Landlock, seccomp and key injection remain unchecked |
 | F24 | Coverage of a real race | PASS, partial | statement coverage, 57 %; includes the dashboard and one check script |
 | F25 | Cerebras | PASS | `ping` OK; a metered call priced; a Cerebras judge graded both teams |
 | F26 | Budget milestone notices | PASS | the model repeated the notice the gateway added; `budget_milestone` LLM 10 % in the level 3 run |
@@ -107,20 +110,32 @@ ledger, on purpose: two raw OpenAI calls reading the usage block, one Codex prob
 created outside any ledger (about a minute each at 0.27 USD/h, under 0.01 USD). Scaleway 0.0001 EUR.
 Budget: 2 EUR of LLM and 2 EUR of compute.
 
-## Not done or still open
+## Follow-up of the same day
 
-- F23 OpenShell: BLOCKED, no Docker daemon in the session.
-- A snapshot milestone crossed in the same instant as a silent earlier one (only possible when a launch resumes across
-  `notice_from_minutes`) is merged into the silent snapshot and taken without its grace. Not fixed: minor, and not
-  reachable in a normal run.
-- A judge's "Repository listing" gives file sizes from before redaction: the difference tells the length of the
-  names removed. Weak, not fixed.
-- Under a cloud budget, a raw call still reaches a resource named only in its body, and Scaleway job definitions and
-  runs are not covered by the ownership rule (D3); without a cloud budget the raw tools stay open by design.
-- Commit `4c8df21` (COSTS.md of an undelivered mission lists its publications) has no regression test; its behaviour
-  was checked by hand and holds.
-- Only Codex was run live; the deadline on a real harness session, `frontier reap`, and two parallel cloud creations
-  live remain unchecked, as in the first campaign.
+With Docker started in the session, the open items were taken up:
+- F23: see D8 above. F7, F14 and F15: the three live checks the first campaign left to unit tests (PR #30).
+- More harnesses live: D9, D10 (PRs #32, #33).
+- Usability: `rp_upload` (PR #31) copies a workspace file or directory into a pod in base64 chunks with a SHA-256
+  check; live: `frontier/` and `config/` (116 KB) in 54 calls and 28 s, then imported on the pod.
+- The jury's file listing no longer tells the length of redacted names (PR #27); Scaleway job definitions and runs
+  follow the ownership rule of D3 (PR #28); commit `4c8df21` has its regression test (PR #29).
+- Not a defect: a told snapshot milestone crossed in the same instant as a silent one is merged into the silent
+  snapshot. The module's docstring states it and `test_snapshots_notice_merge_tag_and_event` asserts it.
+
+Spend of the follow-up, from the ledgers: LLM 0.249 USD (the harness missions 0.229, Gemini 0.134 of it), Runpod
+0.012 USD. Everything created was deleted and read back (no pod, server, IP, volume or Hugging Face test repository);
+the Docker images built for F23 were removed.
+
+## Still open
+
+- OpenShell itself (F23): its install script needs the session's permission.
+- Mistral Vibe end to end: this account answers 429 to any request of about 15,000 tokens (checked directly), and
+  Vibe's system prompt is that large.
+- ZCode: built, but its run was refused by the session's permission policy. Claude Code: no Anthropic key here.
+  Antigravity, Grok Build and Hermes: their `curl | bash` installers were not run.
+- A raw cloud call that names another team's resource only in its body (attaching an IP to their server) is not
+  checked; every billed creation is refused under a cloud budget, so nothing of theirs can be billed this way.
+- A ledger cut at its end still verifies (the hash chain has no anchored head).
 
 # Campaign of 2026-11-14
 
