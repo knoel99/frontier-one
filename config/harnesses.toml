@@ -1,7 +1,7 @@
 # How the mission launcher runs each harness headless: install, command, environment, LLM routing.
 # goal: the harness's own goal command when it works headless; the launcher then opens each session with it
 # (its own session loop stays the outer limit). Codex, Grok and agy have /goal only interactively.
-# Placeholders: {prompt} {model} {effort} {max_turns} {workspace} {state} {key} {gateway} {frontier} {provider_model}.
+# Placeholders: {prompt} {model} {effort} {max_turns} {workspace} {state} {key} {gateway}.
 # effort: "level" = the abstract level (low..max) as is; "provider" = the provider's value from providers.toml.
 # Commands and environments of the vendor harnesses were run headless on 2026-11-13 by the previous campaign
 # (old/race/PROVIDERS-TESTED.md at commit 7223bd6, in git history); the others come from the harnesses' docs (docs/HARNESSES.md). Check a new version

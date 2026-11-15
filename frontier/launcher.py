@@ -72,8 +72,8 @@ def build_session(info: dict, h: dict, prompt: str, gateway: str | None) -> tupl
     effort = spec.effort_value if h.get("effort") == "provider" else s["reasoning"]
     key_env = cfg["providers"][provider]["key_env"]  # resolved to its standard name by credentials.load
     values = {"prompt": prompt, "model": spec.model, "effort": effort, "max_turns": 500, "workspace": info["workspace"],
-              "state": info["state"], "key": os.environ.get(key_env) or llm.PROXY_PLACEHOLDER, "frontier": ROOT,
-              "provider_model": f"{provider}/{spec.model}", "gateway": gateway or ""}
+              "state": info["state"], "key": os.environ.get(key_env) or llm.PROXY_PLACEHOLDER,
+              "gateway": gateway or ""}
     env = {k: v for k, v in os.environ.items() if not k.startswith(OPERATOR_ENV)}
     env.setdefault(key_env, values["key"])  # the provider's own variable, for harnesses that read it themselves
     env.update({k: str(v) for k, v in _fill(h.get("env", {}), values).items()})
