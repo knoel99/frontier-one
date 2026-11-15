@@ -162,7 +162,7 @@ class CpuMeter:
     def __init__(self, state: pathlib.Path, proc: pathlib.Path = pathlib.Path("/proc")):
         self.state, self.proc = str(state), proc
         self.last: dict[int, tuple[float, int]] = {}  # pid -> (its time with reaped children, its parent)
-        self.gone = 0.0
+        self.gone = core_seconds(state)  # what earlier launches on this state measured: this one adds to it
 
     def _sample(self) -> dict[int, tuple[float, int]]:
         marker = f"FRONTIER_STATE={self.state}".encode()

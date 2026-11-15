@@ -522,3 +522,7 @@ def test_cpu_meter_counts_the_mission_processes_and_their_reaped_children(tmp_pa
     shutil.rmtree(proc / "13")
     assert m.measure() == 9  # counted up to its last sample
     assert m.record() == 9 and snapshots.core_seconds(state) == 9
+    again = snapshots.CpuMeter(state, proc)  # the launcher started again on the same state
+    shutil.rmtree(proc / "10")
+    ps(14, 1, (2 * tick, 0, 0, 0))
+    assert again.record() == 9 + 2  # added to what was measured, not the max of the two
