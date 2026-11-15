@@ -18,13 +18,12 @@ OpenShell sandbox is not visible here.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import pathlib
 import subprocess
 
-from .budget import CLOUD_CURRENCY, append_chained, now, parse_time, read_jsonl
+from .budget import CLOUD_CURRENCY, append_chained, locked, now, parse_time, read_jsonl, write_json
 
 TIME_MINUTES = (5, 15, 30, 60, 120, 240, 480)  # then doubling
 SPEND_USD = (5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000)  # then doubling
@@ -45,7 +44,7 @@ def settings(state: pathlib.Path) -> dict:
 
 def write_settings(state: pathlib.Path, mission_section: dict | None) -> dict:
     s = {**DEFAULTS, **(mission_section or {})}
-    (state / "snapshots.json").write_text(json.dumps(s, indent=1))
+    write_json(state / "snapshots.json", s)
     return s
 
 
@@ -103,8 +102,7 @@ class Snapshots:
         if not self.s.get("enabled", True):
             return ""
         # A file lock: the gateway and the watchdog have a Snapshots each, and both would write a new milestone
-        with open(self.b.dir / ".snapshots.lock", "w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        with locked(self.b.dir / ".snapshots.lock"):
             notices = self._events("snapshot_notice")
             seen = {(e["kind"], float(e["value"])) for e in notices}
             minutes = self._minutes() or 0.0

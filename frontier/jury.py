@@ -29,7 +29,7 @@ import subprocess
 import sys
 
 from . import llm
-from .budget import CLOUD_CURRENCY, Budget, parse_time, read_json, read_jsonl
+from .budget import CLOUD_CURRENCY, Budget, parse_time, read_json, read_jsonl, write_json
 from .config import ROOT, load_config
 from .harnesses import HARNESSES, McpCommand, artifacts
 from . import scoring
@@ -296,7 +296,7 @@ def run(root: pathlib.Path, subject: str, context: str, out: pathlib.Path, judge
         (out / "files").mkdir(parents=True, exist_ok=True)
         (out / "files" / "calibration.md").write_text(calibration)
     labels = pseudonyms([st.name for st in states])
-    (out / "identities.json").write_text(json.dumps(labels, indent=1) + "\n")  # for the operator, never a judge
+    write_json(out / "identities.json", labels)  # for the operator, never a judge
     teams_out: dict[str, dict] = {}
     work = []
     for st in states:
@@ -459,7 +459,7 @@ def main(argv: list[str] | None = None) -> int:
               a.judge or ["openai", "anthropic", "google"], a.cap_usd, a.team or None,
               pathlib.Path(a.calibration).read_text() if a.calibration else "")
     out = pathlib.Path(a.out)
-    (out / "jury.json").write_text(json.dumps(res, indent=1) + "\n")
+    write_json(out / "jury.json", res)
     (out / "JURY.md").write_text(markdown(res))
     print(markdown(res).split("\n\n## ")[0])
     return 0

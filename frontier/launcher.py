@@ -320,9 +320,7 @@ def session(state_dir: str, n: int) -> int:
     """`frontier mission session <state> <n>`: one session where the state and workspace are local, e.g. inside an
     OpenShell sandbox (the host launcher runs this through `openshell sandbox exec`)."""
     state = pathlib.Path(state_dir)
-    s = json.loads((state / "mission.json").read_text())
-    s["workspace"] = os.getcwd()
-    (state / "mission.json").write_text(json.dumps(s, indent=1) + "\n")
+    s = budget_mod.update_json(state / "mission.json", lambda s: s.update(workspace=os.getcwd()))
     mission.apply_settings(s)
     info = {"mission": s.get("conf", {}), "settings": s, "state": state, "workspace": pathlib.Path(os.getcwd()),
             "in_sandbox": True}

@@ -19,6 +19,7 @@ Run live on 2026-11-15 with OpenShell 0.1.8 and its Docker compute driver.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import pathlib
@@ -26,6 +27,7 @@ import shutil
 import subprocess
 
 from . import credentials
+from .budget import update_json, write_json
 from .egress import denied
 from .config import ROOT, load_config
 
@@ -146,9 +148,9 @@ class OpenShell:
         cfg = load_config()
         profs = profiles(self.m, cfg, self.binaries)
         for pid, p in profs.items():  # JSON is valid YAML
-            (self.dir / f"{pid}.yaml").write_text(json.dumps(p, indent=1) + "\n")
+            write_json(self.dir / f"{pid}.yaml", p)
         pol, warnings = policy(self.m, self.binaries)
-        (self.dir / "policy.yaml").write_text(json.dumps(pol, indent=1) + "\n")
+        write_json(self.dir / "policy.yaml", pol)
         ctx = self.dir / "image"
         if ctx.exists():
             shutil.rmtree(ctx)
@@ -204,13 +206,8 @@ class OpenShell:
         self._run(["openshell", "sandbox", "download", self.name, IN_STATE, str(self.info["state"])], check=False)
         f = pathlib.Path(self.info["state"]) / "mission.json"
         if not self.dry_run and f.exists():  # the session inside rewrote its workspace path: restore the host's
-            try:
-                s = json.loads(f.read_text())
-            except json.JSONDecodeError:
-                return
-            if s.get("workspace") != str(self.info["workspace"]):
-                s["workspace"] = str(self.info["workspace"])
-                f.write_text(json.dumps(s, indent=1) + "\n")
+            with contextlib.suppress(json.JSONDecodeError):
+                update_json(f, lambda s: s.update(workspace=str(self.info["workspace"])))
 
     def teardown(self) -> None:
         self.pull()

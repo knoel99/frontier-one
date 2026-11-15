@@ -43,10 +43,17 @@ def _digest(prev: str, entry: dict) -> str:
     return hashlib.sha256((prev + json.dumps(entry, sort_keys=True, separators=(",", ":"))).encode()).hexdigest()
 
 
+@contextlib.contextmanager
+def locked(lock_file: pathlib.Path):
+    """Exclusive use of what `lock_file` guards, across threads and processes, until the block ends."""
+    with open(lock_file, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield  # closing the file releases the lock
+
+
 def append_chained(path: pathlib.Path, entry: dict) -> str:
     """Append a JSON line carrying `prev` (hash of the previous line) and `hash`; returns the new hash."""
-    with open(path.with_name("." + path.name + ".lock"), "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with locked(path.with_name("." + path.name + ".lock")):
         prev = ""
         if path.exists() and path.stat().st_size:
             with open(path, "rb") as f:
@@ -60,7 +67,6 @@ def append_chained(path: pathlib.Path, entry: dict) -> str:
         body["hash"] = _digest(prev, body)
         with open(path, "a") as f:
             f.write(json.dumps(body, default=str) + "\n")
-        fcntl.flock(lock, fcntl.LOCK_UN)
         return body["hash"]
 
 
@@ -73,6 +79,16 @@ def write_json(path: pathlib.Path, obj, indent: int | None = 1) -> None:
 
 def read_json(path: pathlib.Path, default=None):
     return json.loads(path.read_text()) if path.exists() else default
+
+
+def update_json(path: pathlib.Path, change, default=None):
+    """Read a JSON state file, apply `change` to its content and write it back, under the file's lock: two processes
+    never lose each other's update. Returns what was written. Without a `default` the file must exist."""
+    with locked(path.with_name(f".{path.stem}.lock")):
+        obj = json.loads(path.read_text()) if default is None else read_json(path, default)
+        change(obj)
+        write_json(path, obj)
+        return obj
 
 
 def read_jsonl(path: pathlib.Path) -> list[dict]:
@@ -193,11 +209,11 @@ class Budget:
         return json.loads(f.read_text()) if f.exists() else {}
 
     def set_caps(self, **caps) -> None:
-        with open(self.dir / ".budgets.lock", "w") as lock:  # read, merge, write: two callers never lose an update
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            merged = {**self.caps, **{k: v for k, v in caps.items() if v is not None}}
-            merged.setdefault("start", now().isoformat(timespec="seconds"))
-            write_json(self.dir / "budgets.json", merged)
+        def merge(old: dict) -> None:
+            old.update({k: v for k, v in caps.items() if v is not None})
+            old.setdefault("start", now().isoformat(timespec="seconds"))
+
+        update_json(self.dir / "budgets.json", merge, {})
 
     # ------------------------------------------------------------ LLM
     # Entries use the OpenTelemetry GenAI attribute names (gen_ai.*) plus frontier.* ones, and form a hash chain:
@@ -228,8 +244,7 @@ class Budget:
     # calls (sub-agents, harness traffic through the gateway, several processes) cannot overrun the cap together.
     def _reservations(self, fn) -> object:
         f = self.dir / "reservations.json"
-        with open(self.dir / ".reservations.lock", "w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        with locked(self.dir / ".reservations.lock"):
             try:  # a process killed while writing the old way left an empty file: it holds no reservation
                 items = json.loads(f.read_text() or "{}") if f.exists() else {}
             except json.JSONDecodeError:
@@ -238,7 +253,6 @@ class Budget:
             items = {k: v for k, v in items.items() if (at - parse_time(v["t"])).total_seconds() < RESERVATION_TTL_S}
             out = fn(items)
             write_json(f, items, indent=None)
-            fcntl.flock(lock, fcntl.LOCK_UN)
             return out
 
     def reserved(self) -> float:
@@ -336,16 +350,10 @@ class Budget:
             total += (r.get(key) or 0) * left
         return round(total, 4)
 
-    @contextlib.contextmanager
     def cloud_lock(self):
         """Held from a creation's budget check until the resource is in the ledger, across threads and processes,
         so that two parallel creations cannot both pass the same check."""
-        with open(self.dir / ".cloud.lock", "w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
+        return locked(self.dir / ".cloud.lock")
 
     def cloud_allowed(self, provider: str, price_per_hour: float | None, max_hours: float) -> tuple[bool, str]:
         cap_key, cur, _ = CLOUD_CURRENCY[provider]

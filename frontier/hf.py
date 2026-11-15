@@ -9,13 +9,12 @@ run's state directory.
 from __future__ import annotations
 
 import datetime as dt
-import fcntl
 import json
 import os
 import pathlib
 import re
 
-from .budget import read_json, write_json
+from .budget import update_json
 from .credentials import PLACEHOLDER, auth_header
 from .http import request
 
@@ -96,10 +95,7 @@ def hf_publish(ctx, repo_name: str, folder: str, repo_type: str = "model", names
     rec = {"t": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), "repo_id": repo_id, "type": repo_type,
            "url": url, "visibility": visibility, "folder": folder, "commit": getattr(info, "oid", None)}
     rec["race"] = _file_in_race(api, settings, repo_id, repo_type)  # best effort: it never raises
-    f = ctx.run.log_dir / "publications.json"
-    with open(ctx.run.log_dir / ".publications.lock", "w") as lock:  # parallel publications all stay recorded
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        write_json(f, read_json(f, []) + [rec])
+    update_json(ctx.run.log_dir / "publications.json", lambda pubs: pubs.append(rec), [])  # parallel ones all stay
     ctx.run.log(event="hf_publish", **rec)
     return json.dumps(rec, indent=1)
 

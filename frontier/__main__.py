@@ -9,7 +9,7 @@ import sys
 
 from . import infra, llm
 from .agent import Agent, Run, load_role
-from .budget import read_json
+from .budget import read_json, write_json
 from .config import load_config
 from .tools import GROUPS, REGISTRY, t_api_docs
 
@@ -35,7 +35,7 @@ def cmd_run(a, cfg) -> int:
     (run.log_dir / "answer.md").write_text(answer + "\n")
     summary = {"run_id": run.run_id, "tokens": run.tokens, "sub_agents": run.agents, "main": agent.usage,
                "resources": run.resources}
-    (run.log_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")
+    write_json(run.log_dir / "summary.json", summary)
     print(answer)
     print(json.dumps(summary), file=sys.stderr)
     return 0
