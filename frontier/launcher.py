@@ -403,18 +403,25 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
             box.teardown()
             if dry_run:
                 print("\n".join(" ".join(c) for c in box.commands))
-        if not (state / "delivery.json").exists():
-            if run.alive() and not keep_resources and not dry_run:
-                print("cleanup: " + json.dumps(infra.cleanup(run)))
-            st = run.budget.status()
-            pubs = budget_mod.read_json(state / "publications.json", [])
-            (ws / "COSTS.md").write_text(mission.costs_markdown(st, run.budget.resources(), pubs))
-            print("not delivered; COSTS.md written")
-        else:
-            mission.final_costs(run, ws)  # what the harness spent after deliver, finishing its turn
-            commit(ws, "Delivery", ("delivery",))
-            print("delivered: " + (state / "delivery.json").read_text())
+        finish(run, ws, keep_resources or dry_run)
     return 0
+
+
+def finish(run: Run, ws: pathlib.Path, keep_resources: bool = False) -> None:
+    """The launcher's last step: delete what is still alive (after a delivery too: its cleanup may have left a deletion
+    unconfirmed or a volume attached, still billing), then write the final COSTS.md."""
+    state = run.log_dir
+    if run.alive() and not keep_resources:
+        print("cleanup: " + json.dumps(infra.cleanup(run)))
+    if (state / "delivery.json").exists():
+        mission.final_costs(run, ws)  # what the harness spent after deliver, finishing its turn
+        commit(ws, "Delivery", ("delivery",))
+        print("delivered: " + (state / "delivery.json").read_text())
+    else:
+        st = run.budget.status()
+        pubs = budget_mod.read_json(state / "publications.json", [])
+        (ws / "COSTS.md").write_text(mission.costs_markdown(st, run.budget.resources(), pubs))
+        print("not delivered; COSTS.md written")
 
 
 def _stop_reason(run: Run) -> str:
