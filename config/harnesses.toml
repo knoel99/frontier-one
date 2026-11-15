@@ -64,9 +64,9 @@ install = "curl -fsSL https://x.ai/cli/install.sh | bash"
 command = ["grok", "-p", "{prompt}", "-m", "{model}", "--effort", "{effort}", "--max-turns", "{max_turns}", "--always-approve", "--output-format", "json", "--no-auto-update"]
 effort = "provider"
 env = { XAI_API_KEY = "{key}" }
-# GROK_XAI_API_BASE_URL = "{gateway}/xai/v1" would route it, but Grok Build documents TLS-only connections: a plain
-# http gateway is UNCONFIRMED. Until checked, its spend comes from its usage report or the provider-side cap.
-route = {}
+# Routed through the metering gateway (plain http on loopback), checked live on 2026-11-15 with grok 1.0.77: the
+# gateway's charge matched xAI's own cost_in_usd_ticks (0.03017 USD).
+route = { GROK_XAI_API_BASE_URL = "{gateway}/xai/v1" }
 wire = "openai-chat"
 usage = "json-usage"
 
