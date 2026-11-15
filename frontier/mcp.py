@@ -65,7 +65,8 @@ def annotations(name: str) -> dict:
 WATCHDOG_S = 60
 # The harness has its own shell and file tools: the server exposes the rest.
 GROUPS = {"agents": ["spawn_agent", "frontier_plan", "frontier_roles"], **{k: v for k, v in TOOL_GROUPS.items() if k != "base"}}
-DEFAULT_GROUPS = "agents,infra,budget,hf,mission"
+DEFAULT_GROUPS = ",".join(GROUPS)
+SERVER_INFO = {"name": "frontier", "version": "0.3.0"}
 
 
 def _plan(cfg) -> str:
@@ -141,10 +142,10 @@ class Server:
             asked = msg.get("params", {}).get("protocolVersion")
             result = {"protocolVersion": asked if asked in SUPPORTED else PROTOCOL,
                       "capabilities": {"tools": {"listChanged": False}},
-                      "serverInfo": {"name": "frontier", "version": "0.3.0"}, "instructions": INSTRUCTIONS}
+                      "serverInfo": SERVER_INFO, "instructions": INSTRUCTIONS}
         elif method == "server/discover":
             result = {"supportedVersions": SUPPORTED, "capabilities": {"tools": {"listChanged": False}},
-                      "serverInfo": {"name": "frontier", "version": "0.3.0"}, "instructions": INSTRUCTIONS}
+                      "serverInfo": SERVER_INFO, "instructions": INSTRUCTIONS}
         elif method == "tools/list":
             result = {"tools": self.tool_specs()}
         elif method == "tools/call":

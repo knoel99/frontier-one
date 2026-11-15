@@ -6,7 +6,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 
-from .budget import now, parse_time
+from .budget import now, parse_time, read_jsonl
 
 WINDOW_MIN = 10  # rate of spend measured over the last minutes
 
@@ -47,7 +47,7 @@ def mission_status(ctx) -> str:
                        | {"last_log_lines": r["log_tail"].splitlines()[-5:]} for r in t["runners"]]
     out["sub_agents"] = [{k: r.get(k) for k in ("agent", "model", "effort", "status", "seconds", "calls", "usd", "task")}
                          for r in t["subagents"][:20]]
-    events = [json.loads(ln) for ln in (state / "events.jsonl").read_text().splitlines()] if (state / "events.jsonl").exists() else []
+    events = read_jsonl(state / "events.jsonl")
     calls = [e for e in events if e.get("event") == "mcp_call"]
     out["tool_calls"] = {"total": len(calls), "errors": sum(bool(e.get("error")) for e in calls),
                          "last_errors": [f"{e.get('tool')}: {str(e.get('output'))[:160]}" for e in calls if e.get("error")][-5:]}

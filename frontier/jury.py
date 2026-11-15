@@ -28,7 +28,7 @@ import subprocess
 import sys
 
 from . import llm
-from .budget import CLOUD_CURRENCY, Budget, parse_time
+from .budget import CLOUD_CURRENCY, Budget, parse_time, read_jsonl
 from .config import ROOT, load_config
 from .harnesses import HARNESSES
 from . import scoring
@@ -147,7 +147,7 @@ def facts(state: pathlib.Path) -> dict:
             models[e["gen_ai.request.model"]] = models.get(e["gen_ai.request.model"], 0) + 1
     rented = sum(b.cloud_spent(p) for p in CLOUD_CURRENCY)
     sim_cap = sum(float(caps[k]) for k, _, _ in CLOUD_CURRENCY.values() if caps.get(k))
-    events = [json.loads(ln) for ln in (state / "events.jsonl").read_text().splitlines()] if (state / "events.jsonl").exists() else []
+    events = read_jsonl(state / "events.jsonl")
     core_s = max([e.get("core_seconds", 0) for e in events if e.get("event") == "cpu_usage"], default=None)
     local_usd = (core_s / 3600 * cfg["limits"].get("local_cpu_usd_per_core_hour", 0)) if core_s is not None else None
     neutral_min = sum(float(e.get("minutes", 0)) for e in events if e.get("event") == "red_flag")

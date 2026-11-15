@@ -7,10 +7,10 @@ import json
 import pathlib
 import sys
 
-from . import catalog, infra, llm
+from . import infra, llm
 from .agent import Agent, Run, load_role
 from .config import load_config
-from .tools import DEFAULT_TOOLS, REGISTRY
+from .tools import DEFAULT_TOOLS, REGISTRY, t_api_docs
 
 
 def cmd_run(a, cfg) -> int:
@@ -80,12 +80,7 @@ def cmd_ping(a, cfg) -> int:
 
 
 def cmd_docs(a, cfg) -> int:
-    if a.action == "list":
-        print(catalog.overview())
-    elif a.action == "search":
-        print(catalog.search(" ".join(a.args), a.doc))
-    else:
-        print(catalog.show(a.args[0]))
+    print(t_api_docs(None, a.action, query=" ".join(a.args), id=(a.args or [""])[0], doc=a.doc))
     return 0
 
 
