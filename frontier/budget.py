@@ -71,6 +71,10 @@ def write_json(path: pathlib.Path, obj, indent: int | None = 1) -> None:
     tmp.replace(path)
 
 
+def read_json(path: pathlib.Path, default=None):
+    return json.loads(path.read_text()) if path.exists() else default
+
+
 def read_jsonl(path: pathlib.Path) -> list[dict]:
     if not path.exists():
         return []

@@ -9,6 +9,7 @@ import sys
 
 from . import infra, llm
 from .agent import Agent, Run, load_role
+from .budget import read_json
 from .config import load_config
 from .tools import DEFAULT_TOOLS, REGISTRY, t_api_docs
 
@@ -146,7 +147,7 @@ def cmd_harnesses(a, cfg) -> int:
 def cmd_reap(a, cfg) -> int:
     """Dead-man sweep of a mission or run state directory, e.g. from cron: */10 * * * * frontier reap <state>."""
     d = pathlib.Path(a.state)
-    settings = json.loads((d / "mission.json").read_text()) if (d / "mission.json").exists() else {}
+    settings = read_json(d / "mission.json", {})
     run = Run(cfg, workspace=settings.get("workspace", "."), log_dir=d, run_id=d.name, settings=settings)
     print(json.dumps(infra.reap(run), indent=1))
     return 0

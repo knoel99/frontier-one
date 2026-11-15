@@ -29,7 +29,7 @@ import subprocess
 import sys
 
 from . import llm
-from .budget import CLOUD_CURRENCY, Budget, parse_time, read_jsonl
+from .budget import CLOUD_CURRENCY, Budget, parse_time, read_json, read_jsonl
 from .config import ROOT, load_config
 from .harnesses import HARNESSES, McpCommand, artifacts
 from . import scoring
@@ -122,7 +122,7 @@ def deliverables(ws: pathlib.Path, state: pathlib.Path) -> dict[str, bool]:
     """The deliverables any mission asks for, whatever the discipline: present or not."""
     files = _tracked(ws)
     reports = report_files(ws) if ws.is_dir() else []
-    pubs = json.loads((state / "publications.json").read_text()) if (state / "publications.json").exists() else []
+    pubs = read_json(state / "publications.json", [])
     checklist = (ws / "CHECKLIST.md").exists() or any("checklist" in p.read_text(errors="replace").lower() for p in reports)
     return {"report": bool(reports), "code": any(x.endswith(CODE_EXT) for x in files),
             "DELIVERY.md": (ws / "DELIVERY.md").exists(), "DECISIONS.md": (ws / "DECISIONS.md").exists(),
@@ -153,7 +153,7 @@ def facts(state: pathlib.Path) -> dict:
     b = Budget(state)
     caps = b.caps
     start, deadline = parse_time(caps.get("start")), parse_time(caps.get("deadline"))
-    dv = json.loads((state / "delivery.json").read_text()) if (state / "delivery.json").exists() else None
+    dv = read_json(state / "delivery.json")
     models: dict[str, int] = {}
     for e in b.llm_entries():
         if e["frontier.source"] != "launcher":

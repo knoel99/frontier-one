@@ -15,7 +15,7 @@ import pathlib
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from .budget import Budget, now, parse_time, read_jsonl
+from .budget import Budget, now, parse_time, read_json, read_jsonl
 
 ROOT_DEFAULT = pathlib.Path.home() / ".frontier" / "missions"
 FEED = 300  # actions kept in the global feed
@@ -230,7 +230,7 @@ def team_state(d: pathlib.Path) -> dict:
     subs = subagents(events, llm, sessions)
     runners = runner_activity(d, b.resources(), at)
     jobs = [a for a in actions if a["kind"] == "tool" and a["text"].startswith(("rp_exec", "scw_create", "rp_create"))]
-    delivered = json.loads((d / "delivery.json").read_text()) if (d / "delivery.json").exists() else None
+    delivered = read_json(d / "delivery.json")
     return {"name": settings.get("name", d.name), "harness": settings.get("harness"), "provider": settings.get("provider"),
             "tier": settings.get("tier"), "reasoning": settings.get("reasoning"), "status": st, "tokens": tokens,
             "series": series, "alive": alive, "jobs": jobs[-10:], "running": running, "delivered": delivered,

@@ -325,7 +325,7 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     hf = m.get("huggingface", {})
     origin = credentials.load(m, cfg)  # every key under its standard name, from wherever the mission keeps it
     hf_env = credentials.services(cfg)["huggingface"].env
-    old_settings = json.loads((state / "mission.json").read_text()) if (state / "mission.json").exists() else {}
+    old_settings = budget_mod.read_json(state / "mission.json", {})
     # a port of its own per mission: missions prepared together would all find the same first free port
     own = 20000 + int(hashlib.sha256(str(state.resolve()).encode()).hexdigest(), 16) % 20000
     settings = {"gateway_port": old_settings.get("gateway_port") or _free_port(own), "name": m["mission"].get("name", "mission"),
@@ -493,7 +493,7 @@ def deliver(ctx, summary: str = "", force: bool = False) -> str:
                 "DELIVERY.md. Or call deliver(force=true) to deliver as it is (recorded).")
     cleaned = infra.cleanup(ctx.run)
     st = ctx.run.budget.status()
-    pubs = json.loads((state / "publications.json").read_text()) if (state / "publications.json").exists() else []
+    pubs = budget_mod.read_json(state / "publications.json", [])
     rec = {"delivered_at": st["time"], "elapsed_hours": st.get("elapsed_hours"), "deadline": st.get("deadline"),
            "llm_usd": st["llm"]["spent_usd"], "llm_cap_usd": st["llm"]["cap_usd"],
            "scaleway_eur": st["cloud"]["scaleway"]["spent"], "scaleway_cap_eur": st["cloud"]["scaleway"]["cap"],
@@ -519,7 +519,7 @@ def final_costs(run, ws: pathlib.Path) -> dict:
     the harness spent after deliver while finishing its turn."""
     state = run.log_dir
     st = run.budget.status()
-    pubs = json.loads((state / "publications.json").read_text()) if (state / "publications.json").exists() else []
+    pubs = budget_mod.read_json(state / "publications.json", [])
     (ws / "COSTS.md").write_text(costs_markdown(st, run.budget.resources(), pubs))
     rec = json.loads((state / "delivery.json").read_text())
     rec.update(final_llm_usd=st["llm"]["spent_usd"], llm_usd_after_delivery=st["llm"].get("after_delivery_usd", 0),
