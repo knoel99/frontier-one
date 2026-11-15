@@ -872,9 +872,36 @@ def test_raw_cloud_calls_cannot_create_outside_the_budget(run, monkeypatch):
     assert tools.t_runpod_mcp(ctx, "create-pod", {}).startswith("refused")
     assert tools.t_runpod_mcp(ctx, "deploy-hub-repo", {}).startswith("refused")
     assert len(called) == 1
-    assert tools.t_scaleway(ctx, "POST", "/instance/v1/zones/fr-par-2/servers/s1/action", {"action": "poweroff"}).startswith("HTTP")
+    s1, p1 = "11111111-1111-1111-1111-111111111111", "p1"  # the run's own server and pod
+    run.record({"provider": "scaleway", "kind": "instance", "id": s1, "volumes": [], "ips": []})
+    run.record({"provider": "runpod", "kind": "pod", "id": p1})
+    assert tools.t_scaleway(ctx, "POST", f"/instance/v1/zones/fr-par-2/servers/{s1}/action", {"action": "poweroff"}).startswith("HTTP")
     assert tools.t_scaleway(ctx, "POST", "/instance/v1/zones/fr-par-2/security_groups", {}).startswith("HTTP")  # not billed
-    assert tools.t_runpod_mcp(ctx, "delete-pod", {"id": "p"}) == "{}"
+    assert tools.t_runpod_mcp(ctx, "delete-pod", {"id": p1}) == "{}"
+
+
+def test_raw_cloud_calls_leave_alone_what_the_run_did_not_create(run, monkeypatch):
+    """Race check 2026-11-15: the teams of a race share the cloud accounts, and prompts/cloud.md states that resources
+    the run did not create are not touched; yet a raw `runpod_mcp delete-pod` or `scaleway DELETE .../servers/<id>`
+    went through for any id, and `pod-action start` billed a stopped pod outside the budget."""
+    run.allow_spend = True
+    called = []
+    monkeypatch.setattr(tools, "scw_raw", lambda *a, **k: called.append(a) or (200, "{}"))
+    monkeypatch.setattr(tools, "mcp_call", lambda *a, **k: called.append(a) or (True, "{}"))
+    ctx = agent_mod.Ctx(run, None)
+    run.budget.set_caps(scaleway_eur=10, runpod_usd=10)
+    other = "22222222-2222-2222-2222-222222222222"
+    for tool, args in (("delete-pod", {"id": "theirs"}), ("pod-action", {"id": "theirs", "action": "start"}),
+                       ("update-pod", {"id": "theirs"}), ("exec-pod", {"podId": "theirs", "command": ["ls"]}),
+                       ("delete-endpoint", {"id": "theirs"}), ("delete-network-volume", {"id": "theirs"})):
+        assert tools.t_runpod_mcp(ctx, tool, args).startswith("refused"), tool
+    for method, path in (("DELETE", f"/instance/v1/zones/fr-par-2/servers/{other}"),
+                         ("POST", f"/instance/v1/zones/fr-par-2/servers/{other}/action"),
+                         ("DELETE", f"/block/v1/zones/fr-par-2/volumes/{other}"), ("PATCH", f"/instance/v1/zones/fr-par-2/ips/{other}")):
+        assert tools.t_scaleway(ctx, method, path, {}).startswith("refused"), path
+    assert not called
+    assert tools.t_runpod_mcp(ctx, "list-pods", {}) == "{}"  # reading is not touching
+    assert tools.t_scaleway(ctx, "GET", f"/instance/v1/zones/fr-par-2/servers/{other}").startswith("HTTP")
 
 
 def test_a_sub_agent_call_is_charged_before_its_reservation_is_released(run, monkeypatch):

@@ -111,11 +111,29 @@ def _unmetered(ctx, provider: str, what: str) -> str | None:
             "rp_create_pod, which price it, reserve it and delete it at the end.")
 
 
+# Raw calls that change, run on or delete an existing billed resource: under a cloud budget, the run's own only (the
+# teams of a race share the accounts). Templates, security groups and the like are not billed and stay open.
+RUNPOD_ID_ARGS = ("id", "podId", "endpointId")
+SCW_BILLED_ID = re.compile(r"/(servers|ips|volumes|snapshots|images|deployments)/([0-9a-fA-F-]{36})")
+
+
+def _foreign(ctx, provider: str, ids: list[str]) -> str | None:
+    if not ids or ctx.run.budget.caps.get(budget.CLOUD_CURRENCY[provider][0]) is None:
+        return None
+    owned = {x for r in ctx.run.resources for x in [r["id"], *r.get("volumes", []), *r.get("ips", [])]}
+    if bad := [i for i in ids if i not in owned]:
+        return (f"refused: this run did not create {', '.join(bad)}; raw calls only change the run's own resources "
+                "(rp_delete_pod and scw_delete_instance take not_created_by_this_run=true when the task names one).")
+    return None
+
+
 def t_scaleway(ctx, method: str, path: str, body: dict | None = None, query: dict | None = None, raw_body: str = "",
                content_type: str = "") -> str:
     if method.upper() != "GET" and (g := infra._need_spend(ctx, f"{method} {path}")):
         return g
     if BILLED_SCALEWAY.search(op := catalog.operation(method, path)) and (g := _unmetered(ctx, "scaleway", op)):
+        return g
+    if method.upper() != "GET" and (g := _foreign(ctx, "scaleway", [m[1] for m in SCW_BILLED_ID.findall(path)])):
         return g
     code, text = scw_raw(method, path, raw_body or body, query, content_type)
     return f"HTTP {code}\n{text}"
@@ -125,6 +143,9 @@ def t_runpod_mcp(ctx, tool: str, arguments: dict | None = None) -> str:
     if tool not in catalog.read_only_mcp_tools() and tool != "describe-tool" and (g := infra._need_spend(ctx, f"Runpod MCP tool {tool}")):
         return g
     if tool in BILLED_RUNPOD and (g := _unmetered(ctx, "runpod", f"Runpod MCP tool {tool}")):
+        return g
+    if (tool not in catalog.read_only_mcp_tools() and not tool.endswith("-template")
+            and (g := _foreign(ctx, "runpod", [str(v) for k, v in (arguments or {}).items() if k in RUNPOD_ID_ARGS]))):
         return g
     ok, text = mcp_call(tool, arguments)
     return text if ok else "ERROR: " + text
