@@ -1183,3 +1183,29 @@ def test_costs_of_an_undelivered_mission_list_its_publications(tmp_path, cfg):
                                                        "url": "https://huggingface.co/datasets/team/data"}]))
     launcher.finish(agent_mod.Run(cfg, workspace=ws, log_dir=st), ws)
     assert "https://huggingface.co/datasets/team/data (dataset, private)" in (ws / "COSTS.md").read_text()
+
+
+def test_rp_upload_copies_a_workspace_directory_into_a_pod(tmp_path, monkeypatch):
+    """Level 3 run of 2026-11-15: with no way to send files to a runner, the AI pushed the repository as base64 in about
+    110 rp_exec calls, over Runpod's 4,096-character limit once. rp_upload is that flow, ready-made; here the pod's
+    exec-pod is played by a local shell, so the archive really goes through the commands sent."""
+    ws, pod = tmp_path / "ws", tmp_path / "pod"
+    (ws / "src" / ".git").mkdir(parents=True)
+    (ws / "src" / "a.py").write_text("print(6 * 7)\n" * 2000)  # several chunks
+    (ws / "src" / ".git" / "HEAD").write_text("ref\n")
+    sent = []
+
+    def exec_pod(tool, args):
+        cmd = args["body"]["command"][2]
+        sent.append(cmd)
+        p = subprocess.run(["sh", "-c", cmd], capture_output=True, text=True)
+        return {"exitCode": p.returncode, "stdout": p.stdout, "stderr": p.stderr}
+
+    monkeypatch.setattr(infra, "mcp_json", exec_pod)
+    monkeypatch.setattr(infra, "UPLOAD_CHUNK", 200)
+    run = agent_mod.Run(load_config(), workspace=ws, log_dir=tmp_path / "log")
+    out = json.loads(tools.REGISTRY["rp_upload"].fn(agent_mod.Ctx(run, None), "p", "src", str(pod)))
+    assert (pod / "src" / "a.py").read_text() == "print(6 * 7)\n" * 2000 and not (pod / "src" / ".git").exists()
+    assert out["calls"] == len(sent) > 3 and max(len(c) for c in sent) < 4096
+    with pytest.raises(PermissionError):
+        tools.REGISTRY["rp_upload"].fn(agent_mod.Ctx(run, None), "p", "../outside", str(pod))

@@ -1,6 +1,6 @@
 # Cloud infrastructure
 
-- Ready-made functions: `scw_offers`, `scw_create_instance`, `scw_instance`, `scw_list_instances`, `scw_delete_instance`, `rp_offers`, `rp_create_pod`, `rp_pod`, `rp_list_pods`, `rp_exec`, `rp_logs`, `rp_delete_pod`, `infra_resources`, `infra_cleanup`. They handle prices, images, polling and leftover volumes; their output comes from the live APIs.
+- Ready-made functions: `scw_offers`, `scw_create_instance`, `scw_instance`, `scw_list_instances`, `scw_delete_instance`, `rp_offers`, `rp_create_pod`, `rp_pod`, `rp_list_pods`, `rp_exec`, `rp_upload`, `rp_logs`, `rp_delete_pod`, `infra_resources`, `infra_cleanup`. They handle prices, images, polling and leftover volumes; their output comes from the live APIs.
 - Anything else: the operation's signature is in the catalog (`api_docs` search, then show); call it with `scaleway` or `runpod_mcp`. Under a cloud budget, a raw call that starts something billed (a server, an IP, a volume, a snapshot, an image, a pod, an endpoint, a deployment, a job run) is refused: only the ready-made functions price it and put it in the ledger. A raw call that changes, runs on or deletes a pod, endpoint, volume, server, IP, snapshot, image or deployment the run did not create is refused.
 - Authentication is handled by the tools; keys are never printed, written or asked for.
 - Spending (creating, changing or deleting a resource) is {{spend}}.

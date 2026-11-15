@@ -202,6 +202,10 @@ register("rp_list_pods", "All Runpod pods of the account.", _obj({}), infra.rp_l
 register("rp_exec", "Run a shell command inside a RUNNING pod (no SSH); waits at most 25 s; a longer command keeps "
          "running: start it with nohup … & and poll its output file.",
          _obj({"pod_id": S, "command": S, "timeout_s": I}, ["pod_id", "command"]), infra.rp_exec)
+register("rp_upload", "Copy a workspace file or directory (without .git) into a RUNNING pod under dest (default "
+         "/workspace): compressed, sent in chunks, its SHA-256 checked on the pod. Up to 2 MB compressed.",
+         _obj({"pod_id": S, "path": S, "dest": S}, ["pod_id", "path"]),
+         lambda ctx, pod_id, path, dest="/workspace": infra.rp_upload(ctx, pod_id, _path(ctx, path), dest))
 register("rp_logs", "Last lines of a pod's container and system logs.", _obj({"pod_id": S, "tail": I}, ["pod_id"]), infra.rp_logs)
 register("rp_delete_pod", "Delete a Runpod pod (stops billing). Only pods of this run unless not_created_by_this_run=true.",
          _obj({"pod_id": S, "not_created_by_this_run": B}, ["pod_id"]), infra.rp_delete_pod)
@@ -256,7 +260,7 @@ register("runpod_mcp", "Raw call of a Runpod MCP server tool (125 tools: pods, s
 
 BASE_TOOLS = ["shell", "read_file", "write_file", "edit_file", "http_request", "spawn_agent"]
 INFRA_TOOLS = ["scw_offers", "scw_create_instance", "scw_instance", "scw_list_instances", "scw_delete_instance",
-               "rp_offers", "rp_create_pod", "rp_pod", "rp_list_pods", "rp_exec", "rp_logs", "rp_delete_pod",
+               "rp_offers", "rp_create_pod", "rp_pod", "rp_list_pods", "rp_exec", "rp_upload", "rp_logs", "rp_delete_pod",
                "infra_resources", "infra_cleanup", "api_docs", "scaleway", "runpod_mcp"]
 GROUPS = {"base": BASE_TOOLS, "infra": INFRA_TOOLS, "budget": ["mission_status", "budget_status"], "hf": ["hf_whoami", "hf_publish"],
           "mission": ["deliver"]}

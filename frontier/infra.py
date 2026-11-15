@@ -8,8 +8,13 @@ deleted at the end of the run; they only delete resources of that ledger unless 
 
 from __future__ import annotations
 
+import base64
 import datetime as dt
+import hashlib
+import io
 import json
+import pathlib
+import tarfile
 import time
 
 from .budget import now, parse_time
@@ -329,6 +334,42 @@ def rp_exec(ctx, pod_id: str, command: str, timeout_s: int = 20) -> str:
                + (", still running" if out.get("timedOut") else "") + f"): {command}",
                (out.get("stdout") or "") + ("\n--- stderr\n" + out["stderr"] if out.get("stderr") else ""))
     return _j(r)
+
+
+UPLOAD_CHUNK = 3000  # base64 characters per exec-pod call: Runpod refuses a command over 4,096 characters
+UPLOAD_MAX = 2 * 2**20  # compressed bytes: beyond that, a Hugging Face dataset or a git clone on the pod is faster
+
+
+def rp_upload(ctx, pod_id: str, path, dest: str = "/workspace") -> str:
+    """Copy a workspace file or directory (without .git) into a running pod, under `dest`, through exec-pod: one
+    tar.gz in base64 chunks, its SHA-256 checked on the pod before it is extracted. `path` is already confined."""
+    path = pathlib.Path(path)
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        tar.add(path, arcname=path.name, filter=lambda t: None if ".git" in pathlib.PurePath(t.name).parts else t)
+    data = buf.getvalue()
+    if len(data) > UPLOAD_MAX:
+        return (f"refused: {len(data)} bytes compressed, over {UPLOAD_MAX}: publish it (hf_publish) or clone it on the pod "
+                "with rp_exec instead")
+    digest = hashlib.sha256(data).hexdigest()
+    b64, stage = base64.b64encode(data).decode(), f"/tmp/frontier-upload-{digest[:12]}"
+
+    def run(cmd: str) -> dict:
+        r = mcp_json("exec-pod", {"id": pod_id, "body": {"command": ["sh", "-c", cmd], "timeoutSeconds": 25}})
+        if not isinstance(r, dict) or r.get("exitCode") != 0:
+            raise APIError(f"upload step failed: {_j(r)[:500]}")
+        return r
+
+    run(f": > {stage}.b64")
+    for i in range(0, len(b64), UPLOAD_CHUNK):
+        run(f"printf %s '{b64[i:i + UPLOAD_CHUNK]}' >> {stage}.b64")
+    out = run(f"base64 -d {stage}.b64 > {stage}.tgz && sha256sum {stage}.tgz && mkdir -p '{dest}' "
+              f"&& tar -xzf {stage}.tgz -C '{dest}' && rm -f {stage}.b64 {stage}.tgz")
+    if digest not in (out.get("stdout") or ""):
+        raise APIError(f"upload corrupted on the pod: expected sha256 {digest}, got {out.get('stdout', '')[:100]}")
+    calls = 2 + -(-len(b64) // UPLOAD_CHUNK)
+    runner_log(ctx.run, pod_id, f"upload: {path.name} -> {dest}/{path.name}", f"{len(data)} bytes, sha256 {digest}, {calls} calls")
+    return _j({"uploaded": f"{dest.rstrip('/')}/{path.name}", "bytes": len(data), "sha256": digest, "calls": calls})
 
 
 def rp_logs(ctx, pod_id: str, tail: int = 200) -> str:
