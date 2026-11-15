@@ -60,6 +60,29 @@ def test_reservations_and_tamper_evident_ledger(tmp_path):
     assert b.verify()["llm.jsonl"] == "broken at line 2"
 
 
+def test_a_ledger_cut_at_its_end_does_not_verify(tmp_path):
+    """Left open on 2026-11-15: each line carries the hash of the one before, which says nothing of the lines after the
+    last one kept; a ledger without its last calls verified, and showed a smaller spend."""
+    b = budget.Budget(tmp_path)
+    for i in range(4):
+        b.charge_llm("t", "a", "openai", "gpt-6-luna", {"input": 10 * (i + 1), "output": 1})
+    ledger = tmp_path / "llm.jsonl"
+    whole = ledger.read_text()
+    lines = whole.splitlines()
+    ledger.write_text("\n".join(lines[:2]) + "\n")
+    assert b.verify()["llm.jsonl"] == "cut: 2 lines, its head records 4"
+    ledger.write_text(whole)
+    assert b.verify()["llm.jsonl"] is True
+    with open(ledger, "a") as f:  # a process killed between the line and its head: the ledger is one line ahead
+        entry = {"t": "x", "frontier.cost.usd": 0.0, "prev": json.loads(lines[-1])["hash"]}
+        f.write(json.dumps({**entry, "hash": budget._digest(entry["prev"], entry)}) + "\n")
+    assert b.verify()["llm.jsonl"] is True
+    b.charge_llm("t", "a", "openai", "gpt-6-luna", {"input": 1, "output": 1})  # the next line brings the head up to date
+    assert b.verify()["llm.jsonl"] is True
+    ledger.write_text("\n".join(ledger.read_text().splitlines()[:5]) + "\n")
+    assert b.verify()["llm.jsonl"] == "cut: 5 lines, its head records 6"
+
+
 def test_cloud_budget_counts_spent_committed_and_new(tmp_path):
     b = budget.Budget(tmp_path)
     b.set_caps(runpod_usd=10.0)
