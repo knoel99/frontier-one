@@ -156,9 +156,11 @@ class Budget:
         return json.loads(f.read_text()) if f.exists() else {}
 
     def set_caps(self, **caps) -> None:
-        merged = {**self.caps, **{k: v for k, v in caps.items() if v is not None}}
-        merged.setdefault("start", now().isoformat(timespec="seconds"))
-        write_json(self.dir / "budgets.json", merged)
+        with open(self.dir / ".budgets.lock", "w") as lock:  # read, merge, write: two callers never lose an update
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            merged = {**self.caps, **{k: v for k, v in caps.items() if v is not None}}
+            merged.setdefault("start", now().isoformat(timespec="seconds"))
+            write_json(self.dir / "budgets.json", merged)
 
     # ------------------------------------------------------------ LLM
     # Entries use the OpenTelemetry GenAI attribute names (gen_ai.*) plus frontier.* ones, and form a hash chain:
