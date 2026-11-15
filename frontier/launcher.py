@@ -263,13 +263,12 @@ def open_gateway(state: pathlib.Path, s: dict, h: dict):
         print("this harness cannot be routed through the gateway: its main-thread spend comes from its own usage "
               "report when it gives one (config/harnesses.toml `usage`)")
         return None, None
-    mm = model_map(s, h)
+    start = lambda port: serve(str(state), port, agent=f"harness:{s['harness']}", model_map=model_map(s, h),
+                               providers=s.get("providers"))
     try:
-        gw = serve(str(state), s.get("gateway_port", 0), agent=f"harness:{s['harness']}", model_map=mm,
-                   providers=s.get("providers"))
+        gw = start(s.get("gateway_port", 0))
     except OSError:  # the port chosen at preparation is taken: harnesses configured by file will miss the gateway
-        gw = serve(str(state), 0, agent=f"harness:{s['harness']}", model_map=mm,
-                   providers=s.get("providers"))
+        gw = start(0)
         print(f"warning: port {s.get('gateway_port')} busy, gateway on {gw.server_address[1]}")
     gateway = f"http://127.0.0.1:{gw.server_address[1]}"
     print(f"metering gateway {gateway}")

@@ -23,11 +23,6 @@ from frontier import budget, gateway, hf, infra, launcher, llm, mcp, mission, sa
 from frontier.config import load_config
 
 
-@pytest.fixture
-def run(cfg, tmp_path):
-    return agent_mod.Run(cfg, workspace=tmp_path / "ws", log_dir=tmp_path / "log")
-
-
 # ---------------------------------------------------------------- gateway
 
 
@@ -1014,3 +1009,18 @@ def test_parallel_publications_are_all_recorded(tmp_path, cfg, monkeypatch):
     for t in threads:
         t.join()
     assert sorted(p["repo_id"] for p in budget.read_json(r.log_dir / "publications.json")) == ["me/a", "me/b"]
+
+
+def test_the_gateway_moves_to_a_free_port_when_its_own_is_taken(tmp_path):
+    import socket
+
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", 0))
+        busy.listen()
+        port = busy.getsockname()[1]
+        s = {"harness": "codex", "provider": "openai", "providers": ["openai"], "gateway_port": port}
+        gw, url = launcher.open_gateway(tmp_path, s, {"route": {"OPENAI_BASE_URL": "{gateway}/openai/v1"}})
+        try:
+            assert gw.server_address[1] != port and url == f"http://127.0.0.1:{gw.server_address[1]}"
+        finally:
+            gw.shutdown()

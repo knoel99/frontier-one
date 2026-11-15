@@ -11,6 +11,7 @@ provider needs replayed on the next turn (reasoning_content, Gemini thought sign
 
 from __future__ import annotations
 
+import copy
 import http.client
 import json
 import os
@@ -85,7 +86,7 @@ def resolve(cfg: dict, provider: str, tier: str, reasoning: str, mode: str = "")
             break
     if value is None:  # nothing at or below: take the lowest available (and turn thinking off for "none")
         value = next((rmap[lvl] for lvl in LEVELS if lvl in rmap), None)
-    extra = json.loads(json.dumps(p.get("extra", {})))
+    extra = _merge({}, p.get("extra", {}))
     price_x = 1.0
     model = tiers[used_tier]
     if mode and mode != "standard":
@@ -96,7 +97,7 @@ def resolve(cfg: dict, provider: str, tier: str, reasoning: str, mode: str = "")
         allowed = m.get("models") or list(m.get("model", {}))
         if allowed and model not in allowed:
             raise LLMError(f"mode {mode!r} of {provider} applies to {', '.join(allowed)}, not {model}")
-        _merge(extra, json.loads(json.dumps(m.get("body", {}))))
+        _merge(extra, m.get("body", {}))
         price_x = float(m.get("price_x", 1.0))
         model = m.get("model", {}).get(model, model)  # a speed variant that is a separate model
     else:
@@ -127,11 +128,12 @@ def _set_path(body: dict, dotted: str, value) -> None:
 
 
 def _merge(dst: dict, src: dict) -> dict:
+    """Merge `src` into `dst`, nested dicts included; `dst` never shares a value with `src` (the config stays as read)."""
     for k, v in src.items():
         if isinstance(v, dict) and isinstance(dst.get(k), dict):
             _merge(dst[k], v)
         else:
-            dst[k] = v
+            dst[k] = copy.deepcopy(v)
     return dst
 
 
@@ -303,7 +305,7 @@ def _chat_openai(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
     if tools:
         body["tools"] = [{"type": "function", "function": t} for t in tools]
     body["max_tokens"] = max_tokens
-    _merge(body, json.loads(json.dumps(spec.extra)))
+    _merge(body, spec.extra)
     if spec.reasoning == "none" and "thinking" in body:
         body["thinking"] = {"type": "disabled"}
     elif spec.effort_value is not None and spec.effort_field:
@@ -360,7 +362,7 @@ def _chat_responses(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
     if tools:
         body["tools"] = [{"type": "function", "name": t["name"], "description": t["description"],
                           "parameters": t["parameters"]} for t in tools]
-    _merge(body, json.loads(json.dumps(spec.extra)))
+    _merge(body, spec.extra)
     if spec.effort_value is not None and spec.effort_field:
         _set_path(body, spec.effort_field, spec.effort_value)
     body["stream"] = True  # see _post_sse
@@ -420,7 +422,7 @@ def _chat_gemini(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
         body["tools"] = [{"functionDeclarations": [
             {"name": t["name"], "description": t["description"], "parameters": _gemini_schema(t["parameters"])}
             for t in tools]}]
-    _merge(body, json.loads(json.dumps(spec.extra)))
+    _merge(body, spec.extra)
     if spec.effort_value is not None and spec.effort_field:
         _set_path(body, spec.effort_field, spec.effort_value)
     if "thinkingConfig" in body.get("generationConfig", {}):  # thought summaries stream while the model thinks; without
@@ -464,7 +466,7 @@ def _chat_anthropic(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
         body["system"] = system
     if tools:
         body["tools"] = [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]} for t in tools]
-    _merge(body, json.loads(json.dumps(spec.extra)))  # the speed mode's fields too: they are billed (price_x)
+    _merge(body, spec.extra)  # the speed mode's fields too: they are billed (price_x)
     if spec.reasoning == "none":
         body.pop("thinking", None)
     elif spec.effort_value is not None and spec.effort_field:

@@ -10,11 +10,6 @@ from frontier import agent as agent_mod
 from frontier import catalog, http, infra, llm, tools
 
 
-@pytest.fixture
-def run(cfg, tmp_path):
-    return agent_mod.Run(cfg, workspace=tmp_path, log_dir=tmp_path / "log")
-
-
 # ---------------------------------------------------------------- resolve
 
 
@@ -389,3 +384,13 @@ def test_runpod_mcp_answers_in_json_or_server_sent_events(monkeypatch):
     assert http.mcp_rpc("tools/list")["result"]["tools"][0]["name"] == "list-pods"
     monkeypatch.setattr(http, "request", lambda *a, **kw: (502, "bad gateway"))
     assert http.mcp_call("list-pods") == (False, "HTTP 502 bad gateway")
+
+
+def test_a_request_body_never_shares_a_value_with_the_config(cfg):
+    """The speed mode's and `extra` fields are merged into every request: a body edited later must not edit them."""
+    spec = llm.resolve(cfg, "openai", "frontier", "high")
+    spec.extra = {"text": {"verbosity": "low"}, "tags": ["a"]}
+    body = llm._merge({}, spec.extra)
+    body["text"]["verbosity"] = "high"
+    body["tags"].append("b")
+    assert spec.extra == {"text": {"verbosity": "low"}, "tags": ["a"]}
