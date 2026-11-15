@@ -340,9 +340,12 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serve(state: str, port: int = 0, extra_routes: dict[str, str] | None = None, agent: str = "harness",
-          model_map: dict[str, str] | None = None) -> Gateway:
+          model_map: dict[str, str] | None = None, providers: list[str] | None = None) -> Gateway:
+    """`providers`: when given, only their routes are served (a mission's harness reaches no other provider)."""
     cfg = load_config()
     routes = routes_from_config(cfg)
+    if providers:
+        routes = {k: v for k, v in routes.items() if v[1] in providers}
     for name, url in (extra_routes or {}).items():
         u = urllib.parse.urlsplit(url)
         routes[name] = (f"{u.scheme}://{u.netloc}", name.split("-")[0])

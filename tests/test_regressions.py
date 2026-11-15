@@ -453,3 +453,19 @@ def test_gateway_remaps_a_hard_wired_helper_model():
     _, body = remap("/v1/chat/completions", b'{"model": "gemini-3.8-flash"}', mm)
     assert json.loads(body)["model"] == "gemini-4-hydrogen"
     assert remap("/x", b"not json", mm) == ("/x", b"not json")
+
+
+def test_gateway_serves_only_the_mission_providers(tmp_path):
+    from frontier.gateway import serve
+    gw = serve(str(tmp_path), 0, providers=["google"])
+    try:
+        assert set(gw.routes) == {"google"}
+        u = f"http://127.0.0.1:{gw.server_address[1]}/deepseek/v1/chat/completions"
+        req = urllib.request.Request(u, data=b"{}", method="POST")
+        try:
+            urllib.request.urlopen(req, timeout=10)
+            raise AssertionError("a route of another provider was served")
+        except urllib.error.HTTPError as e:
+            assert e.code == 404
+    finally:
+        gw.shutdown()

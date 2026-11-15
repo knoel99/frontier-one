@@ -70,6 +70,8 @@ env = { XAI_API_KEY = "{key}" }
 # Routed through the metering gateway (plain http on loopback), checked live on 2026-11-15 with grok 1.0.77: the
 # gateway's charge matched xAI's own cost_in_usd_ticks (0.03017 USD).
 route = { GROK_XAI_API_BASE_URL = "{gateway}/xai/v1" }
+# Grok Build calls grok-4.6 by itself for small helper calls (3 of 50 in the race, 2026-11-15), whatever -m says.
+model_map = { "grok-4.6" = "frontier" }
 wire = "openai-chat"
 usage = "json-usage"
 
