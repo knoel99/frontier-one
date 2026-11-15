@@ -688,3 +688,26 @@ def test_jury_work_no_judge_could_grade_is_not_graded_rather_than_zero():
     res = aggregate(teams, 0.0)
     assert res["teams"]["x"]["final"] is None and res["teams"]["x"]["rank"] is None
     assert res["teams"]["y"]["final"] == 0.0 and res["teams"]["y"]["rank"] == 1
+
+
+def test_a_slow_server_failure_is_not_retried(monkeypatch):
+    """Race jury 2026-11-15: a proxy cut calls at 180 s and every one was retried 4 times, each billed by the provider."""
+    real_time = llm.time.time  # the module's own function, kept before it is patched
+    calls = []
+
+    def slow_502(req, timeout=0):
+        calls.append(1)
+        raise urllib.error.HTTPError(req.full_url, 502, "upstream request failed", {}, io.BytesIO(b"cut"))
+
+    clock = iter([0.0, 200.0] * 10)
+    monkeypatch.setattr(llm.time, "time", lambda: next(clock))
+    monkeypatch.setattr(llm.time, "sleep", lambda s: None)
+    monkeypatch.setattr(llm.urllib.request, "urlopen", slow_502)
+    with pytest.raises(llm.LLMError):
+        llm._post("https://x/y", {}, {})
+    assert len(calls) == 1
+    calls.clear()
+    monkeypatch.setattr(llm.time, "time", real_time)
+    with pytest.raises(llm.LLMError):
+        llm._post("https://x/y", {}, {}, retries=2)
+    assert len(calls) == 3  # a fast failure is still retried

@@ -137,21 +137,32 @@ def _key(spec: ModelSpec) -> str:
     return os.environ.get(spec.key_env) or PROXY_PLACEHOLDER
 
 
+SLOW_FAILURE_S = 30  # a failure after this long: the provider most likely processed (and billed) the request
+
+
+def _maybe_billed(code: int, t0: float) -> bool:
+    """A server error or cut connection after a long wait means the provider probably ran the request (a proxy cut it
+    at 180 s on 2026-11-15 while the model kept generating); retrying would pay for it again, unseen by the ledger.
+    429 (refused before any work) is always worth a retry."""
+    return code != 429 and time.time() - t0 > SLOW_FAILURE_S
+
+
 def _post(url: str, headers: dict, body: dict, timeout: float = 600, retries: int = 4) -> dict:
     data = json.dumps(body).encode()
     for attempt in range(retries + 1):
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **headers})
+        t0 = time.time()
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return json.loads(r.read())
         except urllib.error.HTTPError as e:
             text = e.read().decode(errors="replace")[:2000]
-            if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries:
+            if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries and not _maybe_billed(e.code, t0):
                 time.sleep(min(60, 2 ** (attempt + 1)))
                 continue
             raise LLMError(f"HTTP {e.code} from {url}: {text}") from None
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
-            if attempt < retries:
+            if attempt < retries and not _maybe_billed(0, t0):
                 time.sleep(min(60, 2 ** (attempt + 1)))
                 continue
             raise LLMError(f"network error on {url}: {e}") from None
@@ -166,6 +177,7 @@ def _post_sse(url: str, headers: dict, body: dict, timeout: float = 600, retries
     for attempt in range(retries + 1):
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json",
                                                               "Accept": "text/event-stream", **headers})
+        t0 = time.time()
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 events = []
@@ -179,12 +191,12 @@ def _post_sse(url: str, headers: dict, body: dict, timeout: float = 600, retries
                 return events
         except urllib.error.HTTPError as e:
             text = e.read().decode(errors="replace")[:2000]
-            if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries:
+            if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries and not _maybe_billed(e.code, t0):
                 time.sleep(min(60, 2 ** (attempt + 1)))
                 continue
             raise LLMError(f"HTTP {e.code} from {url}: {text}") from None
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
-            if attempt < retries:
+            if attempt < retries and not _maybe_billed(0, t0):
                 time.sleep(min(60, 2 ** (attempt + 1)))
                 continue
             raise LLMError(f"network error on {url}: {e}") from None
