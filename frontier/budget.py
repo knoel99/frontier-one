@@ -219,8 +219,7 @@ class Budget:
         caps = self.caps
         if caps.get("frozen"):  # after delivery: a small grace lets the harness finish its turn, spend still recorded
             after = self.llm_spent() - caps.get("frozen_llm_usd", 0)
-            grace = caps.get("grace_usd", POST_DELIVERY_GRACE_USD)
-            if after + extra > grace:
+            if after + extra > POST_DELIVERY_GRACE_USD:
                 return False, "the mission is delivered: spend is frozen"
             return True, ""
         cap = caps.get("llm_usd")

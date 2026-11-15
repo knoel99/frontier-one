@@ -385,7 +385,7 @@ def infra_cleanup(ctx) -> str:
 def enforce(run) -> list[dict]:
     """Delete what overran its max_hours, and every resource of a provider whose budget is spent. Called by the
     watchdog of long-lived processes (MCP server, gateway) and before every budget report."""
-    from .budget import CLOUD_CURRENCY, now
+    from .budget import CLOUD_CURRENCY
 
     done = []
     at = now()

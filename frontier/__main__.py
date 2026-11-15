@@ -150,8 +150,6 @@ def cmd_harnesses(a, cfg) -> int:
 
 def cmd_reap(a, cfg) -> int:
     """Dead-man sweep of a mission or run state directory, e.g. from cron: */10 * * * * frontier reap <state>."""
-    from . import infra
-
     d = pathlib.Path(a.state)
     settings = json.loads((d / "mission.json").read_text()) if (d / "mission.json").exists() else {}
     run = Run(cfg, workspace=settings.get("workspace", "."), log_dir=d, run_id=d.name, settings=settings)
@@ -163,7 +161,6 @@ def cmd_cleanup(a, cfg) -> int:
     """Delete what a finished or crashed run left alive, from its runs/<id>/resources.json."""
     d = pathlib.Path(a.run_dir)
     run = Run(cfg, workspace=".", log_dir=d, run_id=d.name)
-    run.resources = json.loads((d / "resources.json").read_text())
     print(json.dumps(infra.cleanup(run), indent=1))
     return 0
 

@@ -35,7 +35,6 @@ from . import scoring
 from .mission import report_files
 
 CRITERIA = ("scientific_quality", "artifacts", "efficiency")
-LABELS = {"scientific_quality": "Scientific quality", "artifacts": "Code and data", "efficiency": "Efficiency"}
 RECORDS = ("DELIVERY.md", "COMPLIANCE.md", "CHECKLIST.md", "DECISIONS.md")
 MAX_DOC = 30_000  # characters of one record in a judge's file
 MAX_RESULTS = 120_000  # characters of small result files in a judge's file
@@ -370,10 +369,10 @@ def _num(v) -> str:
     return "not graded" if v is None else f"{v:g}"
 
 
-def markdown(res: dict, title: str = "Jury of the race") -> str:
+def markdown(res: dict) -> str:
     t = res["teams"]
     w = res["weights"]
-    lines = [f"# {title}", "",
+    lines = ["# Jury of the race", "",
              f"Final score = {w['scientific_quality']:g} % scientific quality + {w['artifacts']:g} % code and data + "
              f"{w['efficiency']:g} % efficiency, minus the stewards' penalties (frontier/scoring.py). Scientific quality "
              "and code and data are graded by the jury on anonymous files, on absolute logarithmic scales; efficiency is "

@@ -43,9 +43,9 @@ def routes_from_config(cfg: dict) -> dict[str, tuple[str, str]]:
     return out
 
 
-def base_url_for(port: int, provider: str, cfg: dict, upstream: str = "") -> str:
+def base_url_for(port: int, provider: str, cfg: dict) -> str:
     """The URL to give the harness in place of the provider's base URL (same path, local origin)."""
-    path = urllib.parse.urlsplit(upstream or cfg["providers"][provider]["base_url"]).path.rstrip("/")
+    path = urllib.parse.urlsplit(cfg["providers"][provider]["base_url"]).path.rstrip("/")
     return f"http://127.0.0.1:{port}/{provider}{path}"
 
 
@@ -303,7 +303,6 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Connection", "close")
             self.end_headers()
             self.close_connection = True
-            buf = b""
             while True:
                 chunk = resp.readline()
                 if not chunk:

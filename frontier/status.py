@@ -11,10 +11,6 @@ from .budget import now, parse_time
 WINDOW_MIN = 10  # rate of spend measured over the last minutes
 
 
-def _hours(a, b) -> float:
-    return max((b - a).total_seconds() / 3600, 0.0)
-
-
 def mission_status(ctx) -> str:
     from . import infra
     from .dashboard import team_state
