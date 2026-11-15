@@ -14,12 +14,6 @@ import pytest
 
 from frontier import budget, gateway, harnesses, hf, infra, launcher, llm, mission
 from frontier.agent import Ctx, Run
-from frontier.config import load_config
-
-
-@pytest.fixture
-def cfg():
-    return load_config()
 
 
 # ---------------------------------------------------------------- budget

@@ -7,8 +7,15 @@ import os
 
 import pytest
 
+from frontier.config import load_config
+
 
 @pytest.fixture(autouse=True)
 def _outside_any_mission(monkeypatch):
     for name in [n for n in os.environ if n.startswith("FRONTIER_")]:
         monkeypatch.delenv(name)
+
+
+@pytest.fixture
+def cfg():
+    return load_config()
