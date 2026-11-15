@@ -18,7 +18,6 @@ command = ["claude", "-p", "{prompt}", "--model", "{model}", "--effort", "{effor
 effort = "level"
 env = { ANTHROPIC_API_KEY = "{key}", MCP_TOOL_TIMEOUT = "3600000", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1" }
 route = { ANTHROPIC_BASE_URL = "{gateway}/anthropic" }
-wire = "anthropic"
 usage = "json:total_cost_usd"
 goal = "/goal"   # headless goal loop, judged after each turn (code.claude.com/docs/en/goal)
 
@@ -37,7 +36,6 @@ route = {}
 # Codex ignores OPENAI_BASE_URL for its built-in provider: a custom provider pointing at the gateway (checked
 # 2026-11-14 with Codex 0.169.0: the gateway metered the session).
 route_args = ["-c", "model_providers.frontier.name=\"frontier-gateway\"", "-c", "model_providers.frontier.base_url=\"{gateway}/openai/v1\"", "-c", "model_providers.frontier.env_key=\"OPENAI_API_KEY\"", "-c", "model_providers.frontier.wire_api=\"responses\"", "-c", "model_providers.frontier.supports_websockets=false", "-c", "model_provider=\"frontier\""]
-wire = "openai-responses"
 usage = "jsonl:turn.completed"
 
 [antigravity]
@@ -50,7 +48,6 @@ route = { GOOGLE_GEMINI_BASE_URL = "{gateway}/google" }   # antigravity.google/d
 # Its safety monitor calls a model hard-wired in the binary (MODEL_TIER_FLASH, seen in its log 2026-11-15) whatever
 # --model says; it sends the whole trajectory each turn. The gateway sends those calls to the team's light tier.
 model_map = { "gemini-3.8-flash" = "light" }
-wire = "gemini"
 usage = "json-usage"
 
 [gemini]
@@ -59,7 +56,6 @@ command = ["gemini", "-p", "{prompt}", "-m", "{model}", "--approval-mode=yolo", 
 effort = "provider"
 env = { GEMINI_API_KEY = "{key}" }
 route = { GOOGLE_GEMINI_BASE_URL = "{gateway}/google" }
-wire = "gemini"
 usage = "json-usage"
 
 [grok]
@@ -72,7 +68,6 @@ env = { XAI_API_KEY = "{key}" }
 route = { GROK_XAI_API_BASE_URL = "{gateway}/xai/v1" }
 # Grok Build calls grok-4.6 by itself for small helper calls (3 of 50 in the race, 2026-11-15), whatever -m says.
 model_map = { "grok-4.6" = "frontier" }
-wire = "openai-chat"
 usage = "json-usage"
 
 [kimi]
@@ -82,7 +77,6 @@ effort = "provider"
 env = { KIMI_MODEL_NAME = "{model}", KIMI_MODEL_THINKING_EFFORT = "{effort}", KIMI_MODEL_API_KEY = "{key}", KIMI_MODEL_PROVIDER_TYPE = "kimi", KIMI_CODE_TRUST_WORKSPACE = "1" }
 route = { KIMI_MODEL_BASE_URL = "{gateway}/moonshot/v1" }
 default_base_url = { KIMI_MODEL_BASE_URL = "https://api.moonshot.ai/v1" }
-wire = "openai-chat"
 usage = ""
 goal = "/goal"   # exit codes 0 completed, 3 blocked, 6 paused (kimi-code-cli slash commands)
 
@@ -93,7 +87,6 @@ effort = "provider"
 env = { OPENAI_API_KEY = "{key}", OPENAI_MODEL = "{model}", QWEN_CODE_SUPPRESS_YOLO_WARNING = "1" }
 route = { OPENAI_BASE_URL = "{gateway}/alibaba/compatible-mode/v1" }
 default_base_url = { OPENAI_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" }
-wire = "openai-chat"
 usage = "json-usage"
 goal = "/goal"   # enforced goalTokenBudget / goalMaxTurns (qwen-code-docs features/goals)
 
@@ -105,7 +98,6 @@ env = { MISTRAL_API_KEY = "{key}" }
 # Vibe routes only through [[providers]] api_base in ~/.vibe/config.toml (docs.mistral.ai/vibe configuration
 # reference): not written by the launcher, to leave the user's config alone.
 route = {}
-wire = "openai-chat"
 usage = "json-usage"
 
 [dsh]
@@ -114,7 +106,6 @@ command = ["dsh", "--profile", "headless", "--patch", "{workspace}/.dsh/frontier
 effort = "provider"
 env = { DEEPSEEK_API_KEY = "{key}", DSH_MODEL = "{model}", DSH_REASONING_EFFORT = "{effort}" }
 route = { DEEPSEEK_BASE_URL = "{gateway}/deepseek/anthropic" }   # dsh speaks Anthropic Messages to DeepSeek
-wire = "openai-chat"
 usage = ""
 
 [opencode]
@@ -127,7 +118,6 @@ command = ["opencode", "run", "--auto", "--dir", "{workspace}", "--format", "jso
 effort = "provider"
 env = {}
 route = { FRONTIER_GATEWAY = "{gateway}" }
-wire = "provider"
 usage = "json-usage"
 
 [zcode]
@@ -141,7 +131,6 @@ env = { HOME = "{state}/zcode", ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = "{state}/z
 route = { FRONTIER_GATEWAY = "{gateway}" }
 proxy_env = ["ZCODE_HTTP_PROXY"]
 no_proxy_env = ["ZCODE_NO_PROXY"]
-wire = "provider"
 usage = "json-usage"
 
 [hermes]
@@ -152,5 +141,4 @@ command = ["hermes", "chat", "-q", "{prompt}", "--yolo", "--api-key", "{key}"]
 effort = "provider"
 env = { HERMES_HOME = "{state}/hermes" }
 route = { FRONTIER_GATEWAY = "{gateway}" }
-wire = "provider"
 usage = "json-usage"
