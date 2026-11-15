@@ -37,8 +37,8 @@ LABELS = {"scientific_quality": "Scientific quality", "cost_control": "Cost cont
           "compliance": "Compliance"}
 RECORDS = ("DELIVERY.md", "COMPLIANCE.md", "CHECKLIST.md", "DECISIONS.md")
 MAX_DOC = 30_000  # characters of one record in a judge's file
-MAX_RESULTS = 40_000  # characters of small result files in a judge's file
-MAX_CODE = 40_000  # characters of delivered code in a judge's file
+MAX_RESULTS = 120_000  # characters of small result files in a judge's file
+MAX_CODE = 120_000  # characters of delivered code in a judge's file
 HIDDEN = (".agents/", ".claude/", ".codex/", ".gemini/", ".dsh/", ".kimi", ".qwen/", ".vibe/", ".grok/", ".zcode",
           "subject/", "AGENTS.md", "MISSION.md", "TOOLS.md", "CLAUDE.md", "GEMINI.md", "QWEN.md")
 
@@ -176,7 +176,7 @@ def team_file(ws: pathlib.Path, f: dict, label: str, incidents: str) -> str:
     small, used = [], 0
     for x in files:
         p = ws / x
-        if (p.suffix in (".json", ".csv", ".md", ".txt") and p.stat().st_size <= 8_000 and x not in RECORDS
+        if (p.suffix in (".json", ".csv", ".md", ".txt") and p.stat().st_size <= 30_000 and x not in RECORDS
                 and p not in reps and used < MAX_RESULTS):
             body = p.read_text(errors="replace")
             small.append(f"### {x}\n\n{body}\n")
