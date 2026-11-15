@@ -438,6 +438,41 @@ def _hermes_home(state: pathlib.Path, cfg: dict, target: dict, mcp: McpCommand) 
 # ---------------------------------------------------------------- delivery (a tool of the mission)
 
 
+FILE_EXT = ("py", "ipynb", "json", "jsonl", "csv", "tsv", "npz", "npy", "pt", "pth", "ckpt", "safetensors", "h5", "md",
+            "txt", "yml", "yaml", "toml", "cfg", "sh", "png", "pdf", "svg", "jpg", "tex", "bib", "log", "pkl")
+_EXT = "|".join(FILE_EXT)
+# a directory (ends with /) or a file name with a file extension; "1/Re", "dE/dt" or a model id "org/model" are not
+_PATHLIKE = __import__("re").compile(rf"^([\w.*-]+/)+$|^([\w.*-]+/)*[\w*-][\w.*-]*\.({_EXT})$")
+
+
+def report_files(ws: pathlib.Path) -> list[pathlib.Path]:
+    """The report's sources: Markdown, Quarto or LaTeX files named report* at the top or under report/."""
+    out = [p for p in ws.iterdir() if p.is_file() and p.name.lower().startswith("report")
+           and p.suffix.lower() in (".md", ".qmd", ".tex")]
+    if (ws / "report").is_dir():
+        out += [p for p in (ws / "report").rglob("*") if p.is_file() and p.suffix.lower() in (".md", ".qmd", ".tex")]
+    return sorted(out)
+
+
+def report_paths(text: str) -> list[str]:
+    """File or directory paths a report names: code spans, link targets and bare file names, but not the images it
+    embeds nor URLs. A report refers to its own figures, tables and sections and to the delivery by its Hub URL."""
+    import re
+
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)(\{[^}]*\})?", "", text)  # embedded figures need their file
+    text = re.sub(r"\\includegraphics(\[[^\]]*\])?\{[^}]*\}", "", text)
+    found = []
+    for span in re.findall(r"`([^`\n]+)`", text):
+        found += [w for w in span.split() if _PATHLIKE.match(w.strip("()[],;:'\"")) and "://" not in w]
+    for target in re.findall(r"\]\(([^)\s]+)", text):
+        if not re.match(r"^([a-z]+:|#)", target):
+            found.append(target)
+    bare = re.sub(r"`[^`\n]*`|https?://\S+|\]\([^)]*\)", " ", text)
+    found += re.findall(rf"(?<![\w/.@-])(?:[\w-]+/)*[\w-][\w.-]*\.(?:{_EXT})\b(?![\w/])", bare)
+    return list(dict.fromkeys(f.strip("()[],;:'\"") for f in found if f.strip("()[],;:'\"")))
+
+
+
 def deliver(ctx, summary: str = "", force: bool = False) -> str:
     """Check the deliverables, delete the cloud resources still alive, write COSTS.md, freeze clock and spend."""
     from . import infra
@@ -450,6 +485,13 @@ def deliver(ctx, summary: str = "", force: bool = False) -> str:
     if missing and not force:
         return ("refused: missing " + ", ".join(missing) + ". Write them, or call deliver(force=true) to deliver "
                 "without them (they are then recorded as missing).")
+    paths = {str(f.relative_to(ws)): report_paths(f.read_text(errors="replace")) for f in report_files(ws)}
+    paths = {k: v for k, v in paths.items() if v}
+    if paths and not force:
+        listed = "; ".join(f"{k}: {', '.join(v[:12])}{' …' if len(v) > 12 else ''}" for k, v in paths.items())
+        return ("refused: the report names files or directories of the repository (" + listed + "). Refer instead to "
+                "the report's own figures, tables and sections and to the delivery by its Hub URL; paths belong in "
+                "DELIVERY.md. Or call deliver(force=true) to deliver as it is (recorded).")
     cleaned = infra.cleanup(ctx.run)
     st = ctx.run.budget.status()
     pubs = json.loads((state / "publications.json").read_text()) if (state / "publications.json").exists() else []
@@ -457,7 +499,8 @@ def deliver(ctx, summary: str = "", force: bool = False) -> str:
            "llm_usd": st["llm"]["spent_usd"], "llm_cap_usd": st["llm"]["cap_usd"],
            "scaleway_eur": st["cloud"]["scaleway"]["spent"], "scaleway_cap_eur": st["cloud"]["scaleway"]["cap"],
            "runpod_usd": st["cloud"]["runpod"]["spent"], "runpod_cap_usd": st["cloud"]["runpod"]["cap"],
-           "missing": missing, "publications": [p["url"] for p in pubs], "cleanup": cleaned, "summary": summary}
+           "missing": missing, "report_paths": paths, "publications": [p["url"] for p in pubs], "cleanup": cleaned,
+           "summary": summary}
     (ws / "COSTS.md").write_text(costs_markdown(st, ctx.run.budget.resources(), pubs))
     done.write_text(json.dumps(rec, indent=1) + "\n")
     ctx.run.budget.set_caps(frozen=True, frozen_llm_usd=st["llm"]["spent_usd"])

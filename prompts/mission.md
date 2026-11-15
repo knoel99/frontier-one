@@ -51,7 +51,10 @@ All in this repository (commit as you go), then call `deliver`:
 - `DELIVERY.md`: where each deliverable is (the report, the code, the data and models with their Hub URLs), and the
   commands that regenerate every reported result from a fresh checkout (or a `reproduce.sh`). The evaluation may
   re-run them on a fresh machine.
-- The research report. It states which AI models did which part of the work.
+- The research report. It states which AI models did which part of the work. It refers to its own sections, figures
+  and tables, and to the delivered code, data and models by their Hub repositories; it names no file or directory of
+  the repository (those belong in `DELIVERY.md`). Its figures are embedded, not cited by path. `deliver` refuses a
+  report that names paths, and lists them.
 - The code that produced every reported result.
 - The models or datasets worth sharing, on the Hugging Face Hub (`hf_publish`), when the work produces any: each with
   its card (SPDX `license`; for a model `library_name`, for a dataset `task_categories`; what it is, how it was made,
