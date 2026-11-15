@@ -43,7 +43,7 @@ INSTRUCTIONS = ("Sub-agents on any model API with a chosen provider, tier, reaso
                 "cloud compute on Scaleway and Runpod under budgets; budget and time status; Hugging Face publishing; "
                 "mission delivery. TOOLS.md of the workspace lists models, prices, offers and budgets.")
 # MCP tool annotations (hints for the client: read-only, destructive, idempotent, reaches outside services).
-_READ_LOCAL = {"frontier_plan", "frontier_roles", "api_docs", "budget_status", "infra_resources"}
+_READ_LOCAL = {"frontier_plan", "frontier_roles", "api_docs", "budget_status", "mission_status", "infra_resources"}
 _READ_REMOTE = {"scw_offers", "scw_instance", "scw_list_instances", "rp_offers", "rp_pod", "rp_list_pods", "rp_logs", "hf_whoami"}
 _DELETE = {"scw_delete_instance", "rp_delete_pod", "infra_cleanup", "deliver"}
 _CREATE = {"scw_create_instance", "rp_create_pod", "hf_publish", "spawn_agent"}

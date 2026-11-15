@@ -24,7 +24,9 @@ Carry out the research that the internship subject describes, and deliver its re
 {{budgets}}
 
 These are hard caps enforced by the framework: a model call or a cloud resource that would go beyond a budget is
-refused. `budget_status` gives the spend so far and the time left at any moment.
+refused. `mission_status` gives at any moment what the race dashboard shows about your mission: spend and what is
+left of each budget, your rate of spend and when each cap would be reached at that rate, compared with the time left,
+tokens by model, sub-agents, machines and failed tool calls. Use it to plan. `budget_status` is its short form.
 
 ## What you have
 

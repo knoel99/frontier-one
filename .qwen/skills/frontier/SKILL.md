@@ -26,6 +26,7 @@ frontier call <tool> '<json arguments>'          # bin/frontier of the Frontier 
 - `rp_delete_pod`: Delete a Runpod pod (stops billing).
 - `infra_resources`: Cloud resources created by this run (all agents), with state and hourly price.
 - `infra_cleanup`: Delete every resource of this run that is still alive.
+- `mission_status`: Everything the race dashboard shows about this mission, for planning: LLM and cloud budgets (spent, in flight, cap, left), the rate of spend over the last 10 minutes and the hours until each cap at that rate (compared with the hours left before the deadline), tokens by model, sub-agents (model, effort, time, cost, status), machines (cost so far, committed until max_hours, last log lines), failed tool calls, sessions.
 - `budget_status`: Budgets and spend so far: LLM (USD, by model and mode, every agent of the run including metered harness traffic), Scaleway (EUR) and Runpod (USD) spent and committed by alive resources, elapsed time and hours left before the deadline.
 - `hf_whoami`: Hugging Face account of the token: user name, organisations, token role.
 - `hf_publish`: Create (if needed) a Hugging Face repository (model, dataset or static space) and upload a workspace folder to it.

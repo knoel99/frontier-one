@@ -426,3 +426,17 @@ def test_reservation_caps_a_huge_requested_output_window(cfg):
     full = budget.worst_case_usd("moonshot", "kimi-k3", len(body), 262144)
     limit = cfg["limits"]["max_reserved_output_tokens"]
     assert capped == pytest.approx(budget.worst_case_usd("moonshot", "kimi-k3", len(body), limit)) and capped < full / 5
+
+
+def test_mission_status_gives_the_team_its_dashboard_with_rate_and_projection(tmp_path, cfg):
+    from frontier.status import mission_status
+
+    info = mission.prepare(_mission(tmp_path), ping=False, offers=False)
+    r = agent_mod.Run(cfg, workspace=info["workspace"], log_dir=info["state"], settings=info["settings"], allow_spend=True)
+    r.budget.charge_llm("gateway", "harness", "openai", "gpt-6-astra", {"input": 10_000, "output": 2_000})  # 0.2 USD now
+    r.record({"provider": "runpod", "kind": "pod", "id": "p9", "type": "1x X", "usd_per_hour": 0.5, "max_hours": 1})
+    d = json.loads(mission_status(agent_mod.Ctx(r, None)))
+    assert d["llm"]["rate_usd_per_hour_last_10_min"] == pytest.approx(0.2 * 6, rel=0.01)
+    assert d["llm"]["hours_until_cap_at_this_rate"] == pytest.approx((5 - 0.2) / 1.2, rel=0.01)
+    assert d["cloud"]["runpod"]["committed_until_max_hours"] > 0 and d["machines"][0]["id"] == "p9"
+    assert set(d) >= {"tokens", "sub_agents", "tool_calls", "sessions", "hours_left"}
