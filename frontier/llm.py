@@ -164,6 +164,7 @@ def usage_of(obj) -> dict:
             out["input"] = u.get("input_tokens") or 0
             out["output"] = u.get("output_tokens") or 0
             out["cached"] = (u.get("input_tokens_details") or {}).get("cached_tokens") or 0
+            out["cache_write"] = (u.get("input_tokens_details") or {}).get("cache_write_tokens") or 0
             out["reasoning"] = (u.get("output_tokens_details") or {}).get("reasoning_tokens") or 0
         else:  # Anthropic (message, message_start, message_delta)
             if "input_tokens" in u or "cache_read_input_tokens" in u:
