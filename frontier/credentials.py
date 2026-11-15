@@ -93,7 +93,7 @@ def resolve(source: str) -> str | None:
     if kind == "cmd":
         try:  # the owner's own command line, pipes included
             p = subprocess.run(arg, shell=True, capture_output=True, text=True, timeout=CMD_TIMEOUT_S,
-                               stdin=subprocess.DEVNULL)
+                               stdin=subprocess.DEVNULL, check=False)
         except (OSError, subprocess.TimeoutExpired) as e:
             raise ValueError(f"cmd: {type(e).__name__}") from e
         if p.returncode != 0:  # the command's own message only: it never holds the value

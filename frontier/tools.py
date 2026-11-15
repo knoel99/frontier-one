@@ -50,7 +50,7 @@ def _path(ctx, p: str) -> pathlib.Path:
 def t_shell(ctx, command: str, timeout_s: int = 0) -> str:
     limit = int(timeout_s or ctx.limits.get("shell_timeout_s", 600))
     try:
-        r = subprocess.run(["bash", "-lc", command], cwd=ctx.workspace, capture_output=True, text=True, timeout=limit)
+        r = subprocess.run(["bash", "-lc", command], cwd=ctx.workspace, capture_output=True, text=True, timeout=limit, check=False)
     except subprocess.TimeoutExpired:
         return f"timeout after {limit} s"
     return f"exit {r.returncode}\n--- stdout\n{r.stdout}\n--- stderr\n{r.stderr}"

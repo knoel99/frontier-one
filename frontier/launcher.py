@@ -280,7 +280,7 @@ def open_gateway(state: pathlib.Path, s: dict, h: dict):
 def harness_setup(info: dict, h: dict, gateway: str | None, run: Run) -> None:
     if h.get("setup"):  # once per machine and key, e.g. `codex login`
         _, env = build_session(info, h, "", gateway)
-        p = subprocess.run(["bash", "-c", h["setup"]], cwd=info["workspace"], env=env, capture_output=True, text=True)
+        p = subprocess.run(["bash", "-c", h["setup"]], cwd=info["workspace"], env=env, capture_output=True, text=True, check=False)
         run.log(event="harness_setup", code=p.returncode, output=(p.stdout + p.stderr)[-2000:])
         print(f"setup: exit {p.returncode}")
 

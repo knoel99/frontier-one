@@ -52,7 +52,7 @@ def _generated() -> frozenset[str]:
 
 def _tracked(ws: pathlib.Path) -> list[str]:
     """The team's own tracked files: what the framework generated is left out. -z keeps non-ASCII names unquoted."""
-    out = subprocess.run(["git", "-C", str(ws), "ls-files", "-z"], capture_output=True, text=True).stdout.split("\0")
+    out = subprocess.run(["git", "-C", str(ws), "ls-files", "-z"], capture_output=True, text=True, check=False).stdout.split("\0")
     gen = _generated()
     return [x for x in out if x and not x.startswith(HIDDEN) and x not in gen]
 

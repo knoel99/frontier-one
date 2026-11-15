@@ -472,7 +472,7 @@ def test_extra_skills_are_copied_next_to_the_frontier_skill(tmp_path):
     (src / "skills" / "drawing" / "SKILL.md").write_text("---\nname: drawing\n---\n")
     for cmd in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "s"]):
         subprocess.run(["git", "-C", str(src), *cmd], check=True)
-    rev = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    rev = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"], capture_output=True, text=True, check=False).stdout.strip()
     f = _mission(tmp_path)
     f.write_text(f.read_text() + f'\n[[skills]]\nrepo = "{src}"\nrev = "{rev}"\npath = "skills/drawing"\n')
     info = mission.prepare(f, ping=False, offers=False)
@@ -1157,7 +1157,7 @@ def test_a_snapshot_waits_for_a_busy_git(tmp_path):
     (ws / ".git" / "index.lock").unlink()
     ev = s.take(ws)
     assert ev["labels"] == ["5min"]
-    show = subprocess.run([*git, "show", "snapshot-5min:REPORT.md"], capture_output=True, text=True)
+    show = subprocess.run([*git, "show", "snapshot-5min:REPORT.md"], capture_output=True, text=True, check=False)
     assert show.stdout == "results so far\n"
 
 
@@ -1208,7 +1208,32 @@ def test_a_snapshot_waits_when_git_add_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(snapshots.subprocess, "run", busy_add)
     assert snapshots.commit(ws, "Snapshot 5min", ("snapshot-5min",), allow_empty=True) is False
     monkeypatch.setattr(snapshots.subprocess, "run", real)
-    assert subprocess.run([*git, "tag", "--list", "snapshot-5min"], capture_output=True, text=True).stdout == ""
+    assert subprocess.run([*git, "tag", "--list", "snapshot-5min"], capture_output=True, text=True, check=False).stdout == ""
+
+
+def test_a_git_status_or_tag_that_failed_is_not_a_commit(tmp_path, monkeypatch):
+    """A failed command was read as a success three times (a busy commit, a failed add, an OpenShell command). `commit`
+    still did it twice: with nothing to commit, a `git status` that failed printed nothing, which read as a clean
+    tree; and a tag that did not move was ignored."""
+    from frontier import snapshots
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    git = ["git", "-C", str(ws), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+    real = subprocess.run
+
+    def failing(word):
+        return lambda cmd, *a, **k: (subprocess.CompletedProcess(cmd, 128, "", "fatal: unable to lock")
+                                     if word in cmd else real(cmd, *a, **k))
+
+    for word in ("status", "tag"):
+        monkeypatch.setattr(snapshots.subprocess, "run", failing(word))
+        assert snapshots.commit(ws, "Snapshot 5min", ("snapshot-5min",)) is False, word
+    monkeypatch.setattr(snapshots.subprocess, "run", real)
+    assert snapshots.commit(ws, "Snapshot 5min", ("snapshot-5min",)) is True  # nothing to commit: the tree is committed
+    assert subprocess.run([*git, "tag", "--list", "snapshot-5min"], capture_output=True, text=True, check=True).stdout
 
 
 def test_a_harness_inside_the_mission_sandbox_drops_its_own_sandbox(tmp_path, monkeypatch):
@@ -1263,7 +1288,7 @@ def test_rp_upload_copies_a_workspace_directory_into_a_pod(tmp_path, monkeypatch
     def exec_pod(tool, args):
         cmd = args["body"]["command"][2]
         sent.append(cmd)
-        p = subprocess.run(["sh", "-c", cmd], capture_output=True, text=True)
+        p = subprocess.run(["sh", "-c", cmd], capture_output=True, text=True, check=False)
         return {"exitCode": p.returncode, "stdout": p.stdout, "stderr": p.stderr}
 
     monkeypatch.setattr(infra, "mcp_json", exec_pod)

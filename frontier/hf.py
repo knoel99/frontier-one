@@ -151,7 +151,7 @@ def publish_delivery(ctx, rec: dict) -> dict:
     if not settings.get("hf_prefix") or not settings.get("allow_publish"):
         return {}
     ws = ctx.workspace
-    ls = subprocess.run(["git", "-C", str(ws), "ls-files", "-z", "-co", "--exclude-standard"], capture_output=True, text=True)
+    ls = subprocess.run(["git", "-C", str(ws), "ls-files", "-z", "-co", "--exclude-standard"], capture_output=True, text=True, check=False)
     files = [f for f in ls.stdout.split("\0") if f]  # -z: names with spaces stay whole
     if ls.returncode or not files:  # git busy or broken at that instant: every file but git's own
         files = [str(q.relative_to(ws)) for q in ws.rglob("*") if q.is_file() and ".git" not in q.relative_to(ws).parts]
