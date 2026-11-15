@@ -130,6 +130,9 @@ def test_anthropic_format(cfg, monkeypatch):
     assert b["system"] == "sys" and b["output_config"] == {"effort": "low"}
     assert [x["type"] for x in b["messages"][-1]["content"]] == ["tool_result", "tool_result"]
     assert r.content == "ok"
+    llm.chat(llm.resolve(cfg, "anthropic", "frontier", "none", mode="fast"), HIST, [TOOL])
+    b = seen["body"]  # reasoning off: no thinking, but the fast mode billed at price_x is still asked for
+    assert b["speed"] == "fast" and "thinking" not in b and "output_config" not in b
 
 
 # ---------------------------------------------------------------- catalog

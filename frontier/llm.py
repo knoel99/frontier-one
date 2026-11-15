@@ -427,10 +427,11 @@ def _chat_anthropic(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
         body["system"] = system
     if tools:
         body["tools"] = [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]} for t in tools]
-    if spec.reasoning != "none":
-        _merge(body, json.loads(json.dumps(spec.extra)))
-        if spec.effort_value is not None and spec.effort_field:
-            _set_path(body, spec.effort_field, spec.effort_value)
+    _merge(body, json.loads(json.dumps(spec.extra)))  # the speed mode's fields too: they are billed (price_x)
+    if spec.reasoning == "none":
+        body.pop("thinking", None)
+    elif spec.effort_value is not None and spec.effort_field:
+        _set_path(body, spec.effort_field, spec.effort_value)
     headers = {"x-api-key": _key(spec), "anthropic-version": "2023-06-01"}
     r = _post(f"{spec.base_url}/messages", headers, body)
     blocks = r.get("content") or []
