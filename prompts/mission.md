@@ -55,6 +55,11 @@ All in this repository (commit as you go), then call `deliver`:
   and tables, and to the delivered code, data and models by their Hub repositories; it names no file or directory of
   the repository (those belong in `DELIVERY.md`). Its figures are embedded, not cited by path. `deliver` refuses a
   report that names paths, and lists them.
+- Optional, and never required: besides the report in the form the subject asks for (an internship or thesis
+  report), the work may also be delivered as a scientific article in the two-column layout of the papers on arXiv
+  (title, authors, abstract, introduction, method, results, discussion, references), or as several short articles,
+  each on one phase or result of the report. Each follows the same rules as the report. The jury grades the work,
+  whatever its form.
 - The code that produced every reported result.
 - The models or datasets worth sharing, on the Hugging Face Hub (`hf_publish`), when the work produces any: each with
   its card (SPDX `license`; for a model `library_name`, for a dataset `task_categories`; what it is, how it was made,

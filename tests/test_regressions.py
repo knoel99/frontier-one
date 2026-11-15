@@ -644,3 +644,21 @@ def test_jury_files_are_anonymous():
     assert head == "General." and inc == {"xai": "Stopped at budget.", "openai": "none."}
     labels = pseudonyms(["a", "b", "c"])
     assert sorted(labels.values()) == ["Team A", "Team B", "Team C"]
+
+
+def test_gateway_strips_message_fields_a_provider_refuses():
+    """Cerebras refuses the reasoning_content OpenCode sends back in the history (400, 2026-11-15)."""
+    from frontier.gateway import strip_fields
+    body = json.dumps({"model": "m", "messages": [{"role": "user", "content": "hi"},
+                                                  {"role": "assistant", "content": "ok", "reasoning_content": "..."}]}).encode()
+    out = json.loads(strip_fields(body, ["reasoning_content", "reasoning"]))
+    assert out["messages"][1] == {"role": "assistant", "content": "ok"}
+    assert strip_fields(body, []) == body and strip_fields(b"x", ["a"]) == b"x"
+    cfg = load_config()
+    assert cfg["providers"]["cerebras"]["strip_message_fields"] == ["reasoning_content", "reasoning"]
+    assert llm.resolve(cfg, "cerebras", "standard", "high").model == cfg["providers"]["cerebras"]["tiers"]["frontier"]
+
+
+def test_opencode_runs_in_the_workspace_whatever_the_launcher_directory():
+    from frontier.launcher import harness_conf
+    assert ["--dir", "{workspace}"] == harness_conf("opencode", "cerebras")["command"][3:5]

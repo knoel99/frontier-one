@@ -173,6 +173,21 @@ def remap(path: str, body: bytes, model_map: dict[str, str]) -> tuple[str, bytes
     return path, body
 
 
+def strip_fields(body: bytes, fields: list[str]) -> bytes:
+    """Drop message fields a provider refuses (config/providers.toml `strip_message_fields`) from a request."""
+    if not fields:
+        return body
+    try:
+        obj = json.loads(body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return body
+    msgs = obj.get("messages") if isinstance(obj, dict) else None
+    if not isinstance(msgs, list) or not any(isinstance(m, dict) and set(fields) & m.keys() for m in msgs):
+        return body
+    obj["messages"] = [{k: v for k, v in m.items() if k not in fields} if isinstance(m, dict) else m for m in msgs]
+    return json.dumps(obj).encode()
+
+
 def model_of(req_body: bytes, path: str, resp_obj: dict | None) -> str:
     try:
         m = json.loads(req_body or b"{}").get("model")
@@ -238,6 +253,7 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
         rest, body = remap(rest, body, self.server.model_map)
+        body = strip_fields(body, (self.server.cfg["providers"].get(provider) or {}).get("strip_message_fields", []))
         is_llm_call = is_generation(self.command, rest)
         rid, worst = None, 0.0
         if is_llm_call:

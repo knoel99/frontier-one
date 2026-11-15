@@ -136,6 +136,21 @@ effort_field = "reasoning_effort"
 tiers = { frontier = "qwen3.8-max-0902", standard = "qwen3.8-flash", light = "qwen3.8-27b" }
 reasoning = { low = "low", medium = "medium", high = "high", max = "xhigh" }
 
+[providers.cerebras]
+names = ["Cerebras"]  # brands, model families, harness: what the jury redacts
+style = "openai-chat"
+base_url = "https://api.cerebras.ai/v1"
+key_env = "CEREBRAS_API_KEY"
+effort_field = "reasoning_effort"
+# Checked live 2026-11-15: /models lists only these two. Artificial Analysis Intelligence Index v5.0.1: Qwen3.8 27B
+# 20 (xhigh) against 4 for gpt-oss-120b (high); gpt-oss-120b is about 3x faster and cheaper. Cerebras serves
+# qwen-3.8-27b with a 65,536-token context. No standard tier: it falls back to the frontier one.
+tiers = { frontier = "qwen-3.8-27b", light = "gpt-oss-120b" }
+# Harnesses send the assistant's reasoning back in the history; Cerebras refuses it (400 "reasoning_content is
+# unsupported", checked 2026-11-15 with OpenCode): the gateway drops these message fields before sending.
+strip_message_fields = ["reasoning_content", "reasoning"]
+reasoning = { low = "low", medium = "medium", high = "high", max = "high" }
+
 [providers.zhipu]
 names = ["Zhipu", "Z.ai", "GLM", "ZCode", "ChatGLM"]  # brands, model families, harness: what the jury redacts
 style = "openai-chat"

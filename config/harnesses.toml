@@ -119,9 +119,11 @@ usage = ""
 
 [opencode]
 # The mission's opencode.json declares a provider `frontier` pointing at the gateway (frontier/harnesses.py).
-# Package names and `run` flags from opencode.ai/docs (2026-11-14); UNCONFIRMED until a first session.
+# Checked live 2026-11-15 with opencode 1.19.5 on Cerebras through the gateway (see --dir below).
 install = "npm install -g opencode-ai"
-command = ["opencode", "run", "--auto", "--format", "json", "-m", "frontier/{model}", "{prompt}"]
+command = ["opencode", "run", "--auto", "--dir", "{workspace}", "--format", "json", "-m", "frontier/{model}", "{prompt}"]
+# --dir: launched from another directory (the launcher's), OpenCode took that one as its project, missed the
+# workspace's opencode.json and failed with "Model not found: frontier/<model>" (checked 2026-11-15, 1.19.5).
 effort = "provider"
 env = {}
 route = { FRONTIER_GATEWAY = "{gateway}" }

@@ -39,6 +39,9 @@ you do not score them. You score scientific quality and compliance, from 0 to 10
 - **Compliance** is judged against the subject's instructions: the team's compliance matrix, when there is one, is
   a claim to check, not a verdict to copy.
 - **Not delivered.** A team that did not call `deliver` is graded on what its repository holds; say so.
+- **Form.** The teams could add, without obligation, a two-column article or several short articles to the report
+  the subject asks for. Neither the presence nor the absence of such a version changes the grades by itself; grade
+  the science they hold, once.
 - **Scale.** 0 = nothing of value; 3 = weak, mostly unsupported; 5 = sound but limited; 7 = good, well supported;
   9-10 = excellent, would stand as a strong internship-level study. Use the whole scale.
 

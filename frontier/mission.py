@@ -32,7 +32,7 @@ from .harnesses import HARNESSES, McpCommand, artifacts
 STATE_ROOT = pathlib.Path.home() / ".frontier" / "missions"
 REQUIRED = ["DELIVERY.md", "COMPLIANCE.md", "DECISIONS.md"]
 NATIVE_HARNESS = {"anthropic": "claude", "openai": "codex", "google": "antigravity", "xai": "grok", "moonshot": "kimi",
-                  "alibaba": "qwen", "mistral": "vibe", "deepseek": "dsh", "zhipu": "zcode"}
+                  "alibaba": "qwen", "mistral": "vibe", "deepseek": "dsh", "zhipu": "zcode"}  # cerebras: no CLI of its own
 FALLBACK_HARNESS = "opencode"
 
 
