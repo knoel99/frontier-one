@@ -469,3 +469,24 @@ def test_gateway_serves_only_the_mission_providers(tmp_path):
             assert e.code == 404
     finally:
         gw.shutdown()
+
+
+def test_a_refusal_late_in_a_session_does_not_end_the_mission(tmp_path):
+    """A late call carries the whole context; a fresh session's first call may still fit (race 2026-11-15, xAI)."""
+    import time
+
+    from frontier.budget import append_chained, now
+    from frontier.launcher import _stop_reason
+    cfg = load_config()
+    r = agent_mod.Run(cfg, workspace=tmp_path / "ws", log_dir=tmp_path / "state")
+    r.budget.set_caps(llm_usd=5.0)
+    ev = tmp_path / "state" / "events.jsonl"
+    append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "session_start"})
+    r.budget.charge_llm("gateway", "harness:x", "xai", "grok-4.7", {"input_tokens": 1000, "output_tokens": 100})
+    time.sleep(1.1)
+    append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "llm_refused", "why": "worst case 0.80 > 0.79"})
+    assert _stop_reason(r) == ""
+    time.sleep(1.1)
+    append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "session_start"})
+    append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "llm_refused", "why": "worst case 0.80 > 0.79"})
+    assert "fresh session" in _stop_reason(r)

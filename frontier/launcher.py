@@ -412,12 +412,15 @@ def _stop_reason(run: Run) -> str:
     if not ok:
         return why
     # The gateway refuses a call when what is left does not cover its worst case, before the spend reaches the cap.
-    # A last session whose calls were refused, with nothing charged since, would only be refused again.
+    # A call late in a session carries the whole context, so a fresh session can still fit what is left: stop only
+    # when the last session was refused without one call charged (a fresh session's first call did not fit either).
     events = budget_mod.read_jsonl(state / "events.jsonl")
     starts = [e for e in events if e.get("event") == "session_start"]
-    refused = [e for e in events if e.get("event") == "llm_refused" and starts and e.get("t", "") >= starts[-1].get("t", "")]
-    if refused and not any(e["t"] >= refused[-1]["t"] for e in run.budget.llm_entries()):
-        return f"LLM budget: the gateway refused the last session's calls ({refused[-1].get('why', '')[:160]})"
+    since = starts[-1].get("t", "") if starts else ""
+    refused = [e for e in events if e.get("event") == "llm_refused" and starts and e.get("t", "") >= since]
+    charged = [e for e in run.budget.llm_entries() if e["t"] >= since and e.get("frontier.source") != "launcher"]
+    if refused and not charged:
+        return f"LLM budget: the gateway refused the first calls of a fresh session ({refused[-1].get('why', '')[:160]})"
     return ""
 
 
