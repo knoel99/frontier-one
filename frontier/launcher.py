@@ -28,6 +28,10 @@ FIRST_PROMPT = ("Read MISSION.md and TOOLS.md, then carry out the mission. You w
                 "ready, call the `deliver` tool.")
 GOAL_CONDITION = ("The goal is met when the `deliver` tool has returned a delivery record; it is impossible when "
                   "`budget_status` shows the LLM budget spent or no time left.")
+# Variables of the agent session that runs the launcher (a Claude Code cloud session): a Claude Code harness that
+# inherits them believes it runs in that session and puts its own proxy in front of its tools, bypassing the mission's
+# outbound filter (race 2026-11-15: every Runpod call of the Anthropic team failed through it).
+OPERATOR_ENV = ("CLAUDE_CODE_", "CCR_", "GLOBAL_AGENT_")
 FAST_FAILS, FAST_FAIL_S = 3, 15  # this many sessions in a row ending in error this fast: the harness cannot start
 NEXT_PROMPT = ("Continue the mission (session {n}). Your previous session ended. Read MISSION.md, DECISIONS.md and the "
                "state of the repository, call `budget_status` for the spend and the time left, then carry on. When the "
@@ -69,7 +73,7 @@ def build_session(info: dict, h: dict, prompt: str, gateway: str | None) -> tupl
     values = {"prompt": prompt, "model": spec.model, "effort": effort, "max_turns": 500, "workspace": info["workspace"],
               "state": info["state"], "key": os.environ.get(key_env) or llm.PROXY_PLACEHOLDER, "frontier": ROOT,
               "provider_model": f"{provider}/{spec.model}", "gateway": gateway or ""}
-    env = dict(os.environ)
+    env = {k: v for k, v in os.environ.items() if not k.startswith(OPERATOR_ENV)}
     env.setdefault(key_env, values["key"])  # the provider's own variable, for harnesses that read it themselves
     env.update({k: str(v) for k, v in _fill(h.get("env", {}), values).items()})
     if gateway and h.get("route"):

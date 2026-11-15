@@ -506,3 +506,15 @@ def test_a_harness_failing_at_start_stops_the_mission(tmp_path):
         assert _stop_reason(r) == ""
         append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "session_end", "n": n, "code": 3, "seconds": 1.5})
     assert "credits are depleted" in _stop_reason(r)
+
+
+def test_the_operator_session_variables_do_not_reach_the_harness(monkeypatch, tmp_path):
+    from frontier.launcher import build_session
+    monkeypatch.setenv("CCR_AGENT_PROXY_ENABLED", "1")
+    monkeypatch.setenv("CLAUDE_CODE_ENTRYPOINT", "remote_mobile")
+    monkeypatch.setenv("GLOBAL_AGENT_HTTPS_PROXY", "http://127.0.0.1:1")
+    info = {"settings": {"provider": "anthropic", "tier": "standard", "reasoning": "high"}, "workspace": str(tmp_path),
+            "state": str(tmp_path), "egress": "http://127.0.0.1:2"}
+    _, env = build_session(info, {"command": ["true"]}, "go", None)
+    assert not [k for k in env if k.startswith(("CCR_", "CLAUDE_CODE_", "GLOBAL_AGENT_"))]
+    assert env["HTTPS_PROXY"] == "http://127.0.0.1:2"
