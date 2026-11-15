@@ -21,3 +21,18 @@ workspace gets its own AGENTS.md from the launcher.)
 - Standard library only at run time (`huggingface_hub` only for publishing). Before committing:
   `python3 -m ruff check .`, `python3 -m pytest -q`, `python3 tools/sync_harnesses.py --check`.
 - Write in English.
+
+## Rules and what enforces them
+
+Each rule is here because the same mistake was fixed at least twice. When a mistake comes back, fix it at the highest
+level that works (structure, then a check whose message names the fix, then a test) and add its line; a rule that
+nothing enforces is the last resort.
+
+| Rule | Enforced by |
+|---|---|
+| A model call under a budget goes through `Budget.metered_chat` or `with budget.call(...)`; a call nobody settled is charged its worst case | `budget.Call`; `tests/test_rules.py` |
+| A JSON file is written with `budget.write_json`; a JSON state file is changed with `budget.update_json`; a lock is taken with `budget.locked` | `tests/test_rules.py` |
+| Every `subprocess.run` states `check`; with `check=False` the code reads the exit status | ruff `PLW1510` |
+| An `except Exception` carries its reason on its line | ruff `BLE` |
+| Under a cloud budget, the raw-call lists of `frontier/tools.py` name what is free; the rest is refused | the guard itself; `test_raw_cloud_calls_the_framework_does_not_know_are_refused_under_a_budget` |
+| A harness recipe (`config/harnesses.toml`, `frontier/harnesses.py`) changes only with a live session of that harness behind it; the changed line states the version and the date | nothing: the check needs the vendor's CLI, a key and a paid session |
