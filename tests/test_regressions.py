@@ -1237,3 +1237,69 @@ def test_vibe_knows_the_mission_model_and_goes_through_the_gateway(tmp_path):
     assert conf["models"][model] == {"name": model, "provider": "frontier", "alias": model}
     assert conf["mcp_servers"][0]["name"] == "frontier"
     assert launcher.routable(launcher.harness_conf("vibe", "mistral"))
+
+
+def test_openshell_gets_a_built_image_not_a_dockerfile(tmp_path):
+    """First live run with OpenShell 0.1.8 (2026-11-15): `sandbox create --from <Dockerfile>` failed with "'--from' no
+    longer builds local Dockerfiles or directories": the image is built with the gateway's engine, then passed by name."""
+    f = _mission(tmp_path, harness="codex")
+    f.write_text(f.read_text() + '\n[sandbox]\nkind = "openshell"\n')
+    info = mission.prepare(f, ping=False, offers=False)
+    box = sandbox.OpenShell(info, launcher.harness_conf("codex", "openai"), dry_run=True)
+    box.write_files()
+    box.setup()
+    build = next(i for i, c in enumerate(box.commands) if c[:2] == ["docker", "build"])
+    create = next(i for i, c in enumerate(box.commands) if c[:3] == ["openshell", "sandbox", "create"])
+    image = box.commands[build][box.commands[build].index("-t") + 1]
+    assert build < create and box.commands[build][-1] == str(box.dir / "image")
+    assert box.commands[create][box.commands[create].index("--from") + 1] == image
+    box.teardown()
+    delete = box.commands.index(["openshell", "sandbox", "delete", box.name])
+    assert box.commands[delete + 1] == ["docker", "rmi", "-f", image]
+
+
+def test_a_failed_openshell_command_says_why(tmp_path, monkeypatch):
+    """First live run with OpenShell (2026-11-15): a failed `sandbox create` surfaced as a bare CalledProcessError, the
+    OpenShell message that said what to do (captured) never shown."""
+    f = _mission(tmp_path, harness="codex")
+    f.write_text(f.read_text() + '\n[sandbox]\nkind = "openshell"\n')
+    info = mission.prepare(f, ping=False, offers=False)
+    box = sandbox.OpenShell(info, launcher.harness_conf("codex", "openai"))
+    monkeypatch.setattr(sandbox.subprocess, "run", lambda a, **k: subprocess.CompletedProcess(a, 1, "", "× '--from' no longer builds"))
+    with pytest.raises(RuntimeError, match="no longer builds"):
+        box._run(["openshell", "sandbox", "create"])
+    assert box._run(["openshell", "provider", "delete", "x"], check=False).returncode == 1  # check=False: no raise
+
+
+def test_the_openshell_policy_lists_binaries_as_objects(tmp_path):
+    """First live run with OpenShell 0.1.8 (2026-11-15): `sandbox create` refused the policy, "network_policies.packages
+    .binaries[0]: type mismatch: expected mapping" (the schema wants `- path: /usr/bin/node`)."""
+    pol, _ = sandbox.policy({"network": {"allow": ["arxiv.org"]}}, ["/usr/bin/node", "/usr/bin/python3*"])
+    for rule in pol["network_policies"].values():
+        assert rule["binaries"] == [{"path": "/usr/bin/node"}, {"path": "/usr/bin/python3*"}]
+
+
+def test_the_sandbox_image_has_the_policy_user():
+    """First live run with OpenShell 0.1.8 (2026-11-15): "IdentityResolutionFailed: workload user 'sandbox' does not
+    exist in the pinned image": the policy runs the harness as `sandbox`, the image did not create that user."""
+    text = sandbox.dockerfile(launcher.harness_conf("codex", "openai"), "node:22-bookworm")
+    pol, _ = sandbox.policy({}, [])
+    user = pol["process"]["run_as_user"]
+    assert f"useradd -m -s /bin/bash {user}" in text and f"chown -R {user}:{user} /sandbox" in text
+
+
+def test_openshell_push_puts_the_workspace_and_state_at_their_paths(tmp_path):
+    """First live run with OpenShell 0.1.8 (2026-11-15): `sandbox upload <dir> <dest>` always writes <dest>/<dir name>,
+    so the state landed in /sandbox/state/<mission> and the session found no /sandbox/state/mission.json. Each directory
+    is uploaded to a staging path, then moved into place inside the sandbox."""
+    f = _mission(tmp_path, harness="codex")
+    f.write_text(f.read_text() + '\n[sandbox]\nkind = "openshell"\n')
+    info = mission.prepare(f, ping=False, offers=False)
+    box = sandbox.OpenShell(info, launcher.harness_conf("codex", "openai"), dry_run=True)
+    box.push()
+    for local, inside in ((info["workspace"], sandbox.IN_WS), (info["state"], sandbox.IN_STATE)):
+        up = next(c for c in box.commands if c[:3] == ["openshell", "sandbox", "upload"] and c[4] == str(local))
+        stage = up[5]
+        mv = next(c for c in box.commands if c[:3] == ["openshell", "sandbox", "exec"] and stage in c[-1])
+        assert stage != inside and f"mv {stage}/{pathlib.Path(local).name} {inside}" in mv[-1]
+    assert "mkdir -p /sandbox/workspace" not in sandbox.dockerfile(launcher.harness_conf("codex", "openai"), "x")

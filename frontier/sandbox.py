@@ -14,8 +14,7 @@ Flow (the host launcher drives it; the harness, the metering gateway and the MCP
   upload workspace and state → per session: sandbox exec `frontier mission session` → download workspace and
   state → host commit → at the end sandbox delete, provider delete.
 
-Not run live yet: the session that wrote this had no Docker daemon. `openshell … --help` and one short session
-should be checked on the race host before a real mission.
+Run live on 2026-11-15 with OpenShell 0.1.8 and its Docker compute driver.
 """
 
 from __future__ import annotations
@@ -73,6 +72,7 @@ def policy(m: dict, binaries: list[str]) -> tuple[dict, list[str]]:
             warnings.append(f"{h} is a wildcard covering a denied host: the wildcard is dropped, list the hosts instead")
             continue
         allow.append(h)
+    binaries = [{"path": b} for b in binaries]  # OpenShell 0.1.8: each item a mapping (checked live 2026-11-15)
     rules = {
         "packages": {"name": "package registries", "endpoints": [_endpoint(h, "read-only") for h in PACKAGE_HOSTS],
                      "binaries": binaries},
@@ -99,6 +99,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
     && rm -rf /var/lib/apt/lists/*
 RUN {install or 'true'}
 RUN python3 -m pip install --break-system-packages --no-cache-dir huggingface_hub
+RUN useradd -m -s /bin/bash sandbox && mkdir -p /sandbox && chown -R sandbox:sandbox /sandbox
 COPY frontier {IN_ROOT}
 ENV PATH={IN_ROOT}/bin:$PATH
 """
@@ -114,12 +115,17 @@ class OpenShell:
         self.dir = pathlib.Path(info["state"]) / "openshell"
         self.binaries = BINARIES + list(h.get("sandbox_binaries", []))
         self.commands: list[list[str]] = []
+        self.engine = self.m.get("sandbox", {}).get("engine", "docker")  # the engine of the OpenShell gateway's driver
+        self.image = f"{self.name}:latest"
 
     def _run(self, args: list[str], check: bool = True) -> subprocess.CompletedProcess | None:
         self.commands.append(args)
         if self.dry_run:
             return None
-        return subprocess.run(args, check=check, text=True, capture_output=True)
+        p = subprocess.run(args, text=True, capture_output=True)
+        if check and p.returncode != 0:  # the tool's own message says what to do: keep it in the error
+            raise RuntimeError(f"{' '.join(args[:3])} failed (exit {p.returncode}): {(p.stderr or p.stdout).strip()[-1500:]}")
+        return p
 
     def write_files(self) -> list[str]:
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -149,7 +155,10 @@ class OpenShell:
                                    f"file: or cmd: source in the mission's [secrets]")
             self._run(["openshell", "provider", "create", "--name", f"{self.name}-{prof.stem.removeprefix('frontier-')}",
                        "--type", prof.stem, "--credential", cred], check=False)
-        args = ["openshell", "sandbox", "create", "--name", self.name, "--from", str(self.dir / "image" / "Dockerfile"),
+        # OpenShell 0.1.8 no longer builds a Dockerfile given to --from (checked live 2026-11-15): the image is built
+        # with the container engine the gateway uses, and passed by name
+        self._run([self.engine, "build", "-t", self.image, str(self.dir / "image")])
+        args = ["openshell", "sandbox", "create", "--name", self.name, "--from", self.image,
                 "--policy", str(self.dir / "policy.yaml"), "--detach"]
         for p in self.provider_names():
             args += ["--provider", p]
@@ -162,9 +171,14 @@ class OpenShell:
         self.push()
 
     def push(self) -> None:
-        """Workspace and state into the sandbox (uploads cannot be combined with the main command)."""
-        self._run(["openshell", "sandbox", "upload", self.name, str(self.info["workspace"]), IN_WS, "--no-git-ignore"])
-        self._run(["openshell", "sandbox", "upload", self.name, str(self.info["state"]), IN_STATE, "--no-git-ignore"])
+        """Workspace and state into the sandbox (uploads cannot be combined with the main command). `sandbox upload
+        <dir> <dest>` writes <dest>/<dir name> (OpenShell 0.1.8, checked live): each goes to a staging path, then is
+        moved into place."""
+        for local, inside in ((self.info["workspace"], IN_WS), (self.info["state"], IN_STATE)):
+            stage = f"{inside}.upload"
+            self._run(["openshell", "sandbox", "upload", self.name, str(local), stage, "--no-git-ignore"])
+            self._run(["openshell", "sandbox", "exec", "-n", self.name, "--", "sh", "-c",
+                       f"rm -rf {inside} && mv {stage}/{pathlib.Path(local).name} {inside} && rmdir {stage}"])
 
     def session_command(self, n: int) -> list[str]:
         return ["openshell", "sandbox", "exec", "-n", self.name, "--workdir", IN_WS, "--",
@@ -187,5 +201,6 @@ class OpenShell:
     def teardown(self) -> None:
         self.pull()
         self._run(["openshell", "sandbox", "delete", self.name], check=False)
+        self._run([self.engine, "rmi", "-f", self.image], check=False)
         for p in self.provider_names():
             self._run(["openshell", "provider", "delete", p], check=False)
