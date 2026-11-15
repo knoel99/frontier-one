@@ -206,6 +206,12 @@ def artifacts(mcp: McpCommand, which: list[str] | None = None, target: dict | No
         elif key == "vibe_config":
             out[".vibe/config.toml"] = ('[[mcp_servers]]\nname = "frontier"\ntransport = "stdio"\n'
                                         f'command = "{mcp.command}"\nargs = {_toml_list(mcp.args)}\ntool_timeout_sec = 3600\n')
+            if target and target.get("model"):  # Vibe 3.1 knows its own model list only, and calls a provider's api_base
+                m = target["model"]
+                out[".vibe/config.toml"] += (
+                    f'\n[[providers]]\nname = "frontier"\napi_base = "{target["base_url"]}"\n'
+                    f'api_key_env_var = "{target["key_env"]}"\napi_style = "openai"\n'
+                    f'\n[models."{m}"]\nname = "{m}"\nprovider = "frontier"\nalias = "{m}"\n')
         elif key == "dsh_patch":
             args = ", ".join(f"'{a}'" for a in mcp.args)
             out[".dsh/frontier.patch.yml"] = (

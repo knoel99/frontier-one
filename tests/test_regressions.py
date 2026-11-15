@@ -1224,3 +1224,16 @@ def test_the_gemini_recipe_selects_its_auth_and_trusts_the_workspace(tmp_path, m
     subprocess.run(["bash", "-c", h["setup"]], env={**os.environ, "HOME": str(home)}, check=True)
     settings = json.loads((home / ".gemini" / "settings.json").read_text())
     assert settings == {"ui": {"theme": "x"}, "security": {"auth": {"selectedType": "gemini-api-key"}}}
+def test_vibe_knows_the_mission_model_and_goes_through_the_gateway(tmp_path):
+    """Harness check of 2026-11-15 (Mistral Vibe 3.1.2): `--model mistral-small-2603` failed at once with "Unknown model
+    ... Available: mistral-medium-3.5", and the recipe could not be routed, so no session of it was metered."""
+    import tomllib
+
+    info = mission.prepare(_mission(tmp_path, harness="vibe", provider="mistral"), ping=False, offers=False)
+    conf = tomllib.loads((info["workspace"] / ".vibe" / "config.toml").read_text())
+    model = llm.resolve(load_config(), "mistral", info["settings"]["tier"], info["settings"]["reasoning"]).model
+    (prov,) = [p for p in conf["providers"] if p["name"] == "frontier"]
+    assert prov["api_base"].startswith("http://127.0.0.1:") and prov["api_base"].endswith("/mistral/v1")
+    assert conf["models"][model] == {"name": model, "provider": "frontier", "alias": model}
+    assert conf["mcp_servers"][0]["name"] == "frontier"
+    assert launcher.routable(launcher.harness_conf("vibe", "mistral"))
