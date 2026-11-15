@@ -27,6 +27,7 @@ import urllib.request
 from . import budget as budget_mod
 from . import credentials, llm
 from .config import ROOT, load_config
+from .gateway import base_url_for
 from .harnesses import HARNESSES, McpCommand, artifacts
 from .snapshots import commit
 
@@ -356,13 +357,14 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     mcp = McpCommand(command=f"{root_in}/bin/frontier-mcp", args=["--state", str(state_in)])
     gateway = f"http://127.0.0.1:{settings['gateway_port']}"
     spec = _main_spec(cfg, m)
+    prov = cfg["providers"][settings["provider"]]
     target = {"provider": settings["provider"], "model": spec.model if spec else "?", "gateway": gateway,
-              "effort": spec.effort_value if spec else None,
-              "key_env": cfg["providers"][settings["provider"]]["key_env"]}
+              "effort": spec.effort_value if spec else None, "key_env": prov["key_env"], "style": prov["style"],
+              "base_url": base_url_for(settings["gateway_port"], settings["provider"], cfg)}
     if m["harness"]["name"] == "zcode":
-        _zcode_home(state, cfg, target, mcp)
+        _zcode_home(state, target, mcp)
     if m["harness"]["name"] == "hermes":
-        _hermes_home(state, cfg, target, mcp)
+        _hermes_home(state, target, mcp)
     files = artifacts(mcp, [m["harness"]["name"]], target)
     for rel, content in files.items():
         p = ws / rel
@@ -392,14 +394,11 @@ def _free_port(start: int) -> int:
     return 0
 
 
-def _zcode_home(state: pathlib.Path, cfg: dict, target: dict, mcp: McpCommand) -> None:
+def _zcode_home(state: pathlib.Path, target: dict, mcp: McpCommand) -> None:
     """ZCode reads MCP servers from HOME/.zcode/cli/config.json only, and its model from a provider file: a home of
     the mission's own, with the model on the metering gateway. The provider file holds the key's value when the
     mission has one (else the proxy placeholder): it stays in the state directory, out of the workspace, mode 600."""
-    from .gateway import base_url_for
-
-    port = int(target["gateway"].rsplit(":", 1)[1])
-    style = cfg["providers"][target["provider"]]["style"]
+    style = target["style"]
     api = {"anthropic": "anthropic-messages", "openai-responses": "openai-responses"}.get(style, "openai-chat-completions")
     home = state / "zcode"
     (home / ".zcode" / "cli").mkdir(parents=True, exist_ok=True)
@@ -409,7 +408,7 @@ def _zcode_home(state: pathlib.Path, cfg: dict, target: dict, mcp: McpCommand) -
     rule = {"providerId": "frontier", "providerName": "Frontier gateway", "config": {
         "group": "standard-personal",
         "access": {"type": "api-key", "apiKey": os.environ.get(target["key_env"]) or credentials.PLACEHOLDER},
-        "api": {"type": api, "baseUrl": base_url_for(port, target["provider"], cfg)},
+        "api": {"type": api, "baseUrl": target["base_url"]},
         "personalModelIds": [target["model"]]}}
     f = home / "provider_config.json"
     f.write_text(json.dumps({"schemaVersion": 1, "config": {
@@ -419,19 +418,16 @@ def _zcode_home(state: pathlib.Path, cfg: dict, target: dict, mcp: McpCommand) -
     f.chmod(0o600)
 
 
-def _hermes_home(state: pathlib.Path, cfg: dict, target: dict, mcp: McpCommand) -> None:
+def _hermes_home(state: pathlib.Path, target: dict, mcp: McpCommand) -> None:
     """Hermes reads MCP servers and its model from HERMES_HOME/config.yaml only: a home of the mission's own."""
-    from .gateway import base_url_for
-
-    port = int(target["gateway"].rsplit(":", 1)[1])
-    style = cfg["providers"][target["provider"]]["style"]
+    style = target["style"]
     api_mode = {"anthropic": "anthropic_messages", "openai-responses": "codex_responses"}.get(style, "chat_completions")
     home = state / "hermes"
     home.mkdir(parents=True, exist_ok=True)
     args = ", ".join(json.dumps(a) for a in mcp.args)
     (home / "config.yaml").write_text(
         "model:\n  provider: custom\n"
-        f"  default: {target['model']}\n  base_url: {base_url_for(port, target['provider'], cfg)}\n  api_mode: {api_mode}\n"
+        f"  default: {target['model']}\n  base_url: {target['base_url']}\n  api_mode: {api_mode}\n"
         f"mcp_servers:\n  frontier:\n    command: {json.dumps(mcp.command)}\n    args: [{args}]\n    timeout: 3600\n")
 
 
