@@ -67,7 +67,15 @@ def append_chained(path: pathlib.Path, entry: dict) -> str:
         body["hash"] = _digest(prev, body)
         with open(path, "a") as f:
             f.write(json.dumps(body, default=str) + "\n")
+        head = read_json(_head(path)) or {}  # written after the line: a process killed in between leaves it one behind
+        lines = head["lines"] + 1 if head.get("hash") == prev and prev else len(path.read_text().splitlines())
+        write_json(_head(path), {"lines": lines, "hash": body["hash"]}, indent=None)
         return body["hash"]
+
+
+def _head(path: pathlib.Path) -> pathlib.Path:
+    """Beside a chained log: how many lines it has and the hash of its last one."""
+    return path.with_name(f".{path.name}.head")
 
 
 def write_json(path: pathlib.Path, obj, indent: int | None = 1) -> None:
@@ -98,12 +106,21 @@ def read_jsonl(path: pathlib.Path) -> list[dict]:
 
 
 def verify_chain(path: pathlib.Path) -> bool | str:
-    prev = ""
+    """True, or what is wrong: a line edited or removed, or the end of the log cut off. The chain alone says nothing of
+    the lines after the last one kept: the head does. A log without a head (written before heads existed) is checked
+    line to line only."""
+    hashes: list[str] = []
     for i, e in enumerate(read_jsonl(path), 1):
         h = e.pop("hash", None)
+        prev = hashes[-1] if hashes else ""
         if e.get("prev") != prev or _digest(prev, e) != h:
             return f"broken at line {i}"
-        prev = h
+        hashes.append(h)
+    head = read_json(_head(path))
+    if head and len(hashes) < head["lines"]:
+        return f"cut: {len(hashes)} lines, its head records {head['lines']}"
+    if head and hashes[head["lines"] - 1] != head["hash"]:
+        return f"rewritten: line {head['lines']} is not the one its head records"
     return True
 
 
@@ -217,7 +234,8 @@ class Budget:
 
     # ------------------------------------------------------------ LLM
     # Entries use the OpenTelemetry GenAI attribute names (gen_ai.*) plus frontier.* ones, and form a hash chain:
-    # each line carries the hash of the previous one, so an edited or deleted line is detected (verify_chain).
+    # each line carries the hash of the previous one and a head file records the last one, so an edited or deleted
+    # line and a log cut at its end are detected (verify_chain).
     def charge_llm(self, source: str, agent: str, provider: str, model: str, usage: dict, mode: str = "",
                    price_x: float = 1.0, usd: float | None = None, exact: bool = True) -> float:
         """Record a call; `usd` overrides the price computed from `usage`, `exact=False` marks it an estimate."""

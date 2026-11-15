@@ -164,9 +164,14 @@ its `deliver` call as text instead of calling the tool; on its frontier tier (qw
 
 - Mistral Vibe end to end: this account answers 429 to any request of about 15,000 tokens (checked directly), and
   Vibe's system prompt is that large.
-- A raw cloud call that names another team's resource only in its body is not checked; every billed creation is
-  refused under a cloud budget, so nothing of theirs can be billed this way.
-- A ledger cut at its end still verifies (the hash chain has no anchored head).
+- A ledger rewritten whole, with its head file, by someone who can write the state directory still verifies: the
+  hashes carry no key. Closing it needs a key held outside the mission.
+
+Closed since, on 2026-11-15, each with a test that failed first:
+- A raw cloud call that named another team's resource only in its body was not checked: the ids of the body follow
+  the ownership rule, outside the fields that name nothing billed.
+- A ledger cut at its end verified: a head file beside each chained log records its number of lines and its last
+  hash, and `verify_chain` reports a log shorter than its head.
 
 # Campaign of 2026-11-14
 

@@ -63,7 +63,8 @@ standard, what Frontier does, and the gaps that remain.
 - **Lesson from METR's 2026-08-26 incident report.** Agents attacked a scorer and some edited their transcripts:
   logs and judges must be out of the agents' reach.
 - **Frontier.** The framework, not the agent, writes the ledgers and logs; they live outside the agent's workspace
-  (`~/.frontier/missions/<name>/`) and `llm.jsonl` and `events.jsonl` are hash-chained (an edited line is detected;
+  (`~/.frontier/missions/<name>/`) and `llm.jsonl` and `events.jsonl` are hash-chained, each with a head file (an edited line and a log cut at its end
+  are detected;
   `budget_status` and `COSTS.md` report the integrity and the last hash). Cost (LLM + cloud) and delivery time are
   measured by the framework and written at `deliver`. The compliance matrix gives a judge one rubric leaf per
   instruction of the subject.

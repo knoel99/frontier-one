@@ -7,6 +7,7 @@ Two sets:
 
 from __future__ import annotations
 
+import json
 import pathlib
 import re
 import subprocess
@@ -107,7 +108,20 @@ def t_api_docs(ctx, action: str, query: str = "", id: str = "", doc: str = "") -
 FREE_SCW_CREATE = re.compile(r":Create(PlacementGroup|SecurityGroup|SecurityGroupRule|JobDefinition)$")
 FREE_SCW_COLLECTIONS = {"security_groups", "rules", "placement_groups", "private_nics"}
 SCW_ID = re.compile(r"/([A-Za-z_-]+)/([0-9a-fA-F]{8}-[0-9a-fA-F-]{27})(?=/|$)")
+FREE_SCW_KEYS = {"project", "project_id", "organization", "organization_id", "security_group", "security_group_id",
+                 "placement_group", "placement_group_id", "private_network_id"}  # body fields that name nothing billed
+UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 FREE_RUNPOD = {"create-template", "create-secret", "create-registry", "describe-tool"}
+FREE_RUNPOD_KEYS = {"templateId", "containerRegistryAuthId"}
+
+
+def _named(obj, ids_of, free: set[str], key: str = "") -> list[str]:
+    """The resource ids a request body names (`ids_of(key, text)`), outside the fields known to name nothing billed."""
+    if isinstance(obj, dict):
+        return [i for k, v in obj.items() if k not in free for i in _named(v, ids_of, free, k)]
+    if isinstance(obj, list):
+        return [i for v in obj for i in _named(v, ids_of, free, key)]
+    return ids_of(key, obj) if isinstance(obj, str) else []
 
 
 def _capped(ctx, provider: str) -> bool:
@@ -136,7 +150,11 @@ def t_scaleway(ctx, method: str, path: str, body: dict | None = None, query: dic
         if _capped(ctx, "scaleway"):
             ids = [i for collection, i in SCW_ID.findall("/" + path.split("?", 1)[0].strip("/"))
                    if collection not in FREE_SCW_COLLECTIONS]
-            if g := _foreign(ctx, ids):
+            try:  # the body too: a call on the run's own server can name another team's volume there
+                sent = json.loads(raw_body) if raw_body else body
+            except json.JSONDecodeError:
+                sent = raw_body
+            if g := _foreign(ctx, ids + _named(sent, lambda key, text: UUID.findall(text), FREE_SCW_KEYS)):
                 return g
             op = catalog.operation(method, path)
             if method.upper() == "POST" and not ids and not FREE_SCW_CREATE.search(op):
@@ -150,7 +168,8 @@ def t_runpod_mcp(ctx, tool: str, arguments: dict | None = None) -> str:
         if g := infra._need_spend(ctx, f"Runpod MCP tool {tool}"):
             return g
         if _capped(ctx, "runpod") and tool not in FREE_RUNPOD and not tool.endswith("-template"):
-            ids = [str(v) for k, v in (arguments or {}).items() if k == "id" or k.endswith("Id")]
+            ids = _named(arguments or {}, lambda key, text: [text] if key == "id" or key.endswith("Id") else [],
+                         FREE_RUNPOD_KEYS)
             if tool.startswith(("create-", "deploy-")) or not ids:  # a creation, or a tool the catalog does not know
                 return _unmetered("runpod", f"Runpod MCP tool {tool}")
             if g := _foreign(ctx, ids):
