@@ -297,6 +297,11 @@ class FakeScaleway:
         return {}
 
 
+def test_shell_reports_the_exit_status_and_both_outputs(run):
+    out = tools.t_shell(agent_mod.Ctx(run, None), "echo to-out; echo to-err >&2; exit 3")
+    assert out.startswith("exit 3") and "to-out" in out and "to-err" in out
+
+
 def test_scaleway_create_then_cleanup(run, monkeypatch):
     fake = FakeScaleway()
     monkeypatch.setattr(infra, "scw", fake)
@@ -312,6 +317,7 @@ def test_scaleway_create_then_cleanup(run, monkeypatch):
     assert res[0]["server"] == "deleted" and res[0]["volumes_deleted"] == ["vol"] and res[0]["ips_deleted"] == ["ip"]
     assert not run.alive()
     assert json.loads((run.log_dir / "resources.json").read_text())[0]["state"] == "deleted"
+    assert infra.cleanup(run) == []  # what is deleted is left alone
 
 
 def test_runpod_create_exec_delete(run, monkeypatch):

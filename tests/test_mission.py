@@ -76,6 +76,16 @@ def test_cloud_budget_counts_spent_committed_and_new(tmp_path):
     assert not b.cloud_allowed("runpod", 0.1, 1)[0] and not b.llm_allowed(1.0)[0]  # beyond the post-delivery grace
 
 
+def test_the_grace_after_delivery_counts_only_what_was_spent_after_it(tmp_path):
+    b = budget.Budget(tmp_path)
+    b.set_caps(llm_usd=5.0)
+    b.charge_llm("gateway", "harness", "openai", "gpt-6-luna", {}, usd=1.0)  # spent before the delivery
+    b.set_caps(frozen=True, frozen_llm_usd=b.llm_spent())
+    assert b.llm_allowed(budget.POST_DELIVERY_GRACE_USD - 0.05)[0]
+    b.charge_llm("gateway", "harness", "openai", "gpt-6-luna", {}, usd=0.1)  # the harness closing its turn
+    assert not b.llm_allowed(budget.POST_DELIVERY_GRACE_USD - 0.05)[0] and b.llm_allowed(0.1)[0]
+
+
 def test_watchdog_deletes_overdue_resources(tmp_path, cfg, monkeypatch):
     run = Run(cfg, workspace=tmp_path, log_dir=tmp_path / "s")
     old = (budget.now() - budget.dt.timedelta(hours=3)).isoformat()
