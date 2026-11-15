@@ -64,6 +64,40 @@ def test_gateway_charges_the_worst_case_when_usage_is_unknown(tmp_path):
     assert e["frontier.price_exact"] is False and b.reserved() == 0
 
 
+class _CutStream(BaseHTTPRequestHandler):
+    """An upstream that breaks mid-stream: one chunk of a chunked SSE answer, then the connection drops."""
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):  # noqa: N802
+        self.rfile.read(int(self.headers["Content-Length"]))
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+        d = b'data: {"id": "x", "model": "glm-5.3"}\n\n'
+        self.wfile.write(b"%x\r\n" % len(d) + d + b"\r\nff\r\npartial")
+        self.close_connection = True
+
+
+def test_gateway_charges_a_stream_the_upstream_cut(tmp_path):
+    up = ThreadingHTTPServer(("127.0.0.1", 0), _CutStream)
+    threading.Thread(target=up.serve_forever, daemon=True).start()
+    b = budget.Budget(tmp_path)
+    gw = gateway.Gateway(("127.0.0.1", 0), b, {"zhipu": (f"http://127.0.0.1:{up.server_address[1]}", "zhipu")})
+    threading.Thread(target=gw.serve_forever, daemon=True).start()
+    body = json.dumps({"model": "glm-5.3", "messages": [], "max_tokens": 1000, "stream": True}).encode()
+    req = urllib.request.Request(f"http://127.0.0.1:{gw.server_address[1]}/zhipu/api/paas/v4/chat/completions",
+                                 data=body, headers={"Content-Type": "application/json"})
+    urllib.request.urlopen(req, timeout=10).read()
+    gw.shutdown()
+    up.shutdown()
+    (e,) = b.llm_entries()  # the provider billed the partial generation: so does the ledger, at the worst case
+    assert e["frontier.price_exact"] is False and e["frontier.cost.usd"] > 0 and b.reserved() == 0
+
+
 def test_gateway_reserves_at_the_requested_mode(cfg):
     def worst(**req):
         body = json.dumps({"input": "x", "max_output_tokens": 1000, **req}).encode()

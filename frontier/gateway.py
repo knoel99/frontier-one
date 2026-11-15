@@ -15,6 +15,7 @@ https://api.openai.com/v1/responses), plus any extra route given with --route na
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import pathlib
 import sys
@@ -295,13 +296,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header(k, v)
         usage: dict = {}
         last_obj: dict | None = None
-        cut = False  # the harness hung up mid-stream: the usage, sent last, was not seen
+        cut = False  # the harness hung up, or the upstream broke, mid-stream: the usage, sent last, was not seen
         if streaming:
             self.send_header("Connection", "close")
             self.end_headers()
             self.close_connection = True
             while True:
-                chunk = resp.readline()
+                try:
+                    chunk = resp.readline()
+                except (OSError, http.client.HTTPException):  # reset, timeout, IncompleteRead: billed all the same
+                    resp.close()
+                    cut = True
+                    break
                 if not chunk:
                     break
                 try:
@@ -322,7 +328,10 @@ class Handler(BaseHTTPRequestHandler):
                         if isinstance(obj, dict) and last_obj is None:
                             last_obj = obj
         else:
-            data = resp.read()
+            try:
+                data = resp.read()
+            except (OSError, http.client.HTTPException):
+                data, cut = b"", True
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
