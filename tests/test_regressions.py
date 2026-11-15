@@ -967,3 +967,23 @@ def test_every_judge_call_is_charged_and_held_under_the_jury_cap(tmp_path, cfg, 
     b.set_caps(llm_usd=b.llm_spent() + 0.0001)  # no worst case fits in what is left
     with pytest.raises(ValueError, match="LLM budget"):
         jury.judge(b, spec, "brief", "subject", "context", "file")
+
+
+def test_the_gateway_and_the_watchdog_write_a_milestone_once(tmp_path, monkeypatch):
+    """Each had its own Snapshots and its own thread lock: both read the events, both wrote the same notice, and the
+    snapshot carried the label twice."""
+    from frontier import snapshots
+
+    b = budget.Budget(tmp_path)
+    b.set_caps(llm_usd=50, start=(budget.now() - dt.timedelta(minutes=6)).isoformat())
+    snapshots.write_settings(tmp_path, {})
+    pair = [snapshots.Snapshots(b), snapshots.Snapshots(b)]
+    real = snapshots.Snapshots.crossed
+    monkeypatch.setattr(snapshots.Snapshots, "crossed", lambda self: time.sleep(0.2) or real(self))
+    threads = [threading.Thread(target=s.notice) for s in pair]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    ev = [e["label"] for e in budget.read_jsonl(tmp_path / "events.jsonl") if e["event"] == "snapshot_notice"]
+    assert ev == ["5min"]
