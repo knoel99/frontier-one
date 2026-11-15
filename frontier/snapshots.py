@@ -167,7 +167,8 @@ def commit(ws: pathlib.Path, message: str, tags: tuple[str, ...] = (), allow_emp
     framework's own identity, output captured (inside the MCP server, file descriptor 1 is the JSON-RPC pipe).
     False when the workspace is left uncommitted (git busy, e.g. the harness committing): the tags are then not moved."""
     git = ["git", "-C", str(ws)]
-    subprocess.run([*git, "add", "-A"], capture_output=True)
+    if subprocess.run([*git, "add", "-A"], capture_output=True).returncode != 0:
+        return False  # index locked or unreadable: committing now would record the old tree
     done = subprocess.run([*git, "-c", "user.name=frontier", "-c", "user.email=frontier@localhost", "commit", "-q",
                            *(["--allow-empty"] if allow_empty else []), "-m", message], capture_output=True).returncode == 0
     done = done or not subprocess.run([*git, "status", "--porcelain"], capture_output=True, text=True).stdout.strip()
