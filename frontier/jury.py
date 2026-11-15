@@ -212,7 +212,9 @@ def team_file(ws: pathlib.Path, f: dict, label: str, incidents: str) -> str:
         if (ws / name).exists():
             parts += [f"## {name}", "", _clip((ws / name).read_text(errors="replace"), MAX_DOC), ""]
     files = [x for x in _tracked(ws) if (ws / x).is_file()]
-    parts += ["## Repository listing (path, size)", "", "\n".join(f"{x}  {(ws / x).stat().st_size} B" for x in files[:400]), ""]
+    # sizes in rounded kB: exact bytes, read before redaction, would tell the length of the names removed
+    parts += ["## Repository listing (path, size)", "",
+              "\n".join(f"{x}  {round((ws / x).stat().st_size / 1024) or '<1'} kB" for x in files[:400]), ""]
     code, used = [], 0
     for x in files:
         p = ws / x
