@@ -23,11 +23,6 @@ from frontier import budget, gateway, hf, infra, launcher, llm, mcp, mission, sa
 from frontier.config import load_config
 
 
-@pytest.fixture
-def run(cfg, tmp_path):
-    return agent_mod.Run(cfg, workspace=tmp_path / "ws", log_dir=tmp_path / "log")
-
-
 # ---------------------------------------------------------------- gateway
 
 

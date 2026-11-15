@@ -7,6 +7,7 @@ import os
 
 import pytest
 
+from frontier import agent as agent_mod
 from frontier.config import load_config
 
 
@@ -19,3 +20,8 @@ def _outside_any_mission(monkeypatch):
 @pytest.fixture
 def cfg():
     return load_config()
+
+
+@pytest.fixture
+def run(cfg, tmp_path):
+    return agent_mod.Run(cfg, workspace=tmp_path, log_dir=tmp_path / "log")

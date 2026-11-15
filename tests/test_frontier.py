@@ -10,11 +10,6 @@ from frontier import agent as agent_mod
 from frontier import catalog, http, infra, llm, tools
 
 
-@pytest.fixture
-def run(cfg, tmp_path):
-    return agent_mod.Run(cfg, workspace=tmp_path, log_dir=tmp_path / "log")
-
-
 # ---------------------------------------------------------------- resolve
 
 
