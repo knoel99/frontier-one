@@ -1154,3 +1154,21 @@ def test_a_harness_inside_the_mission_sandbox_drops_its_own_sandbox(tmp_path, mo
     assert cmd[cmd.index("--sandbox") + 1] == "workspace-write"  # on the host, Codex keeps its own sandbox
     cmd, _ = launcher.build_session({**info, "in_sandbox": True}, h, "PROMPT", None)
     assert cmd[cmd.index("--sandbox") + 1] == "danger-full-access" and "workspace-write" not in cmd
+def test_the_jury_listing_does_not_tell_the_length_of_redacted_names(tmp_path, cfg):
+    """Level 4 check of 2026-11-15: the repository listing gave each file's size before redaction (REPORT.md 105 B
+    against 113 B for the same text), which told the judges the length of the names removed."""
+    from frontier import jury
+
+    names = jury.identity_names(cfg)
+    files = {}
+    for brand in ("OpenAI", "DeepSeek"):
+        ws = tmp_path / brand
+        ws.mkdir()
+        subprocess.run(["git", "-C", str(ws), "init", "-q"], check=True)
+        (ws / "REPORT.md").write_text(f"# Report\n\nWe ({brand}) found 42.\n")
+        subprocess.run(["git", "-C", str(ws), "add", "-A"], check=True)
+        f = {"delivered": True, "minutes": 1, "neutralised_minutes": 0, "duration_hours": 1, "llm_usd": 0, "llm_cap_usd": 1,
+             "simulation_usd": 0, "rented_usd": 0, "local_cpu_core_hours": 0, "simulation_cap_usd": None, "sessions": 1,
+             "deliverables": {}, "ledgers_intact": True}
+        files[brand] = jury.redact(jury.team_file(ws, f, "Team A", ""), names)[0]
+    assert files["OpenAI"] == files["DeepSeek"]
