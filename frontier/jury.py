@@ -126,7 +126,7 @@ def facts(state: pathlib.Path) -> dict:
 
 
 def measured_scores(f: dict) -> dict:
-    """Cost control: 10 x the share of the budgets left (LLM and cloud weighed alike); delivery time: 10 x the share
+    """Cost control: 100 x the share of the budgets left (LLM and cloud weighed alike); delivery time: 100 x the share
     of the allowed time left at delivery. Both 0 for a team that did not deliver: a budget not spent on a delivery is
     not a saving."""
     if not f["delivered"]:
@@ -136,7 +136,7 @@ def measured_scores(f: dict) -> dict:
         shares.append(f["gpu_usd"] / f["gpu_cap_usd"])
     used = min(statistics.mean(shares), 1.0) if shares else 0.0
     t = (1 - min(f["elapsed_hours"] / f["duration_hours"], 1.0)) if f["duration_hours"] else 0.0
-    return {"cost_control": round(10 * (1 - used), 2), "delivery_time": round(10 * t, 2)}
+    return {"cost_control": round(100 * (1 - used), 1), "delivery_time": round(100 * t, 1)}
 
 
 # ---------------------------------------------------------------- the team's file
@@ -204,7 +204,7 @@ def judge(spec: llm.ModelSpec, brief: str, subject: str, context: str, dossier: 
         try:
             out = _json_of(r.content)
             for k in ("scientific_quality", "compliance"):
-                out[k]["score"] = max(0.0, min(10.0, float(out[k]["score"])))
+                out[k]["score"] = max(0.0, min(100.0, float(out[k]["score"])))
             return out, r.usage
         except (ValueError, KeyError, TypeError) as e:
             last = e
@@ -276,10 +276,10 @@ def aggregate(teams: dict, jury_usd: float, weights: dict | None = None) -> dict
         t["graded"] = bool(t["judges"]) or not t.get("has_work", bool(t["judges"]))
         for c in ("scientific_quality", "compliance"):
             v = [j[c]["score"] for j in t["judges"].values()]
-            sc[c] = round(statistics.median(v), 2) if v else (0.0 if t["graded"] else None)
+            sc[c] = round(statistics.median(v), 1) if v else (0.0 if t["graded"] else None)
             t[c + "_spread"] = round(max(v) - min(v), 2) if len(v) > 1 else None
         t["scores"] = sc
-        t["final"] = round(sum(w[c] * sc[c] for c in CRITERIA) / sum(w.values()), 2) if t["graded"] else None
+        t["final"] = round(sum(w[c] * sc[c] for c in CRITERIA) / sum(w.values()), 1) if t["graded"] else None
     order = sorted(teams, key=lambda n: (not teams[n]["graded"], not teams[n]["facts"]["delivered"],
                                          -(teams[n]["final"] or 0)))
     for i, n in enumerate(order, 1):
@@ -304,7 +304,8 @@ def markdown(res: dict, title: str = "Jury of the race") -> str:
              "files (a pseudonym per team, every name of provider, model or harness redacted). Final score: mean of "
              "the four criteria" + (" with weights " + ", ".join(f"{LABELS[c]} {res['weights'][c]}" for c in CRITERIA)
                                     if len(set(res["weights"].values())) > 1 else ", equal weights") +
-             "; delivered teams rank first. All grades out of 10.", "",
+             "; delivered teams rank first. All grades out of 100, on an absolute scale (100 for scientific quality is "
+             "a historic discovery), not relative to the means.", "",
              "| Rank | Team | Graded as | Delivered | Final | Scientific quality | Compliance | Cost control | "
              "Delivery time | LLM / GPU spent (USD) | Judges |",
              "|---|---|---|---|---|---|---|---|---|---|---|"]

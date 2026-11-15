@@ -620,15 +620,15 @@ def test_jury_measures_cost_and_time_and_ranks_delivered_teams_first():
     from frontier.jury import aggregate, measured_scores
     f = {"delivered": True, "llm_usd": 1.0, "llm_cap_usd": 5.0, "gpu_usd": 0.0, "gpu_cap_usd": 5.0,
          "elapsed_hours": 0.75, "duration_hours": 1.5}
-    assert measured_scores(f) == {"cost_control": 9.0, "delivery_time": 5.0}
+    assert measured_scores(f) == {"cost_control": 90.0, "delivery_time": 50.0}
     assert measured_scores({**f, "delivered": False}) == {"cost_control": 0.0, "delivery_time": 0.0}
     j = lambda q, c: {"scientific_quality": {"score": q}, "compliance": {"score": c}}  # noqa: E731
-    teams = {"a": {"facts": {**f, "team": "a"}, "measured": measured_scores(f), "judges": {"x": j(4, 4), "y": j(6, 8)}},
+    teams = {"a": {"facts": {**f, "team": "a"}, "measured": measured_scores(f), "judges": {"x": j(40, 40), "y": j(60, 80)}},
              "b": {"facts": {**f, "team": "b", "delivered": False}, "measured": {"cost_control": 0.0, "delivery_time": 0.0},
-                   "judges": {"x": j(10, 10)}}}
+                   "judges": {"x": j(100, 100)}}}
     res = aggregate(teams, 1.0)
     assert res["ranking"] == ["a", "b"]  # a delivered team ranks before one that did not, whatever its grades
-    assert res["teams"]["a"]["scores"]["scientific_quality"] == 5.0 and res["teams"]["a"]["final"] == (5 + 9 + 5 + 6) / 4
+    assert res["teams"]["a"]["scores"]["scientific_quality"] == 50.0 and res["teams"]["a"]["final"] == (50 + 90 + 50 + 60) / 4
 
 
 def test_jury_files_are_anonymous():
@@ -681,7 +681,7 @@ def test_streamed_answers_are_rebuilt_whole():
 def test_jury_work_no_judge_could_grade_is_not_graded_rather_than_zero():
     from frontier.jury import aggregate
     f = {"delivered": True, "team": "x"}
-    m = {"cost_control": 9.0, "delivery_time": 5.0}
+    m = {"cost_control": 90.0, "delivery_time": 50.0}
     teams = {"x": {"facts": f, "measured": m, "judges": {}, "has_work": True},
              "y": {"facts": {**f, "team": "y", "delivered": False}, "measured": {"cost_control": 0.0, "delivery_time": 0.0},
                    "judges": {}, "has_work": False}}
