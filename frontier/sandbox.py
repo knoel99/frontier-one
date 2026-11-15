@@ -99,6 +99,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
     && rm -rf /var/lib/apt/lists/*
 RUN {install or 'true'}
 RUN python3 -m pip install --break-system-packages --no-cache-dir huggingface_hub
+RUN useradd -m -s /bin/bash sandbox && mkdir -p /sandbox/workspace /sandbox/state && chown -R sandbox:sandbox /sandbox
 COPY frontier {IN_ROOT}
 ENV PATH={IN_ROOT}/bin:$PATH
 """

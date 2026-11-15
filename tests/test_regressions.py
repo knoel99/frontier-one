@@ -1277,3 +1277,12 @@ def test_the_openshell_policy_lists_binaries_as_objects(tmp_path):
     pol, _ = sandbox.policy({"network": {"allow": ["arxiv.org"]}}, ["/usr/bin/node", "/usr/bin/python3*"])
     for rule in pol["network_policies"].values():
         assert rule["binaries"] == [{"path": "/usr/bin/node"}, {"path": "/usr/bin/python3*"}]
+
+
+def test_the_sandbox_image_has_the_policy_user():
+    """First live run with OpenShell 0.1.8 (2026-11-15): "IdentityResolutionFailed: workload user 'sandbox' does not
+    exist in the pinned image": the policy runs the harness as `sandbox`, the image did not create that user."""
+    text = sandbox.dockerfile(launcher.harness_conf("codex", "openai"), "node:22-bookworm")
+    pol, _ = sandbox.policy({}, [])
+    user = pol["process"]["run_as_user"]
+    assert f"useradd -m -s /bin/bash {user}" in text and f"chown -R {user}:{user} /sandbox" in text
