@@ -105,7 +105,10 @@ def test_a_session_is_killed_at_the_deadline(tmp_path):
 def _dead(pid: int) -> bool:
     stat = pathlib.Path(f"/proc/{pid}/stat")  # gone, or a zombie left to a PID 1 that does not reap
     for _ in range(50):
-        if not stat.exists() or stat.read_text().rsplit(")", 1)[1].split()[0] == "Z":
+        try:
+            if stat.read_text().rsplit(")", 1)[1].split()[0] == "Z":
+                return True
+        except (FileNotFoundError, ProcessLookupError):  # reaped between two looks (CI, 2026-11-15)
             return True
         time.sleep(0.1)
     return False
@@ -588,3 +591,26 @@ def test_an_empty_reservations_file_does_not_stop_the_gateway(tmp_path):
     rid, why = b.reserve(0.1, "x")
     assert rid and why == "" and b.reserved() == 0.1
     assert not (tmp_path / "reservations.json.tmp").exists()
+
+
+def test_report_paths_finds_workspace_paths_only():
+    """Race 2026-11-15: every report cited workspace paths (code/evaluate.py, results/metrics.json, DECISIONS.md)."""
+    from frontier.mission import report_paths
+    text = ("See `code/evaluate.py` and `results/` for the run; [the table](results/table.md); DECISIONS.md says why.\n"
+            "The model `alibaba/qwen3.8-flash`, the rate `dE/dt` and `1/Re` are not paths; nor is https://x.org/a.py.\n"
+            "![Fields](figures/fields.png){width=100%}\n\\includegraphics[width=\\linewidth]{fig/a.pdf}\n")
+    assert report_paths(text) == ["code/evaluate.py", "results/", "results/table.md", "DECISIONS.md"]
+    assert report_paths("Figure 2 and Table 1; the delivery dataset on the Hub, [here](https://huggingface.co/x).") == []
+
+
+def test_deliver_refuses_a_report_that_names_paths(run, tmp_path):
+    from frontier.agent import Ctx
+    from frontier.mission import deliver
+    ws = run.workspace
+    ws.mkdir(parents=True, exist_ok=True)
+    for f in ("DELIVERY.md", "COMPLIANCE.md", "DECISIONS.md"):
+        (ws / f).write_text("x\n")
+    (ws / "REPORT.md").write_text("Results are in `results/metrics.json`.\n")
+    out = deliver(Ctx(run, None))
+    assert out.startswith("refused: the report names files") and "results/metrics.json" in out
+    assert not (run.log_dir / "delivery.json").exists()
