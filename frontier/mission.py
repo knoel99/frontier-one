@@ -436,7 +436,10 @@ def _hermes_home(state: pathlib.Path, target: dict, mcp: McpCommand) -> None:
     (home / "config.yaml").write_text(
         "model:\n  provider: custom\n"
         f"  default: {target['model']}\n  base_url: {target['base_url']}\n  api_mode: {api_mode}\n"
-        f"mcp_servers:\n  frontier:\n    command: {json.dumps(mcp.command)}\n    args: [{args}]\n    timeout: 3600\n")
+        f"mcp_servers:\n  frontier:\n    command: {json.dumps(mcp.command)}\n    args: [{args}]\n    timeout: 3600\n"
+        # no update check and no model catalogue: they ask api.github.com, raw.githubusercontent.com and a github.io
+        # page, hosts the race blocks, which the stewards would count against the team (checked 2026-11-15)
+        "updates:\n  check: false\nmodel_catalog:\n  enabled: false\n")
 
 
 # ---------------------------------------------------------------- delivery (a tool of the mission)

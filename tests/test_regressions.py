@@ -1337,3 +1337,10 @@ def test_codex_does_not_fetch_its_plugins_from_github(tmp_path):
     cmd, _ = launcher.build_session(info, launcher.harness_conf("codex", "openai"), "PROMPT", None)
     assert cmd[cmd.index("features.plugins=false") - 1] == "-c"
 
+
+def test_hermes_does_not_call_github_by_itself(tmp_path):
+    """Check of 2026-11-15 behind the outbound filter: Hermes asked api.github.com (update check), raw.githubusercontent
+    .com and nousresearch.github.io (model catalogue) on its own, refusals the stewards would count against the team."""
+    info = mission.prepare(_mission(tmp_path, harness="hermes", provider="deepseek"), ping=False, offers=False)
+    text = (pathlib.Path(info["state"]) / "hermes" / "config.yaml").read_text()
+    assert "updates:\n  check: false\n" in text and "model_catalog:\n  enabled: false\n" in text
