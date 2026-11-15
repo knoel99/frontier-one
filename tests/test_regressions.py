@@ -1237,3 +1237,22 @@ def test_vibe_knows_the_mission_model_and_goes_through_the_gateway(tmp_path):
     assert conf["models"][model] == {"name": model, "provider": "frontier", "alias": model}
     assert conf["mcp_servers"][0]["name"] == "frontier"
     assert launcher.routable(launcher.harness_conf("vibe", "mistral"))
+
+
+def test_openshell_gets_a_built_image_not_a_dockerfile(tmp_path):
+    """First live run with OpenShell 0.1.8 (2026-11-15): `sandbox create --from <Dockerfile>` failed with "'--from' no
+    longer builds local Dockerfiles or directories": the image is built with the gateway's engine, then passed by name."""
+    f = _mission(tmp_path, harness="codex")
+    f.write_text(f.read_text() + '\n[sandbox]\nkind = "openshell"\n')
+    info = mission.prepare(f, ping=False, offers=False)
+    box = sandbox.OpenShell(info, launcher.harness_conf("codex", "openai"), dry_run=True)
+    box.write_files()
+    box.setup()
+    build = next(i for i, c in enumerate(box.commands) if c[:2] == ["docker", "build"])
+    create = next(i for i, c in enumerate(box.commands) if c[:3] == ["openshell", "sandbox", "create"])
+    image = box.commands[build][box.commands[build].index("-t") + 1]
+    assert build < create and box.commands[build][-1] == str(box.dir / "image")
+    assert box.commands[create][box.commands[create].index("--from") + 1] == image
+    box.teardown()
+    delete = box.commands.index(["openshell", "sandbox", "delete", box.name])
+    assert box.commands[delete + 1] == ["docker", "rmi", "-f", image]

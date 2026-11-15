@@ -14,8 +14,7 @@ Flow (the host launcher drives it; the harness, the metering gateway and the MCP
   upload workspace and state → per session: sandbox exec `frontier mission session` → download workspace and
   state → host commit → at the end sandbox delete, provider delete.
 
-Not run live yet: the session that wrote this had no Docker daemon. `openshell … --help` and one short session
-should be checked on the race host before a real mission.
+Run live on 2026-11-15 with OpenShell 0.1.8 and its Docker compute driver.
 """
 
 from __future__ import annotations
@@ -114,6 +113,8 @@ class OpenShell:
         self.dir = pathlib.Path(info["state"]) / "openshell"
         self.binaries = BINARIES + list(h.get("sandbox_binaries", []))
         self.commands: list[list[str]] = []
+        self.engine = self.m.get("sandbox", {}).get("engine", "docker")  # the engine of the OpenShell gateway's driver
+        self.image = f"{self.name}:latest"
 
     def _run(self, args: list[str], check: bool = True) -> subprocess.CompletedProcess | None:
         self.commands.append(args)
@@ -149,7 +150,10 @@ class OpenShell:
                                    f"file: or cmd: source in the mission's [secrets]")
             self._run(["openshell", "provider", "create", "--name", f"{self.name}-{prof.stem.removeprefix('frontier-')}",
                        "--type", prof.stem, "--credential", cred], check=False)
-        args = ["openshell", "sandbox", "create", "--name", self.name, "--from", str(self.dir / "image" / "Dockerfile"),
+        # OpenShell 0.1.8 no longer builds a Dockerfile given to --from (checked live 2026-11-15): the image is built
+        # with the container engine the gateway uses, and passed by name
+        self._run([self.engine, "build", "-t", self.image, str(self.dir / "image")])
+        args = ["openshell", "sandbox", "create", "--name", self.name, "--from", self.image,
                 "--policy", str(self.dir / "policy.yaml"), "--detach"]
         for p in self.provider_names():
             args += ["--provider", p]
@@ -187,5 +191,6 @@ class OpenShell:
     def teardown(self) -> None:
         self.pull()
         self._run(["openshell", "sandbox", "delete", self.name], check=False)
+        self._run([self.engine, "rmi", "-f", self.image], check=False)
         for p in self.provider_names():
             self._run(["openshell", "provider", "delete", p], check=False)
