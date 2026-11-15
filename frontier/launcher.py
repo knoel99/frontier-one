@@ -92,6 +92,8 @@ def build_session(info: dict, h: dict, prompt: str, gateway: str | None) -> tupl
     env["FRONTIER_STATE"] = str(info["state"])
     env["PATH"] = f"{ROOT / 'bin'}{os.pathsep}{env.get('PATH', '')}"
     cmd = _fill(h["command"], values)
+    if info.get("in_sandbox"):  # already in the mission's sandbox: the harness's own sandbox cannot nest in it
+        cmd = [h.get("in_sandbox", {}).get(c, c) for c in cmd]
     if gateway and h.get("route_args"):
         extra = _fill(h["route_args"], values)
         cmd = cmd[:-1] + extra + cmd[-1:] if h["command"][-1] == "{prompt}" else cmd + extra
@@ -322,7 +324,8 @@ def session(state_dir: str, n: int) -> int:
     s["workspace"] = os.getcwd()
     (state / "mission.json").write_text(json.dumps(s, indent=1) + "\n")
     mission.apply_settings(s)
-    info = {"mission": s.get("conf", {}), "settings": s, "state": state, "workspace": pathlib.Path(os.getcwd())}
+    info = {"mission": s.get("conf", {}), "settings": s, "state": state, "workspace": pathlib.Path(os.getcwd()),
+            "in_sandbox": True}
     h = harness_conf(s["harness"], s["provider"])
     run = Run(load_config(), workspace=info["workspace"], allow_spend=True, run_id=state.name, log_dir=state, settings=s)
     gw, gateway = open_gateway(state, s, h)

@@ -37,6 +37,9 @@ route = {}
 # 2026-11-14 with Codex 0.169.0: the gateway metered the session).
 route_args = ["-c", "model_providers.frontier.name=\"frontier-gateway\"", "-c", "model_providers.frontier.base_url=\"{gateway}/openai/v1\"", "-c", "model_providers.frontier.env_key=\"OPENAI_API_KEY\"", "-c", "model_providers.frontier.wire_api=\"responses\"", "-c", "model_providers.frontier.supports_websockets=false", "-c", "model_provider=\"frontier\""]
 usage = "jsonl:turn.completed"
+# Inside the mission's OpenShell sandbox, Codex's own (bubblewrap) cannot create a namespace (checked 2026-11-15 in the
+# sandbox image under Docker: every command failed); the outer sandbox confines the session.
+in_sandbox = { "workspace-write" = "danger-full-access" }
 
 [antigravity]
 install = "curl -fsSL https://antigravity.google/cli/install.sh | bash"  # --skip-aliases refused since (checked 2026-11-14)
