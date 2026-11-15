@@ -35,6 +35,10 @@ standard, what Frontier does, and the gaps that remain.
   network volume lose their data). Scaleway has billing alerts only.
 - **Gap.** A harness whose traffic cannot be routed through the gateway is metered from its own usage report at the
   end of each session (between sessions, not during one); `config/harnesses.toml` says which harness is in which case.
+- **Gap.** The cap holds while a call costs at most what it reserved. A call whose output passes
+  `limits.max_reserved_output_tokens`, or whose text holds more than a token per four characters, overruns the cap
+  by the excess. `tests/test_call_orders.py` runs every order of the steps of parallel calls on the real code and
+  states this limit as a run.
 
 ## 3. Cloud spend guardrails
 
