@@ -1039,3 +1039,26 @@ def test_the_gateway_tells_a_milestone_the_watchdog_recorded_first(tmp_path):
     assert "15min reached" in gw.notice()
     assert "15min reached" in gw.notice()
     assert gw.notice() == ""  # told notice_calls times, then no more
+def test_a_snapshot_waits_for_a_busy_git(tmp_path):
+    """Race check 2026-11-15: with the index locked (the harness or the launcher committing), the snapshot's commit
+    failed silently and its event and tag pointed at a commit without the team's latest work."""
+    from frontier import snapshots
+
+    ws, st = tmp_path / "ws", tmp_path / "st"
+    ws.mkdir()
+    git = ["git", "-C", str(ws), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+    (ws / "REPORT.md").write_text("results so far\n")
+    b = budget.Budget(st)
+    b.set_caps(llm_usd=50, start=(budget.now() - dt.timedelta(minutes=6)).isoformat())
+    snapshots.write_settings(st, {})
+    s = snapshots.Snapshots(b)
+    s.notice()
+    (ws / ".git" / "index.lock").touch()
+    assert s.take(ws) is None
+    (ws / ".git" / "index.lock").unlink()
+    ev = s.take(ws)
+    assert ev["labels"] == ["5min"]
+    show = subprocess.run([*git, "show", "snapshot-5min:REPORT.md"], capture_output=True, text=True)
+    assert show.stdout == "results so far\n"
