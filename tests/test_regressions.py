@@ -1269,3 +1269,11 @@ def test_a_failed_openshell_command_says_why(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="no longer builds"):
         box._run(["openshell", "sandbox", "create"])
     assert box._run(["openshell", "provider", "delete", "x"], check=False).returncode == 1  # check=False: no raise
+
+
+def test_the_openshell_policy_lists_binaries_as_objects(tmp_path):
+    """First live run with OpenShell 0.1.8 (2026-11-15): `sandbox create` refused the policy, "network_policies.packages
+    .binaries[0]: type mismatch: expected mapping" (the schema wants `- path: /usr/bin/node`)."""
+    pol, _ = sandbox.policy({"network": {"allow": ["arxiv.org"]}}, ["/usr/bin/node", "/usr/bin/python3*"])
+    for rule in pol["network_policies"].values():
+        assert rule["binaries"] == [{"path": "/usr/bin/node"}, {"path": "/usr/bin/python3*"}]

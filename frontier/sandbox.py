@@ -72,6 +72,7 @@ def policy(m: dict, binaries: list[str]) -> tuple[dict, list[str]]:
             warnings.append(f"{h} is a wildcard covering a denied host: the wildcard is dropped, list the hosts instead")
             continue
         allow.append(h)
+    binaries = [{"path": b} for b in binaries]  # OpenShell 0.1.8: each item a mapping (checked live 2026-11-15)
     rules = {
         "packages": {"name": "package registries", "endpoints": [_endpoint(h, "read-only") for h in PACKAGE_HOSTS],
                      "binaries": binaries},
