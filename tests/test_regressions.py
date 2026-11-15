@@ -1106,3 +1106,14 @@ def test_a_runpod_call_refused_by_the_rate_limit_is_retried(monkeypatch):
     assert len(calls) == 3
     monkeypatch.setattr(http, "mcp_rpc", lambda *a, **k: {"result": {"isError": True, "content": [{"text": "bad input"}]}})
     assert http.mcp_call("exec-pod", {"id": "p"}) == (False, "bad input")  # other errors are not retried
+
+
+def test_responses_cache_writes_are_booked():
+    """Race check 2026-11-15: OpenAI's Responses usage carries input_tokens_details.cache_write_tokens (read live:
+    6,006 of 6,009 on a first call); the parser dropped it, so cache writes were billed at the input price (Codex's
+    own report showed 201,708 written tokens the ledger did not have)."""
+    usage = {"input_tokens": 6009, "input_tokens_details": {"cache_write_tokens": 6006, "cached_tokens": 0},
+             "output_tokens": 5, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6014}
+    u = llm.usage_of({"type": "response.completed", "response": {"usage": usage}})
+    assert u["cache_write"] == 6006 and u["input"] == 6009 and u["cached"] == 0
+    assert budget.llm_cost("openai", "gpt-6-luna", u)[0] > budget.llm_cost("openai", "gpt-6-luna", {**u, "cache_write": 0})[0]
