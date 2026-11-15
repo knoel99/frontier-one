@@ -462,3 +462,67 @@ def test_dashboard_activities_for_the_gantt():
     kinds = {(a["kind"], a["provider"], a["end"] is None) for a in acts}
     assert kinds == {("session", "openai", False), ("session", "openai", True), ("sub-agent", "zhipu", False),
                      ("machine", "runpod", True)}
+
+
+# ---------------------------------------------------------------- snapshots and local CPU
+
+
+def test_snapshots_notice_merge_tag_and_event(tmp_path, monkeypatch):
+    import subprocess
+
+    from frontier import snapshots
+
+    state, ws = tmp_path / "s", tmp_path / "ws"
+    state.mkdir()
+    ws.mkdir()
+    subprocess.run(["git", "init", "-q", str(ws)], check=True)
+    t0 = budget.now()
+    b = budget.Budget(state)
+    b.set_caps(llm_usd=50, start=(t0 - budget.dt.timedelta(minutes=16)).isoformat())
+    snapshots.write_settings(state, {"grace_minutes": 5})
+    s = snapshots.Snapshots(b)
+    note = s.notice()  # 5 min (silent: before 15 min) and 15 min (told) at once
+    assert "15min reached" in note and "snapshot" in note
+    ev = [e for e in budget.read_jsonl(state / "events.jsonl") if e["event"] == "snapshot_notice"]
+    assert [(e["label"], e["silent"]) for e in ev] == [("5min", True), ("15min", False)]
+    assert s.notice() == note and s.notice() == note and s.notice() == ""  # three calls carry it, then none
+    first = s.take(ws)  # the silent one is due at once, the told one merged into it as it falls in its grace
+    assert first["labels"] == ["5min", "15min"] and first["minutes"] >= 16
+    assert s.take(ws) is None
+    tags = subprocess.run(["git", "-C", str(ws), "tag"], capture_output=True, text=True).stdout.split()
+    assert tags == ["snapshot-15min", "snapshot-5min"]
+    monkeypatch.setattr(b, "llm_spent", lambda: 12.0)
+    assert ("spend", 10) in s.crossed() and ("spend", 20) not in s.crossed()
+    assert snapshots.label("time", 120) == "2h" and snapshots._extend([5, 15], 50) == [5, 15, 30, 60]
+
+
+def test_cpu_meter_counts_the_mission_processes_and_their_reaped_children(tmp_path):
+    from frontier import snapshots
+
+    proc, state = tmp_path / "proc", tmp_path / "s"
+    state.mkdir()
+    (state / "events.jsonl").write_text("")
+
+    def ps(pid, ppid, ticks, mine=True):
+        d = proc / str(pid)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "environ").write_bytes(b"A=1\0" + (f"FRONTIER_STATE={state}".encode() if mine else b"B=2") + b"\0")
+        u, s_, cu, cs = ticks
+        (d / "stat").write_text(f"{pid} (py thon) S {ppid} 0 0 0 0 0 0 0 0 0 {u} {s_} {cu} {cs} 20 0")
+
+    tick = snapshots._TICK
+    ps(10, 1, (tick, 0, 0, 0))  # the harness, 1 s
+    ps(11, 10, (2 * tick, tick, 0, 0))  # a run, 3 s
+    ps(12, 1, (50 * tick, 0, 0, 0), mine=False)  # another mission's process
+    m = snapshots.CpuMeter(state, proc)
+    assert m.measure() == 3 + 1
+    import shutil
+
+    shutil.rmtree(proc / "11")
+    ps(10, 1, (tick, 0, 3 * tick, 0))  # reaped by the harness: now in its children's time, counted once
+    assert m.measure() == 4
+    ps(13, 1, (5 * tick, 0, 0, 0))  # a daemon of the mission reparented to init
+    m.measure()
+    shutil.rmtree(proc / "13")
+    assert m.measure() == 9  # counted up to its last sample
+    assert m.record() == 9 and snapshots.core_seconds(state) == 9

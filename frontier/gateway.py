@@ -212,6 +212,11 @@ class Gateway(ThreadingHTTPServer):
         self.budget, self.routes, self.agent, self.model_map = budget, routes, agent, dict(model_map or {})
         self.milestones = Milestones(budget)
         self.cfg = cfg if cfg is not None else load_config()
+        self.snapshots = None  # a mission's launcher writes snapshots.json: then its milestones are told here
+        if (budget.dir / "snapshots.json").exists():
+            from .snapshots import Snapshots
+
+            self.snapshots = Snapshots(budget, float(self.cfg.get("limits", {}).get("local_cpu_usd_per_core_hour", 0)))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -265,6 +270,8 @@ class Handler(BaseHTTPRequestHandler):
                     "why": why})
                 return self._send_json(402, {"error": {"type": "budget_exhausted", "code": "budget_exhausted", "message": why}})
             body = inject(rest, body, self.server.milestones.notice())  # 10, 25, 50, 80, 95, 98 % of a budget
+            if self.server.snapshots:  # time and spend milestones: bring the report up to date for a snapshot
+                body = inject(rest, body, self.server.snapshots.notice())
             body = self._with_stream_usage(rest, body)
         try:
             self._forward(origin, rest, body, provider, is_llm_call, worst)
