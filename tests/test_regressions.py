@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import datetime as dt
 import json
 import os
 import pathlib
@@ -551,3 +552,39 @@ def test_two_model_providers_run_their_frontier_model_on_standard():
     cfg = load_config()
     assert llm.resolve(cfg, "moonshot", "standard", "high").model == cfg["providers"]["moonshot"]["tiers"]["frontier"]
     assert llm.resolve(cfg, "zhipu", "standard", "high").model == cfg["providers"]["zhipu"]["tiers"]["frontier"]
+
+
+def test_budget_milestones_reach_the_main_agent(tmp_path):
+    """The gateway tells the harness when a budget crosses 10, 25, 50, 80, 95 and 98 %: on the next calls only."""
+    from frontier.milestones import NOTICE_CALLS, Milestones, inject
+    b = budget.Budget(tmp_path)
+    b.set_caps(llm_usd=1.0, start=budget.now().isoformat(), deadline=(budget.now() + dt.timedelta(hours=1)).isoformat())
+    ms = Milestones(b)
+    assert ms.notice() == ""
+    b.charge_llm("gateway", "harness:x", "openai", "gpt-6.1-terra", {}, usd=0.30)
+    notes = [ms.notice() for _ in range(NOTICE_CALLS + 1)]
+    assert "LLM budget: 25 % reached" in notes[0] and "0.30 of 1.00 USD" in notes[0] and notes[-1] == ""
+    events = [e for e in budget.read_jsonl(tmp_path / "events.jsonl") if e["event"] == "budget_milestone"]
+    assert [e["percent"] for e in events] == [10, 25]
+    assert Milestones(b).notice() == ""  # a restarted gateway does not repeat a milestone already told
+    note = "[notice]"
+    anth = json.loads(inject("/v1/messages", json.dumps({"messages": [{"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "t", "content": "x"}]}]}).encode(), note))
+    assert anth["messages"][-1]["content"][-1] == {"type": "text", "text": note}
+    chat = json.loads(inject("/v1/chat/completions", json.dumps({"messages": [{"role": "tool", "content": "x"}]}).encode(), note))
+    assert chat["messages"][-1] == {"role": "user", "content": note}
+    resp = json.loads(inject("/v1/responses", json.dumps({"input": [{"role": "user", "content": "hi"}]}).encode(), note))
+    assert resp["input"][-1]["content"][0]["text"] == note
+    gem = json.loads(inject("/v1beta/models/m:generateContent", json.dumps({"contents": [{"role": "user", "parts": []}]}).encode(), note))
+    assert gem["contents"][-1] == {"role": "user", "parts": [{"text": note}]}
+    assert inject("/v1/messages", b'{"messages": [{"role": "assistant", "content": "pre"}]}', note).endswith(b'"pre"}]}')
+
+
+def test_an_empty_reservations_file_does_not_stop_the_gateway(tmp_path):
+    """A process killed while writing left reservations.json empty: every later call failed (JSONDecodeError)."""
+    b = budget.Budget(tmp_path)
+    b.set_caps(llm_usd=1.0)
+    (tmp_path / "reservations.json").write_text("")
+    rid, why = b.reserve(0.1, "x")
+    assert rid and why == "" and b.reserved() == 0.1
+    assert not (tmp_path / "reservations.json.tmp").exists()

@@ -24,6 +24,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from .milestones import Milestones, inject
 from .budget import Budget, append_chained, now, worst_case_usd
 from .config import load_config
 
@@ -194,6 +195,7 @@ class Gateway(ThreadingHTTPServer):
                  cfg: dict | None = None, model_map: dict[str, str] | None = None):
         super().__init__(addr, Handler)
         self.budget, self.routes, self.agent, self.model_map = budget, routes, agent, dict(model_map or {})
+        self.milestones = Milestones(budget)
         self.cfg = cfg if cfg is not None else load_config()
 
 
@@ -246,6 +248,7 @@ class Handler(BaseHTTPRequestHandler):
                     "t": now().isoformat(timespec="seconds"), "event": "llm_refused", "agent": self.server.agent,
                     "why": why})
                 return self._send_json(402, {"error": {"type": "budget_exhausted", "code": "budget_exhausted", "message": why}})
+            body = inject(rest, body, self.server.milestones.notice())  # 10, 25, 50, 80, 95, 98 % of a budget
             body = self._with_stream_usage(rest, body)
         try:
             self._forward(origin, rest, body, provider, is_llm_call, worst)

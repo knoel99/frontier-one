@@ -184,11 +184,16 @@ class Budget:
         f = self.dir / "reservations.json"
         with open(self.dir / ".reservations.lock", "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            items = json.loads(f.read_text()) if f.exists() else {}
+            try:  # a process killed while writing the old way left an empty file: it holds no reservation
+                items = json.loads(f.read_text() or "{}") if f.exists() else {}
+            except json.JSONDecodeError:
+                items = {}
             at = now()
             items = {k: v for k, v in items.items() if (at - parse_time(v["t"])).total_seconds() < RESERVATION_TTL_S}
             out = fn(items)
-            f.write_text(json.dumps(items) + "\n")
+            tmp = f.with_name(f.name + ".tmp")  # written whole, then renamed: never a half-written file
+            tmp.write_text(json.dumps(items) + "\n")
+            tmp.replace(f)
             fcntl.flock(lock, fcntl.LOCK_UN)
             return out
 
