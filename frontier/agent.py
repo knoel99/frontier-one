@@ -241,6 +241,11 @@ class Agent:
             t0 = time.time()
             try:
                 reply = llm.chat(self.spec, self.messages, tool_specs, max_out)
+            except llm.LLMError as e:
+                if e.maybe_billed:  # charged at the worst case, as the gateway does for a call it could not meter
+                    self.run.budget.charge_llm("spawn_agent", self.id, self.spec.provider, self.spec.model, {},
+                                               self.spec.mode, self.spec.price_x, usd=worst, exact=False)
+                raise
             finally:
                 self.run.budget.release(rid)
             usd = self.run.charge(reply.usage, self.spec, self.id)

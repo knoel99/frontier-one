@@ -715,6 +715,38 @@ def test_a_slow_server_failure_is_not_retried(monkeypatch):
     assert len(calls) == 3  # a fast failure is still retried
 
 
+def test_a_stream_cut_after_it_started_is_not_retried_and_is_charged(run, monkeypatch):
+    """A stream that started was run by the provider: sending it again would pay for it twice, unseen."""
+    calls = []
+
+    class Cut:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def __iter__(self):
+            yield b'data: {"type": "response.created"}\n'
+            raise ConnectionResetError("reset mid-stream")
+
+    monkeypatch.setattr(llm.time, "sleep", lambda s: None)
+    monkeypatch.setattr(llm.urllib.request, "urlopen", lambda req, timeout=0: calls.append(1) or Cut())
+    with pytest.raises(llm.LLMError) as e:
+        llm._post_sse("https://x/y", {}, {})
+    assert len(calls) == 1 and e.value.maybe_billed
+
+    def billed(*a, **kw):
+        raise llm.LLMError("network error", maybe_billed=True)
+
+    monkeypatch.setattr(llm, "chat", billed)
+    a = agent_mod.Agent(run, "openai", "light", "low", tools=[])
+    with pytest.raises(llm.LLMError):
+        a.run_task("t")
+    (entry,) = run.budget.llm_entries()
+    assert entry["frontier.price_exact"] is False and entry["frontier.cost.usd"] > 0 and run.budget.reserved() == 0
+
+
 def test_scoring_log_scales_and_relative_efficiency():
     from frontier import scoring
     assert scoring.log_score(5, 5) == 100 and scoring.log_score(10, 5) == 90 and scoring.log_score(40, 5) == 70

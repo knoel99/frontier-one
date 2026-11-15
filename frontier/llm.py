@@ -11,6 +11,7 @@ provider needs replayed on the next turn (reasoning_content, Gemini thought sign
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import time
@@ -26,7 +27,9 @@ TIERS = ["frontier", "standard", "light"]
 
 
 class LLMError(RuntimeError):
-    pass
+    def __init__(self, msg: str, maybe_billed: bool = False):
+        super().__init__(msg)
+        self.maybe_billed = maybe_billed  # the provider probably ran the call: the caller charges an estimate
 
 
 @dataclass
@@ -154,26 +157,28 @@ def _post(url: str, headers: dict, body: dict, timeout: float = 600, retries: in
     for attempt in range(retries + 1):
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **accept, **headers})
         t0 = time.time()
+        events: list[dict] = []
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
-                return _events(r) if sse else json.loads(r.read())
+                return _events(r, events) if sse else json.loads(r.read())
         except urllib.error.HTTPError as e:
             text = e.read().decode(errors="replace")[:2000]
-            if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries and not _maybe_billed(e.code, t0):
+            billed = _maybe_billed(e.code, t0)
+            if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries and not billed:
                 time.sleep(min(60, 2 ** (attempt + 1)))
                 continue
-            raise LLMError(f"HTTP {e.code} from {url}: {text}") from None
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
-            if attempt < retries and not _maybe_billed(0, t0):
+            raise LLMError(f"HTTP {e.code} from {url}: {text}", maybe_billed=billed) from None
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as e:
+            billed = bool(events) or _maybe_billed(0, t0)  # a stream that started was run: never sent again
+            if attempt < retries and not billed:
                 time.sleep(min(60, 2 ** (attempt + 1)))
                 continue
-            raise LLMError(f"network error on {url}: {e}") from None
+            raise LLMError(f"network error on {url}: {e}", maybe_billed=billed) from None
     raise LLMError("unreachable")
 
 
-def _events(r) -> list[dict]:
-    """The `data:` JSON of each server-sent event of a response."""
-    events = []
+def _events(r, events: list[dict]) -> list[dict]:
+    """The `data:` JSON of each server-sent event of a response, appended to `events` as they come."""
     for raw in r:
         line = raw.decode(errors="replace").strip()
         if line.startswith("data:") and line[5:].strip() not in ("", "[DONE]"):
