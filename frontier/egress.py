@@ -53,7 +53,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _upstream(self, host: str, port: int) -> socket.socket:
         up = self.server.upstream
-        if not up:
+        if not up or host in ("127.0.0.1", "localhost", "::1"):  # the mission's own gateway: never through the upstream
             return socket.create_connection((host, port), timeout=30)
         s = socket.create_connection((up.hostname, up.port or 80), timeout=30)
         s.sendall(f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n\r\n".encode())

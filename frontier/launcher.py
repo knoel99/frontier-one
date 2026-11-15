@@ -77,6 +77,12 @@ def build_session(info: dict, h: dict, prompt: str, gateway: str | None) -> tupl
         env.update({k: str(v) for k, v in _fill(h.get("default_base_url", {}), values).items()})
     if info.get("egress"):  # no sandbox and hosts to block: every request of the harness goes through the filter
         env.update({k: info["egress"] for k in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy")})
+    for k in h.get("proxy_env", []):  # a harness with a proxy variable of its own (ZCode: ZCODE_HTTP_PROXY)
+        if env.get("HTTPS_PROXY"):
+            env[k] = env["HTTPS_PROXY"]
+    for k in h.get("no_proxy_env", []):  # and its own bypass list, so that the local gateway is reached directly
+        if env.get("NO_PROXY") or env.get("no_proxy"):
+            env[k] = env.get("NO_PROXY") or env["no_proxy"]
     env["FRONTIER_STATE"] = str(info["state"])
     env["PATH"] = f"{ROOT / 'bin'}{os.pathsep}{env.get('PATH', '')}"
     cmd = _fill(h["command"], values)

@@ -258,7 +258,8 @@ def test_deliver_checks_freezes_and_reports(tmp_path, cfg, monkeypatch):
 
 def test_harness_choice_and_launch_command(tmp_path, monkeypatch):
     assert mission.load(_mission(tmp_path, provider="anthropic"))["harness"]["name"] == "claude"
-    assert mission.load(_mission(tmp_path, provider="zhipu"))["harness"]["name"] == "opencode"
+    assert mission.load(_mission(tmp_path, provider="zhipu"))["harness"]["name"] == "zcode"  # Z.ai's own Agent CLI
+    assert mission.NATIVE_HARNESS.get("a-provider-without-one", mission.FALLBACK_HARNESS) == "opencode"
     info = mission.prepare(_mission(tmp_path), ping=False, offers=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     h = launcher.harness_conf("codex", "openai")

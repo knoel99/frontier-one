@@ -123,6 +123,20 @@ route = { FRONTIER_GATEWAY = "{gateway}" }
 wire = "provider"
 usage = "json-usage"
 
+[zcode]
+# Z.ai's Agent CLI, built from github.com/zai-org/ZCode (apps/zcode-cli, pnpm workspace, Node 24) into /opt/zcode-cli.
+# HOME is a home of the mission (state/zcode): MCP in .zcode/cli/config.json, the model in provider_config.json on
+# the gateway. Checked live on 2026-11-15 with v0.17.1 and glm-5.3: MCP tool called, JSON usage report.
+install = "git clone --depth 1 https://github.com/zai-org/ZCode.git /opt/zcode-src && cd /opt/zcode-src && pnpm install --frozen-lockfile --filter '@zcode/cli...' && pnpm --filter '@zcode/cli...' build && cp -r apps/zcode-cli/packages/cli/dist /opt/zcode-cli"
+command = ["/opt/node24/bin/node", "/opt/zcode-cli/zcode.cjs", "--prompt", "{prompt}", "--cwd", "{workspace}", "--mode", "yolo", "--disallowed-tools", "AskUserQuestion EnterPlanMode ExitPlanMode", "--json", "--no-color"]
+effort = "provider"
+env = { HOME = "{state}/zcode", ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = "{state}/zcode/provider_config.json" }
+route = { FRONTIER_GATEWAY = "{gateway}" }
+proxy_env = ["ZCODE_HTTP_PROXY"]
+no_proxy_env = ["ZCODE_NO_PROXY"]
+wire = "provider"
+usage = "json-usage"
+
 [hermes]
 # HERMES_HOME points at a configuration of the mission (state/hermes/config.yaml: model on the gateway, MCP server).
 # Flags from hermes-agent.nousresearch.com/docs (2026-11-14); UNCONFIRMED until a first session.

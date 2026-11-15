@@ -32,7 +32,7 @@ from .harnesses import HARNESSES, McpCommand, artifacts
 STATE_ROOT = pathlib.Path.home() / ".frontier" / "missions"
 REQUIRED = ["DELIVERY.md", "COMPLIANCE.md", "DECISIONS.md"]
 NATIVE_HARNESS = {"anthropic": "claude", "openai": "codex", "google": "antigravity", "xai": "grok", "moonshot": "kimi",
-                  "alibaba": "qwen", "mistral": "vibe", "deepseek": "dsh"}
+                  "alibaba": "qwen", "mistral": "vibe", "deepseek": "dsh", "zhipu": "zcode"}
 FALLBACK_HARNESS = "opencode"
 
 
@@ -352,6 +352,8 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     gateway = f"http://127.0.0.1:{settings['gateway_port']}"
     target = {"provider": settings["provider"], "model": _main_model(cfg, m), "gateway": gateway,
               "key_env": cfg["providers"][settings["provider"]]["key_env"]}
+    if m["harness"]["name"] == "zcode":
+        _zcode_home(state, cfg, target, mcp)
     if m["harness"]["name"] == "hermes":
         _hermes_home(state, cfg, target, mcp)
     files = artifacts(mcp, [m["harness"]["name"]], target)
@@ -381,6 +383,33 @@ def _free_port(start: int = 8787) -> int:
             except OSError:
                 continue
     return 0
+
+
+def _zcode_home(state: pathlib.Path, cfg: dict, target: dict, mcp: McpCommand) -> None:
+    """ZCode reads MCP servers from HOME/.zcode/cli/config.json only, and its model from a provider file: a home of
+    the mission's own, with the model on the metering gateway. The provider file holds the key's value when the
+    mission has one (else the proxy placeholder): it stays in the state directory, out of the workspace, mode 600."""
+    from .gateway import base_url_for
+
+    port = int(target["gateway"].rsplit(":", 1)[1])
+    style = cfg["providers"][target["provider"]]["style"]
+    api = {"anthropic": "anthropic-messages", "openai-responses": "openai-responses"}.get(style, "openai-chat-completions")
+    home = state / "zcode"
+    (home / ".zcode" / "cli").mkdir(parents=True, exist_ok=True)
+    (home / ".zcode" / "cli" / "config.json").write_text(json.dumps({"features": {"mcp": True}, "mcp": {"servers": {
+        "frontier": {"type": "stdio", "command": mcp.command, "args": mcp.args, "enabled": True, "timeoutMs": 3_600_000}}}},
+        indent=1) + "\n")
+    rule = {"providerId": "frontier", "providerName": "Frontier gateway", "config": {
+        "group": "standard-personal",
+        "access": {"type": "api-key", "apiKey": os.environ.get(target["key_env"]) or credentials.PLACEHOLDER},
+        "api": {"type": api, "baseUrl": base_url_for(port, target["provider"], cfg)},
+        "personalModelIds": [target["model"]]}}
+    f = home / "provider_config.json"
+    f.write_text(json.dumps({"schemaVersion": 1, "config": {
+        "providerConfigRules": {"providerRules": [rule]},
+        "modelConfigRules": {"providerModelRules": [], "manualProviderModelRules": []},
+        "defaultModelSelection": {"providerId": "frontier", "modelId": target["model"]}}}, indent=1) + "\n")
+    f.chmod(0o600)
 
 
 def _hermes_home(state: pathlib.Path, cfg: dict, target: dict, mcp: McpCommand) -> None:
