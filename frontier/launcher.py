@@ -28,6 +28,7 @@ FIRST_PROMPT = ("Read MISSION.md and TOOLS.md, then carry out the mission. You w
                 "ready, call the `deliver` tool.")
 GOAL_CONDITION = ("The goal is met when the `deliver` tool has returned a delivery record; it is impossible when "
                   "`budget_status` shows the LLM budget spent or no time left.")
+FAST_FAILS, FAST_FAIL_S = 3, 15  # this many sessions in a row ending in error this fast: the harness cannot start
 NEXT_PROMPT = ("Continue the mission (session {n}). Your previous session ended. Read MISSION.md, DECISIONS.md and the "
                "state of the repository, call `budget_status` for the spend and the time left, then carry on. When the "
                "deliverables are ready, call the `deliver` tool.")
@@ -421,6 +422,13 @@ def _stop_reason(run: Run) -> str:
     charged = [e for e in run.budget.llm_entries() if e["t"] >= since and e.get("frontier.source") != "launcher"]
     if refused and not charged:
         return f"LLM budget: the gateway refused the first calls of a fresh session ({refused[-1].get('why', '')[:160]})"
+    # A harness that fails as it starts (provider credit exhausted, a broken install) would burn every session left.
+    ends = [e for e in events if e.get("event") == "session_end"][-FAST_FAILS:]
+    if len(ends) == FAST_FAILS and all(e.get("code") not in (0, DEADLINE_EXIT) and e.get("seconds", 99) < FAST_FAIL_S
+                                       for e in ends):
+        logs = sorted((state / "sessions").glob("[0-9]*.log"), key=lambda q: int(q.stem)) if (state / "sessions").exists() else []
+        tail = logs[-1].read_text(errors="replace").strip()[-240:] if logs else ""
+        return f"the harness failed within {FAST_FAIL_S} s in {FAST_FAILS} sessions in a row; last output: {tail}"
     return ""
 
 

@@ -490,3 +490,19 @@ def test_a_refusal_late_in_a_session_does_not_end_the_mission(tmp_path):
     append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "session_start"})
     append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "llm_refused", "why": "worst case 0.80 > 0.79"})
     assert "fresh session" in _stop_reason(r)
+
+
+def test_a_harness_failing_at_start_stops_the_mission(tmp_path):
+    """Race 2026-11-15: the Google credit ran out and the launcher burned 18 sessions of 1-2 s each."""
+    from frontier.budget import append_chained, now
+    from frontier.launcher import _stop_reason
+    r = agent_mod.Run(load_config(), workspace=tmp_path / "ws", log_dir=tmp_path / "state")
+    r.budget.set_caps(llm_usd=5.0)
+    ev = tmp_path / "state" / "events.jsonl"
+    (tmp_path / "state" / "sessions").mkdir()
+    for n in (1, 2, 3):
+        append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "session_start", "n": n})
+        (tmp_path / "state" / "sessions" / f"{n:02d}.log").write_text("Error 402: prepayment credits are depleted")
+        assert _stop_reason(r) == ""
+        append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "session_end", "n": n, "code": 3, "seconds": 1.5})
+    assert "credits are depleted" in _stop_reason(r)
