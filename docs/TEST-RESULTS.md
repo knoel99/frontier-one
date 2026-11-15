@@ -15,7 +15,7 @@ Harness of the live mission: Codex CLI 0.169.0 on OpenAI `gpt-6-luna`.
 
 ## Verdict
 
-**Frontier is usable, and ten more framework defects were found and fixed.** Levels 0 to 4 were run in order. Level 1 and 2
+**Frontier is usable, and fourteen more framework defects were found and fixed.** Levels 0 to 4 were run in order. Level 1 and 2
 (`tools/verify_live.py`, now with checks F25 to F29 for the new features) passed on every feature, F27 after its fixes.
 The live mission delivered in 12 minutes (0.198 h of 0.75) for 0.111 USD of LLM and 0.012 USD of GPU: one Codex
 session, three snapshots tagged in its repository, one budget milestone, a Runpod runner that ran the framework's 110
@@ -37,6 +37,10 @@ D5 to D7; each was settled by a new check or a fix before the verdicts below.
 | D8 | F23 with Docker | Inside the mission's sandbox, Codex's own sandbox (bubblewrap, `--sandbox workspace-write`) cannot create a namespace: every command and file write failed and the AI gave up | PR #26: a harness's `in_sandbox` table (Codex: `danger-full-access`), applied by `frontier mission session`; re-checked: the session in the image delivered |
 | D9 | harnesses live | Gemini CLI 0.68 died in 1.9 s ("Invalid auth method selected", exit 41), its untrusted workspace turning yolo back into approval prompts | PR #32: `GEMINI_CLI_TRUST_WORKSPACE=true` and a setup that selects `gemini-api-key`; re-checked: delivered |
 | D10 | harnesses live | Mistral Vibe 3.1.2 refused the mission's model ("Unknown model ... Available: mistral-medium-3.5") and could not be routed, so no Vibe session was metered | PR #33: the project `.vibe/config.toml` declares a provider on the gateway and the mission's model; re-checked: accepted, calls reach the gateway |
+| D11 | F23 with OpenShell | `openshell sandbox create --from <Dockerfile>`: "'--from' no longer builds local Dockerfiles"; and a failed OpenShell command surfaced without OpenShell's message | PR #35: the image is built with the gateway's engine and passed by name; a failed command shows its output |
+| D12 | F23 with OpenShell | The policy listed binaries as strings: "binaries[0]: type mismatch: expected mapping" | PR #35: `{path: ...}` items |
+| D13 | F23 with OpenShell | "workload user 'sandbox' does not exist in the pinned image" | PR #35: the image creates the policy's user |
+| D14 | F23 with OpenShell | `sandbox upload <dir> <dest>` writes `<dest>/<dir name>`: the session found no `/sandbox/state/mission.json` | PR #35: staging path, then moved into place; re-checked: the mission delivered inside the sandbox |
 
 The checks had three defects of their own (F25 spawned a sub-agent on a provider the mission does not allow; F28
 compared a rounded value; F27 crossed two milestones at once and its grace was shorter than a model call); they were
@@ -67,8 +71,8 @@ fixed in `tools/verify_live.py` (PR #19) before the verdicts below.
 | F19 | Dashboard | PASS | live page served (HTTP 200) during the run; the static snapshot renders without page errors and its figures equal the ledgers |
 | F20 | Runner activity | PASS | `runners/<id>.log`: creation, every command and output, logs before deletion |
 | F21 | API docs and raw calls | PASS | catalog search, read-only Scaleway and Runpod calls |
-| F22 | Files for 24 harnesses | PASS, partial | `sync_harnesses --check`; run live through `frontier mission start`: Codex, dsh, OpenCode (DeepSeek), Qwen Code, Kimi Code and Gemini CLI (after D9) delivered, metered by the gateway; Vibe reached the gateway after D10 and was then refused by its account (see below); not run: Claude Code (no Anthropic key), Antigravity, Grok Build and Hermes (`curl \| bash` installers), ZCode (built, its run refused by the session's permission policy) |
-| F23 | OpenShell sandbox | PASS, partial | with Docker: the launcher's dry run, the generated image built, and one session run in it as `openshell sandbox exec` would, which delivered after D8; OpenShell itself could not be installed here (its install script was refused by the session's permission policy), so its L7 policy, Landlock, seccomp and key injection remain unchecked |
+| F22 | Files for 24 harnesses | PASS, partial | `sync_harnesses --check`; run live through `frontier mission start`, each delivered and metered by the gateway: Codex, dsh, OpenCode (DeepSeek), Qwen Code, Kimi Code, Gemini CLI (after D9), ZCode, Antigravity, Grok Build and Hermes (DeepSeek); Vibe reached the gateway after D10, then its Mistral account refused it (see below); Claude Code not run (no Anthropic key) |
+| F23 | OpenShell sandbox | PASS | OpenShell 0.1.8 with its Docker driver: a mission ran its session inside the sandbox and delivered (after D8, D11 to D14): 9 calls metered by the gateway inside, intact ledgers, commits made inside back on the host with the `delivery` tag, nothing left (sandbox, provider, image); the framework's policy allowed `api.openai.com` and blocked a host outside it |
 | F24 | Coverage of a real race | PASS, partial | statement coverage, 57 %; includes the dashboard and one check script |
 | F25 | Cerebras | PASS | `ping` OK; a metered call priced; a Cerebras judge graded both teams |
 | F26 | Budget milestone notices | PASS | the model repeated the notice the gateway added; `budget_milestone` LLM 10 % in the level 3 run |
@@ -126,15 +130,30 @@ Spend of the follow-up, from the ledgers: LLM 0.249 USD (the harness missions 0.
 0.012 USD. Everything created was deleted and read back (no pod, server, IP, volume or Hugging Face test repository);
 the Docker images built for F23 were removed.
 
+## OpenShell and the remaining harnesses (same day, with the owner's go-ahead to install)
+
+OpenShell 0.1.8 was installed from NVIDIA's release (its install script checks the package's SHA-256), its gateway
+started by hand (no systemd here) with the Docker driver. Host setup it needed, outside the framework:
+- this session reaches the Internet only through a TLS-intercepting proxy: the gateway config
+  (`~/.config/openshell/gateway.toml`, schema version 2) sets `https_proxy`, `proxy_ca_bundle` and
+  `proxy_connect_by_hostname` under `[openshell.drivers.docker]`; without them every allowed connection failed;
+- OpenShell injects keys from the host: a key the session proxy holds needs an `env:` placeholder in `[secrets]`;
+- an SSH client on the host (`openssh-client`), which `sandbox upload` uses.
+
+Then D11 to D14 (PR #35), one after the other, each found by the next live run. Antigravity, Grok Build and Hermes
+were installed with their vendors' scripts, ZCode built from its repository: all four delivered.
+
+Spend of these runs, from the ledgers: LLM 0.27 USD (the four harness missions 0.26, the OpenShell missions 0.01).
+Nothing left in the clouds, on the Hub or in OpenShell; the base images were removed (OpenShell's own runtime images
+stay with its install).
+
 ## Still open
 
-- OpenShell itself (F23): its install script needs the session's permission.
 - Mistral Vibe end to end: this account answers 429 to any request of about 15,000 tokens (checked directly), and
   Vibe's system prompt is that large.
-- ZCode: built, but its run was refused by the session's permission policy. Claude Code: no Anthropic key here.
-  Antigravity, Grok Build and Hermes: their `curl | bash` installers were not run.
-- A raw cloud call that names another team's resource only in its body (attaching an IP to their server) is not
-  checked; every billed creation is refused under a cloud budget, so nothing of theirs can be billed this way.
+- Claude Code: no Anthropic key in this session.
+- A raw cloud call that names another team's resource only in its body is not checked; every billed creation is
+  refused under a cloud budget, so nothing of theirs can be billed this way.
 - A ledger cut at its end still verifies (the hash chain has no anchored head).
 
 # Campaign of 2026-11-14
