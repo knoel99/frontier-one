@@ -19,7 +19,8 @@ import urllib.request
 import uuid
 from dataclasses import dataclass, field
 
-from .credentials import PLACEHOLDER as PROXY_PLACEHOLDER  # noqa: E402
+from .credentials import PLACEHOLDER as PROXY_PLACEHOLDER
+
 LEVELS = ["none", "low", "medium", "high", "max"]
 TIERS = ["frontier", "standard", "light"]
 
@@ -49,7 +50,6 @@ class ModelSpec:
     effort_value: object  # provider value, or None when the level is "none" and unmapped
     effort_field: str
     extra: dict = field(default_factory=dict)
-    max_tokens_field: str = "max_tokens"
     mode: str = ""  # speed/price mode ("" = standard)
     price_x: float = 1.0  # price multiplier of the mode
 
@@ -109,7 +109,6 @@ def resolve(cfg: dict, provider: str, tier: str, reasoning: str, mode: str = "")
         effort_value=value,
         effort_field=p.get("effort_field", ""),
         extra=extra,
-        max_tokens_field=p.get("max_tokens_field", "max_tokens"),
         mode=mode,
         price_x=price_x,
     )
@@ -256,7 +255,7 @@ def _chat_openai(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
     body = {"model": spec.model, "messages": _openai_messages(messages)}
     if tools:
         body["tools"] = [{"type": "function", "function": t} for t in tools]
-    body[spec.max_tokens_field] = max_tokens
+    body["max_tokens"] = max_tokens
     _merge(body, json.loads(json.dumps(spec.extra)))
     if spec.reasoning == "none" and "thinking" in body:
         body["thinking"] = {"type": "disabled"}

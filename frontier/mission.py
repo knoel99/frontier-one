@@ -286,12 +286,11 @@ def _copy_subject(src: str, dest_dir: pathlib.Path, base: pathlib.Path) -> str:
     return f"subject/{p.name}"
 
 
-def _ping(cfg: dict, provider: str, b: budget_mod.Budget | None = None) -> str:
+def _ping(cfg: dict, provider: str, b: budget_mod.Budget) -> str:
     spec = llm.resolve(cfg, provider, "light", "low")
     try:
         r = llm.chat(spec, [{"role": "user", "content": "Reply with OK."}], [], max_tokens=200)
-        if b is not None:
-            b.charge_llm("launcher", "key-check", provider, spec.model, r.usage)
+        b.charge_llm("launcher", "key-check", provider, spec.model, r.usage)
         return f"key checked with {spec.model}: {'answered' if r.content or r.usage.get('output') else 'empty answer'}"
     except llm.LLMError as e:
         return f"KEY CHECK FAILED: {str(e)[:160]}"
@@ -379,7 +378,7 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     return {"mission": m, "workspace": ws, "state": state, "settings": settings, "pings": pings}
 
 
-def _free_port(start: int = 8787) -> int:
+def _free_port(start: int) -> int:
     import socket
 
     for port in range(start, start + 200):

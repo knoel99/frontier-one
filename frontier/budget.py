@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import fcntl
+import functools
 import hashlib
 import json
 import pathlib
@@ -79,14 +80,9 @@ def verify_chain(path: pathlib.Path) -> bool | str:
     return True
 
 
-_prices: dict | None = None
-
-
+@functools.cache
 def prices() -> dict:
-    global _prices
-    if _prices is None:
-        _prices = tomllib.loads(PRICES.read_text()).get("models", {}) if PRICES.exists() else {}
-    return _prices
+    return tomllib.loads(PRICES.read_text()).get("models", {}) if PRICES.exists() else {}
 
 
 def price_of(provider: str, model: str) -> tuple[dict, bool]:
@@ -219,8 +215,7 @@ class Budget:
         caps = self.caps
         if caps.get("frozen"):  # after delivery: a small grace lets the harness finish its turn, spend still recorded
             after = self.llm_spent() - caps.get("frozen_llm_usd", 0)
-            grace = caps.get("grace_usd", POST_DELIVERY_GRACE_USD)
-            if after + extra > grace:
+            if after + extra > POST_DELIVERY_GRACE_USD:
                 return False, "the mission is delivered: spend is frozen"
             return True, ""
         cap = caps.get("llm_usd")

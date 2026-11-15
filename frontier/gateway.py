@@ -43,9 +43,9 @@ def routes_from_config(cfg: dict) -> dict[str, tuple[str, str]]:
     return out
 
 
-def base_url_for(port: int, provider: str, cfg: dict, upstream: str = "") -> str:
+def base_url_for(port: int, provider: str, cfg: dict) -> str:
     """The URL to give the harness in place of the provider's base URL (same path, local origin)."""
-    path = urllib.parse.urlsplit(upstream or cfg["providers"][provider]["base_url"]).path.rstrip("/")
+    path = urllib.parse.urlsplit(cfg["providers"][provider]["base_url"]).path.rstrip("/")
     return f"http://127.0.0.1:{port}/{provider}{path}"
 
 
@@ -118,13 +118,19 @@ def mode_of(provider_conf: dict, served: str) -> tuple[str, float]:
     return served, 1.0
 
 
-def worst_case(cfg: dict, provider: str, path: str, body: bytes) -> float:
-    """Upper bound of a call: the whole request as uncached input, its output limit (or DEFAULT_MAX_OUT), at the
-    dearest speed mode of the provider (the tier actually served is only known from the response)."""
+def _obj(body: bytes) -> dict | None:
+    """The request body as a JSON object, or None."""
     try:
         obj = json.loads(body or b"{}")
     except (json.JSONDecodeError, UnicodeDecodeError):
-        obj = {}
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
+def worst_case(cfg: dict, provider: str, path: str, body: bytes) -> float:
+    """Upper bound of a call: the whole request as uncached input, its output limit (or DEFAULT_MAX_OUT), at the
+    dearest speed mode of the provider (the tier actually served is only known from the response)."""
+    obj = _obj(body) or {}
     out = (obj.get("max_output_tokens") or obj.get("max_completion_tokens") or obj.get("max_tokens")
            or (obj.get("generationConfig") or {}).get("maxOutputTokens") or DEFAULT_MAX_OUT)
     # Some harnesses ask for the model's whole output window on every call (Kimi Code: 262,144 tokens); reserving that
@@ -163,11 +169,8 @@ def remap(path: str, body: bytes, model_map: dict[str, str]) -> tuple[str, bytes
         m, sep, after = tail.partition(":")
         if m in model_map:
             return f"{head}/models/{model_map[m]}{sep}{after}", body
-    try:
-        obj = json.loads(body or b"{}")
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return path, body
-    if isinstance(obj, dict) and obj.get("model") in model_map:
+    obj = _obj(body)
+    if obj and obj.get("model") in model_map:
         obj["model"] = model_map[obj["model"]]
         return path, json.dumps(obj).encode()
     return path, body
@@ -177,11 +180,8 @@ def strip_fields(body: bytes, fields: list[str]) -> bytes:
     """Drop message fields a provider refuses (config/providers.toml `strip_message_fields`) from a request."""
     if not fields:
         return body
-    try:
-        obj = json.loads(body or b"{}")
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return body
-    msgs = obj.get("messages") if isinstance(obj, dict) else None
+    obj = _obj(body)
+    msgs = obj.get("messages") if obj else None
     if not isinstance(msgs, list) or not any(isinstance(m, dict) and set(fields) & m.keys() for m in msgs):
         return body
     obj["messages"] = [{k: v for k, v in m.items() if k not in fields} if isinstance(m, dict) else m for m in msgs]
@@ -189,10 +189,7 @@ def strip_fields(body: bytes, fields: list[str]) -> bytes:
 
 
 def model_of(req_body: bytes, path: str, resp_obj: dict | None) -> str:
-    try:
-        m = json.loads(req_body or b"{}").get("model")
-    except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
-        m = None
+    m = (_obj(req_body) or {}).get("model")
     if not m and resp_obj:
         m = resp_obj.get("model") or (resp_obj.get("message") or {}).get("model") or (resp_obj.get("response") or {}).get("model")
     if not m and "/models/" in path:  # Gemini: /v1beta/models/<model>:generateContent
@@ -303,7 +300,6 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Connection", "close")
             self.end_headers()
             self.close_connection = True
-            buf = b""
             while True:
                 chunk = resp.readline()
                 if not chunk:
@@ -355,11 +351,8 @@ class Handler(BaseHTTPRequestHandler):
         """Chat Completions streams carry usage only when asked: ask for it."""
         if "/chat/completions" not in path:
             return body
-        try:
-            obj = json.loads(body)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            return body
-        if obj.get("stream") and not (obj.get("stream_options") or {}).get("include_usage"):
+        obj = _obj(body)
+        if obj and obj.get("stream") and not (obj.get("stream_options") or {}).get("include_usage"):
             obj["stream_options"] = {**(obj.get("stream_options") or {}), "include_usage": True}
             return json.dumps(obj).encode()
         return body

@@ -8,7 +8,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from .credentials import PLACEHOLDER as PROXY_PLACEHOLDER  # noqa: F401 - used by importers
 from .credentials import auth_header
 
 

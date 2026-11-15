@@ -8,13 +8,7 @@ import os
 import pytest
 
 from frontier import credentials, http, mission, sandbox
-from frontier.config import load_config
 from test_mission import _mission
-
-
-@pytest.fixture
-def cfg():
-    return load_config()
 
 
 @pytest.fixture

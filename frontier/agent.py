@@ -58,18 +58,16 @@ class Run:
         event = {"t": now().isoformat(timespec="seconds"), **event}
         append_chained(self.log_dir / "events.jsonl", json.loads(json.dumps(event, default=str)))
 
-    def charge(self, usage: dict, spec: llm.ModelSpec | None = None, agent: str = "") -> float:
+    def charge(self, usage: dict, spec: llm.ModelSpec, agent: str = "") -> float:
         with self._lock:
             self.tokens += usage.get("input", 0) + usage.get("output", 0)
-        if spec is None:
-            return 0.0
         return self.budget.charge_llm("spawn_agent", agent, spec.provider, spec.model, usage, spec.mode, spec.price_x)
 
-    def over_budget(self, next_call_usd: float = 0.0) -> str:
+    def over_budget(self) -> str:
         """Why no further model call may be made, or ''."""
         if self.tokens >= self.limits.get("max_tokens_per_run", 10**12):
             return "the token limit of the run is reached (limits.max_tokens_per_run)"
-        ok, why = self.budget.llm_allowed(next_call_usd)
+        ok, why = self.budget.llm_allowed()
         return "" if ok else why
 
     # ledger of the cloud resources created by any agent of the run (file-locked: shared between processes)
@@ -85,12 +83,7 @@ class Run:
 
     @property
     def resources(self) -> list[dict]:
-        f = self.log_dir / "resources.json"
-        return json.loads(f.read_text()) if f.exists() else []
-
-    @resources.setter
-    def resources(self, items: list[dict]) -> None:
-        (self.log_dir / "resources.json").write_text(json.dumps(items, indent=1) + "\n")
+        return self.budget.resources()
 
     def record(self, resource: dict) -> None:
         with self._ledger() as items:

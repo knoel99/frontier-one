@@ -14,12 +14,6 @@ import pytest
 
 from frontier import budget, gateway, harnesses, hf, infra, launcher, llm, mission
 from frontier.agent import Ctx, Run
-from frontier.config import load_config
-
-
-@pytest.fixture
-def cfg():
-    return load_config()
 
 
 # ---------------------------------------------------------------- budget
@@ -84,8 +78,10 @@ def test_cloud_budget_counts_spent_committed_and_new(tmp_path):
 def test_watchdog_deletes_overdue_resources(tmp_path, cfg, monkeypatch):
     run = Run(cfg, workspace=tmp_path, log_dir=tmp_path / "s")
     old = (budget.now() - budget.dt.timedelta(hours=3)).isoformat()
-    run.resources = [{"provider": "runpod", "id": "p1", "usd_per_hour": 1.0, "max_hours": 2, "created": old, "state": "alive"},
-                     {"provider": "runpod", "id": "p2", "usd_per_hour": 1.0, "max_hours": 9, "created": old, "state": "alive"}]
+    run.log_dir.mkdir(parents=True, exist_ok=True)
+    items = [{"provider": "runpod", "id": "p1", "usd_per_hour": 1.0, "max_hours": 2, "created": old, "state": "alive"},
+             {"provider": "runpod", "id": "p2", "usd_per_hour": 1.0, "max_hours": 9, "created": old, "state": "alive"}]
+    (run.log_dir / "resources.json").write_text(json.dumps(items))
     deleted = []
     monkeypatch.setattr(infra, "mcp_json", lambda tool, args=None: (tool == "delete-pod" and deleted.append(args["id"])) or {})
     out = infra.enforce(run)

@@ -265,8 +265,9 @@ def rp_create_pod(ctx, name: str, gpu_type_id: str, max_hours: float,
         return "error: max_hours must be > 0"
     offers = json.loads(rp_offers(ctx, 0, cloud, gpu_count, include_unavailable=True))["offers"]
     offer = next((o for o in offers if o["gpu_type_id"] == gpu_type_id), None)
+    usd = offer["usd_per_gpu_hour"] * gpu_count if offer else None
     with ctx.run.budget.cloud_lock():  # from the budget check to the ledger: parallel creations queue
-        ok, why = ctx.run.budget.cloud_allowed("runpod", offer["usd_per_gpu_hour"] * gpu_count if offer else None, max_hours)
+        ok, why = ctx.run.budget.cloud_allowed("runpod", usd, max_hours)
         if not ok:
             return f"refused: {why}"
         expires = (now() + dt.timedelta(hours=max_hours)).isoformat(timespec="minutes")
@@ -282,7 +283,6 @@ def rp_create_pod(ctx, name: str, gpu_type_id: str, max_hours: float,
         pod_id = pod.get("id") or (pod.get("pod") or {}).get("id")
         if not pod_id:
             return f"error: create-pod returned no id: {_j(pod)[:1500]}"
-        usd = offer["usd_per_gpu_hour"] * gpu_count if offer else None
         ctx.run.record({"provider": "runpod", "kind": "pod", "id": pod_id, "name": name, "type": f"{gpu_count}x {gpu_type_id}",
                         "usd_per_hour": usd, "max_hours": max_hours})
         runner_log(ctx.run, pod_id, f"created: {gpu_count}x {gpu_type_id}, image {image}, {usd} USD/h, max {max_hours} h",
@@ -362,20 +362,18 @@ def infra_resources(ctx) -> str:
     return _j(ctx.run.resources)
 
 
+def _delete(run, r: dict) -> dict:
+    try:
+        if r["provider"] == "scaleway":
+            return _delete_scw_instance(run, r["id"], r["zone"])
+        return _delete_rp_pod(run, r["id"])
+    except APIError as e:
+        return {"id": r["id"], "error": str(e)[:500]}
+
+
 def cleanup(run) -> list[dict]:
     """Delete every resource of the run's ledger that is still alive."""
-    out = []
-    for r in list(run.resources):
-        if r.get("state") == "deleted":
-            continue
-        try:
-            if r["provider"] == "scaleway":
-                out.append(_delete_scw_instance(run, r["id"], r["zone"]))
-            elif r["provider"] == "runpod":
-                out.append(_delete_rp_pod(run, r["id"]))
-        except APIError as e:
-            out.append({"id": r["id"], "error": str(e)[:500]})
-    return out
+    return [_delete(run, r) for r in run.resources if r.get("state") != "deleted" and r["provider"] in ("scaleway", "runpod")]
 
 
 def infra_cleanup(ctx) -> str:
@@ -385,7 +383,7 @@ def infra_cleanup(ctx) -> str:
 def enforce(run) -> list[dict]:
     """Delete what overran its max_hours, and every resource of a provider whose budget is spent. Called by the
     watchdog of long-lived processes (MCP server, gateway) and before every budget report."""
-    from .budget import CLOUD_CURRENCY, now
+    from .budget import CLOUD_CURRENCY
 
     done = []
     at = now()
@@ -397,13 +395,7 @@ def enforce(run) -> list[dict]:
         if not (over_time or over_budget):
             continue
         why = "max_hours reached" if over_time else "budget spent"
-        try:
-            if r["provider"] == "scaleway":
-                res = _delete_scw_instance(run, r["id"], r["zone"])
-            else:
-                res = _delete_rp_pod(run, r["id"])
-        except APIError as e:
-            res = {"id": r["id"], "error": str(e)[:300]}
+        res = _delete(run, r)
         run.log(event="watchdog_delete", reason=why, result=res)
         done.append({**res, "reason": why})
     return done

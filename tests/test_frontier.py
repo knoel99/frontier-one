@@ -8,12 +8,6 @@ import pytest
 
 from frontier import agent as agent_mod
 from frontier import catalog, http, infra, llm, tools
-from frontier.config import load_config
-
-
-@pytest.fixture
-def cfg():
-    return load_config()
 
 
 @pytest.fixture

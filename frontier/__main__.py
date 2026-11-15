@@ -7,10 +7,10 @@ import json
 import pathlib
 import sys
 
-from . import catalog, infra, llm
+from . import infra, llm
 from .agent import Agent, Run, load_role
 from .config import load_config
-from .tools import DEFAULT_TOOLS, REGISTRY
+from .tools import DEFAULT_TOOLS, REGISTRY, t_api_docs
 
 
 def cmd_run(a, cfg) -> int:
@@ -80,12 +80,7 @@ def cmd_ping(a, cfg) -> int:
 
 
 def cmd_docs(a, cfg) -> int:
-    if a.action == "list":
-        print(catalog.overview())
-    elif a.action == "search":
-        print(catalog.search(" ".join(a.args), a.doc))
-    else:
-        print(catalog.show(a.args[0]))
+    print(t_api_docs(None, a.action, query=" ".join(a.args), id=(a.args or [""])[0], doc=a.doc))
     return 0
 
 
@@ -150,8 +145,6 @@ def cmd_harnesses(a, cfg) -> int:
 
 def cmd_reap(a, cfg) -> int:
     """Dead-man sweep of a mission or run state directory, e.g. from cron: */10 * * * * frontier reap <state>."""
-    from . import infra
-
     d = pathlib.Path(a.state)
     settings = json.loads((d / "mission.json").read_text()) if (d / "mission.json").exists() else {}
     run = Run(cfg, workspace=settings.get("workspace", "."), log_dir=d, run_id=d.name, settings=settings)
@@ -163,7 +156,6 @@ def cmd_cleanup(a, cfg) -> int:
     """Delete what a finished or crashed run left alive, from its runs/<id>/resources.json."""
     d = pathlib.Path(a.run_dir)
     run = Run(cfg, workspace=".", log_dir=d, run_id=d.name)
-    run.resources = json.loads((d / "resources.json").read_text())
     print(json.dumps(infra.cleanup(run), indent=1))
     return 0
 

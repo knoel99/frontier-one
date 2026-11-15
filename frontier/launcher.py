@@ -226,7 +226,7 @@ def seconds_left(run: Run) -> float | None:
     return None if deadline is None else max(1.0, (deadline - budget_mod.now()).total_seconds())
 
 
-def _watchdog(run: Run, stop: threading.Event, ws: pathlib.Path | None = None) -> None:
+def _watchdog(run: Run, stop: threading.Event, ws: pathlib.Path) -> None:
     """Every minute: the budgets of the cloud resources; every CPU_SAMPLE_S: the local CPU, and the snapshots due."""
     from .snapshots import CPU_SAMPLE_S, CpuMeter, Snapshots
 
@@ -463,4 +463,4 @@ def status(mission_file: str) -> int:
     return 0
 
 
-__all__ = ["start", "status", "harness_conf", "build_session", "budget_mod"]
+__all__ = ["start", "status", "harness_conf", "build_session"]

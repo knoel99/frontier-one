@@ -125,8 +125,8 @@ def _relay(a: socket.socket, b: socket.socket) -> None:
 class Egress(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, state, deny: list[str], upstream: str | None = None, port: int = 0):
-        super().__init__(("127.0.0.1", port), _Handler)
+    def __init__(self, state, deny: list[str], upstream: str | None = None):
+        super().__init__(("127.0.0.1", 0), _Handler)
         self.state, self.deny = pathlib.Path(state), list(deny)
         self.upstream = urllib.parse.urlsplit(upstream) if upstream else None
         self.lock, self.seen = threading.Lock(), set()

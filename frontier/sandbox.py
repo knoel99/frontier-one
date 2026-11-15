@@ -115,11 +115,11 @@ class OpenShell:
         self.binaries = BINARIES + list(h.get("sandbox_binaries", []))
         self.commands: list[list[str]] = []
 
-    def _run(self, args: list[str], check: bool = True, **kw) -> subprocess.CompletedProcess | None:
+    def _run(self, args: list[str], check: bool = True) -> subprocess.CompletedProcess | None:
         self.commands.append(args)
         if self.dry_run:
             return None
-        return subprocess.run(args, check=check, text=True, capture_output=kw.pop("capture", True), **kw)
+        return subprocess.run(args, check=check, text=True, capture_output=True)
 
     def write_files(self) -> list[str]:
         self.dir.mkdir(parents=True, exist_ok=True)
