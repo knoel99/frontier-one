@@ -101,9 +101,10 @@ install = "uv tool install mistral-vibe"
 command = ["vibe", "-p", "{prompt}", "--trust", "--model", "{model}", "--auto-approve", "--max-turns", "{max_turns}", "--output", "json"]  # --trust: else .vibe/ (MCP) is ignored (vibe 3.1.2)
 effort = "provider"
 env = { MISTRAL_API_KEY = "{key}" }
-# Vibe routes only through [[providers]] api_base in ~/.vibe/config.toml (docs.mistral.ai/vibe configuration
-# reference): not written by the launcher, to leave the user's config alone.
-route = {}
+# Vibe 3.1.2 (checked 2026-11-15): the project .vibe/config.toml it reads with --trust declares a [[providers]]
+# api_base on the gateway and the mission's model (frontier/harnesses.py); without them, `--model` was refused for any
+# model outside Vibe's own list, and no session was metered.
+route = { FRONTIER_GATEWAY = "{gateway}" }
 usage = "json-usage"
 
 [dsh]
