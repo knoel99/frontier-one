@@ -1329,3 +1329,11 @@ def test_the_organizer_blocks_its_github_and_github_pages(tmp_path):
     brief = mission.mission_brief(m, {}, "subject")
     assert "github.com" in brief and "*.github.io" in brief and "refused" in brief
 
+
+def test_codex_does_not_fetch_its_plugins_from_github(tmp_path):
+    """Check of 2026-11-15 behind the outbound filter: Codex fetched its plugin catalogue from github.com and
+    api.github.com at start, two refusals the stewards would have counted against the team."""
+    info = mission.prepare(_mission(tmp_path, harness="codex"), ping=False, offers=False)
+    cmd, _ = launcher.build_session(info, launcher.harness_conf("codex", "openai"), "PROMPT", None)
+    assert cmd[cmd.index("features.plugins=false") - 1] == "-c"
+
