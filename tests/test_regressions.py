@@ -1303,3 +1303,29 @@ def test_openshell_push_puts_the_workspace_and_state_at_their_paths(tmp_path):
         mv = next(c for c in box.commands if c[:3] == ["openshell", "sandbox", "exec"] and stage in c[-1])
         assert stage != inside and f"mv {stage}/{pathlib.Path(local).name} {inside}" in mv[-1]
     assert "mkdir -p /sandbox/workspace" not in sandbox.dockerfile(launcher.harness_conf("codex", "openai"), "x")
+
+
+def test_the_organizer_blocks_its_github_and_github_pages(tmp_path):
+    """Owner's request, 2026-11-15: no mission may read the organizer's GitHub (the framework, earlier races) nor
+    GitHub Pages; nothing blocked them. config/providers.toml [network] deny is added to every mission's deny list."""
+    from frontier import egress
+
+    cfg_deny = load_config()["network"]["deny"]
+    assert "*.github.io" in cfg_deny and "github.com/knoel99" in cfg_deny
+    m = mission.load(_mission(tmp_path, harness="codex"))
+    assert set(cfg_deny) <= set(m["network"]["deny"])
+    # outside a sandbox the filter sees only host names: a host with a blocked path is blocked whole (fail closed)
+    deny = m["network"]["deny"]
+    assert egress.denied("knoel99.github.io", deny) and egress.denied("github.com", deny)
+    assert egress.denied("raw.githubusercontent.com", deny) and not egress.denied("pypi.org", deny)
+    # in a sandbox, paths are refused by OpenShell's L7 rules on the hosts the mission allows
+    pol, warn = sandbox.policy({"network": {"allow": ["github.com", "arxiv.org", "qwenlm.github.io"], "deny": deny}}, [])
+    assert [e["host"] for e in pol["network_policies"]["research"]["endpoints"]] == ["github.com", "arxiv.org"]
+    assert any("qwenlm.github.io" in w for w in warn)
+    gh = next(e for e in pol["network_policies"]["research"]["endpoints"] if e["host"] == "github.com")
+    k = "/[kK][nN][oO][eE][lL]99"  # any case: GitHub reads /KNOEL99/x as /knoel99/x
+    assert {"method": "*", "path": k} in gh["deny_rules"] and {"method": "*", "path": k + "/**"} in gh["deny_rules"]
+    assert "deny_rules" not in next(e for e in pol["network_policies"]["research"]["endpoints"] if e["host"] == "arxiv.org")
+    brief = mission.mission_brief(m, {}, "subject")
+    assert "github.com" in brief and "*.github.io" in brief and "refused" in brief
+
