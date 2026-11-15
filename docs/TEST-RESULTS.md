@@ -71,7 +71,7 @@ fixed in `tools/verify_live.py` (PR #19) before the verdicts below.
 | F19 | Dashboard | PASS | live page served (HTTP 200) during the run; the static snapshot renders without page errors and its figures equal the ledgers |
 | F20 | Runner activity | PASS | `runners/<id>.log`: creation, every command and output, logs before deletion |
 | F21 | API docs and raw calls | PASS | catalog search, read-only Scaleway and Runpod calls |
-| F22 | Files for 24 harnesses | PASS, partial | `sync_harnesses --check`; run live through `frontier mission start`, each delivered and metered by the gateway: Codex, dsh, OpenCode (DeepSeek), Qwen Code, Kimi Code, Gemini CLI (after D9), ZCode, Antigravity, Grok Build and Hermes (DeepSeek); Vibe reached the gateway after D10, then its Mistral account refused it (see below); Claude Code not run (no Anthropic key) |
+| F22 | Files for 24 harnesses | PASS | `sync_harnesses --check`; every harness with a launch recipe run live through `frontier mission start`, behind the outbound filter, each delivered and metered by the gateway with no blocked host tried on its own (after the Codex and Hermes fixes below): Claude Code, Codex, Gemini CLI, Antigravity, Grok Build, Kimi Code, Qwen Code, dsh, OpenCode (DeepSeek and Cerebras), ZCode and Hermes; Vibe reaches the gateway, then its Mistral account refuses it (issue #37). The other 12 harnesses get project files only (MCP config), no launch recipe |
 | F23 | OpenShell sandbox | PASS | OpenShell 0.1.8 with its Docker driver: a mission ran its session inside the sandbox and delivered (after D8, D11 to D14): 9 calls metered by the gateway inside, intact ledgers, commits made inside back on the host with the `delivery` tag, nothing left (sandbox, provider, image); the framework's policy allowed `api.openai.com` and blocked a host outside it |
 | F24 | Coverage of a real race | PASS, partial | statement coverage, 57 %; includes the dashboard and one check script |
 | F25 | Cerebras | PASS | `ping` OK; a metered call priced; a Cerebras judge graded both teams |
@@ -147,11 +147,23 @@ Spend of these runs, from the ledgers: LLM 0.27 USD (the four harness missions 0
 Nothing left in the clouds, on the Hub or in OpenShell; the base images were removed (OpenShell's own runtime images
 stay with its install).
 
+## The organizer's GitHub and GitHub Pages blocked (owner's request)
+
+Nothing kept a mission from reading the organizer's GitHub or GitHub Pages. `config/providers.toml [network] deny`
+now holds for every mission (PR #38): in an OpenShell sandbox the knoel99 paths are refused by L7 rules in any letter
+case and Pages is refused; outside a sandbox the outbound filter, now always on, blocks those hosts whole (it cannot
+see paths inside TLS). MISSION.md says what is refused. Checked live in both modes. Run behind the filter, two
+harnesses called GitHub by themselves, which the stewards would have counted against the team: Codex (its plugin
+catalogue) and Hermes (its update check and model catalogue); both are switched off in their recipes.
+
+Cerebras has no CLI of its own: `harness = "auto"` gives it OpenCode. On its light tier (gpt-oss-120b) the model wrote
+its `deliver` call as text instead of calling the tool; on its frontier tier (qwen-3.8-27b) the mission delivered.
+`config/prices.toml` gives that model no cache price, so its cached input is charged at the full input price.
+
 ## Still open
 
 - Mistral Vibe end to end: this account answers 429 to any request of about 15,000 tokens (checked directly), and
   Vibe's system prompt is that large.
-- Claude Code: no Anthropic key in this session.
 - A raw cloud call that names another team's resource only in its body is not checked; every billed creation is
   refused under a cloud budget, so nothing of theirs can be billed this way.
 - A ledger cut at its end still verifies (the hash chain has no anchored head).

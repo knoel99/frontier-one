@@ -54,6 +54,8 @@ def load(path: str | os.PathLike) -> dict:
         h["name"] = NATIVE_HARNESS.get(m.get("llm", {}).get("provider", ""), FALLBACK_HARNESS)
     if h["name"] not in HARNESSES:
         raise ValueError(f"unknown harness {h['name']!r}; known: {', '.join(HARNESSES)}")
+    net = m.setdefault("network", {})  # the organizer's deny list (config/providers.toml [network]) holds for every mission
+    net["deny"] = list(dict.fromkeys([*net.get("deny", []), *load_config().get("network", {}).get("deny", [])]))
     return m
 
 
@@ -232,6 +234,14 @@ def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict]
     return "\n".join(parts)
 
 
+def _blocked(m: dict) -> list[str]:
+    """What the mission cannot reach, as it is enforced: outside a sandbox, a host with a blocked path is blocked whole."""
+    deny = m.get("network", {}).get("deny", [])
+    if m.get("sandbox", {}).get("kind") == "openshell":
+        return deny
+    return list(dict.fromkeys(d.split("/", 1)[0] for d in deny))
+
+
 def mission_brief(m: dict, caps: dict, subject: str) -> str:
     g = m.get("grading", {})
     crit = g.get("criteria") or ["scientific quality", "code and data",
@@ -241,7 +251,9 @@ def mission_brief(m: dict, caps: dict, subject: str) -> str:
     budgets = "\n".join([
         f"- LLM: {caps.get('llm_usd', 'no cap')} USD on {', '.join(providers_of(m))}.",
         f"- Scaleway: {caps.get('scaleway_eur', 'no cap')} EUR. Runpod: {caps.get('runpod_usd', 'no cap')} USD.",
-        f"- Start: {caps.get('start')}. Deadline: {caps.get('deadline') or 'none'}."])
+        f"- Start: {caps.get('start')}. Deadline: {caps.get('deadline') or 'none'}."]
+        + ([f"- Network: requests to {', '.join(_blocked(m))} are refused and recorded; the stewards take points off "
+            "for each blocked host a team tries."] if _blocked(m) else []))
     text = (ROOT / "prompts" / "mission.md").read_text()
     for k, v in {"name": m["mission"].get("name", "mission"), "subject": subject, "criteria": criteria,
                  "budgets": budgets}.items():
@@ -424,7 +436,10 @@ def _hermes_home(state: pathlib.Path, target: dict, mcp: McpCommand) -> None:
     (home / "config.yaml").write_text(
         "model:\n  provider: custom\n"
         f"  default: {target['model']}\n  base_url: {target['base_url']}\n  api_mode: {api_mode}\n"
-        f"mcp_servers:\n  frontier:\n    command: {json.dumps(mcp.command)}\n    args: [{args}]\n    timeout: 3600\n")
+        f"mcp_servers:\n  frontier:\n    command: {json.dumps(mcp.command)}\n    args: [{args}]\n    timeout: 3600\n"
+        # no update check and no model catalogue: they ask api.github.com, raw.githubusercontent.com and a github.io
+        # page, hosts the race blocks, which the stewards would count against the team (checked 2026-11-15)
+        "updates:\n  check: false\nmodel_catalog:\n  enabled: false\n")
 
 
 # ---------------------------------------------------------------- delivery (a tool of the mission)

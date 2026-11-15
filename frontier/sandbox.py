@@ -26,6 +26,7 @@ import shutil
 import subprocess
 
 from . import credentials
+from .egress import denied
 from .config import ROOT, load_config
 
 IN_ROOT = "/opt/frontier"  # this repository inside the sandbox
@@ -58,14 +59,21 @@ def profiles(m: dict, cfg: dict, binaries: list[str]) -> dict[str, dict]:
     return out
 
 
+def _anycase(path: str) -> str:
+    """A path pattern in any letter case: GitHub reads /KNOEL99/x as /knoel99/x, OpenShell's globs are case-sensitive
+    and take character classes (checked live 2026-11-15)."""
+    return "/" + "".join(f"[{c.lower()}{c.upper()}]" if c.isalpha() else c for c in path.strip("/"))
+
+
 def policy(m: dict, binaries: list[str]) -> tuple[dict, list[str]]:
     """Sandbox policy (deny by default) and warnings about the network lists."""
     net = m.get("network", {})
     deny = {h.lower() for h in net.get("deny", [])}
     warnings = []
     allow = []
+    hosts_denied = [d for d in deny if "/" not in d]  # host/path entries are refused per path below, not per host
     for h in net.get("allow", []):
-        if h.lower() in deny:
+        if h.lower() in deny or denied(h, hosts_denied):
             warnings.append(f"{h} is in both lists: denied")
             continue
         if h.startswith("*.") and any(d.endswith(h[1:]) for d in deny):
@@ -82,6 +90,12 @@ def policy(m: dict, binaries: list[str]) -> tuple[dict, list[str]]:
     if allow:
         rules["research"] = {"name": "research allow list (read-only)", "endpoints": [_endpoint(h, "read-only") for h in allow],
                              "binaries": binaries}
+        paths = [d.split("/", 1) for d in net.get("deny", []) if "/" in d]  # host/path: refused by L7 rules
+        for e in rules["research"]["endpoints"]:
+            refused = [r for host, path in paths if host.lower() == e["host"].lower()
+                       for r in ({"method": "*", "path": _anycase(path)}, {"method": "*", "path": _anycase(path) + "/**"})]
+            if refused:
+                e["deny_rules"] = refused
     pol = {"version": 1,
            "filesystem_policy": {"include_workdir": True, "read_only": ["/usr", "/lib", "/etc", IN_ROOT],
                                  "read_write": ["/sandbox", "/tmp"]},

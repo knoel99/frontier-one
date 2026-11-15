@@ -23,10 +23,11 @@ from .budget import append_chained, now
 
 
 def denied(host: str, deny: list[str]) -> bool:
-    """`deny` holds exact host names and `*.suffix` patterns (the suffix itself included)."""
+    """`deny` holds exact host names, `*.suffix` patterns (the suffix itself included) and host/path prefixes; the
+    path inside an encrypted connection is not visible here, so a host/path entry blocks its whole host."""
     host = host.lower().rstrip(".")
     for d in deny:
-        d = d.lower().rstrip(".")
+        d = d.split("/", 1)[0].lower().rstrip(".")
         if host == d or (d.startswith("*.") and (host == d[2:] or host.endswith(d[1:]))):
             return True
     return False

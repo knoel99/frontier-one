@@ -180,6 +180,15 @@ hosts = ["mcp.runpod.io", "rest.runpod.io", "api.runpod.ai"]
 env = "HF_TOKEN"
 hosts = ["huggingface.co"]
 
+# The organizer's deny list, added to every mission's [network] deny: the organizer's GitHub (this framework, earlier
+# races and their results) and GitHub Pages. Entries are hosts, `*.suffix` patterns, or host/path prefixes. In an
+# OpenShell sandbox a path is refused by L7 rules on the hosts the mission allows; outside a sandbox the filter sees
+# host names only (TLS), so a host with a blocked path is blocked whole. Paths are refused in any letter case (GitHub
+# ignores case). Checked live 2026-11-15, in both modes.
+[network]
+deny = ["*.github.io", "github.com/knoel99", "gist.github.com/knoel99", "api.github.com/repos/knoel99",
+        "api.github.com/users/knoel99", "raw.githubusercontent.com/knoel99", "codeload.github.com/knoel99"]
+
 # Limits shared by an agent and all the sub-agents it starts (one "run").
 [limits]
 max_depth = 2              # main agent = depth 0; a sub-agent at max_depth cannot spawn further

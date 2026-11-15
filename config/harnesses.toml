@@ -29,7 +29,9 @@ default_base_url = { ANTHROPIC_BASE_URL = "https://api.z.ai/api/anthropic" }
 [codex]
 install = "npm install -g @openai/codex"
 setup = "printenv OPENAI_API_KEY | codex login --with-api-key"
-command = ["codex", "exec", "--trust", "--add-dir", "{state}", "-m", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "--sandbox", "workspace-write", "-c", "sandbox_workspace_write.network_access=true", "--json", "{prompt}"]
+# features.plugins=false: Codex 0.169 fetches its plugin catalogue from github.com and api.github.com at start (checked
+# 2026-11-15 behind the outbound filter): blocked hosts the team never chose, which the stewards would count against it.
+command = ["codex", "exec", "--trust", "--add-dir", "{state}", "-m", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "-c", "features.plugins=false", "--sandbox", "workspace-write", "-c", "sandbox_workspace_write.network_access=true", "--json", "{prompt}"]
 effort = "provider"
 env = { OPENAI_API_KEY = "{key}" }
 route = {}
