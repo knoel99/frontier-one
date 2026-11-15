@@ -144,6 +144,43 @@ def worst_case_usd(provider: str, model: str, prompt_chars: int, max_output_toke
     return usd
 
 
+class Call:
+    """A model call in flight. Its worst case is reserved until the `with` block ends, so that parallel calls cannot
+    overrun the cap together. Inside the block the call is settled: charged what it used, or void when the provider
+    did not run it. A call left unsettled (an exception, a path that forgot) is charged its worst case as an estimate:
+    a call is never free by omission. The charge is written before the reservation is released, so that a parallel
+    call never sees the room in between."""
+
+    def __init__(self, budget: Budget, rid: str, worst: float, source: str, agent: str, provider: str, model: str, mode: str):
+        self.budget, self.rid, self.worst = budget, rid, worst
+        self.source, self.agent, self.provider, self.model, self.mode = source, agent, provider, model, mode
+        self.settled = False
+
+    def charge(self, usage: dict, mode: str | None = None, price_x: float = 1.0, usd: float | None = None,
+               exact: bool = True, model: str = "") -> float:
+        self.settled = True
+        return self.budget.charge_llm(self.source, self.agent, self.provider, model or self.model, usage,
+                                      self.mode if mode is None else mode, price_x, usd, exact)
+
+    def charge_worst(self, usage: dict | None = None, model: str = "") -> float:
+        """Billed, but by how much is unknown."""
+        return self.charge(usage or {}, usd=self.worst, exact=False, model=model)
+
+    def void(self) -> None:
+        """The provider did not run the call (refused, unreachable): nothing to charge."""
+        self.settled = True
+
+    def __enter__(self) -> Call:
+        return self
+
+    def __exit__(self, *exc) -> None:
+        try:
+            if not self.settled:
+                self.charge_worst()
+        finally:
+            self.budget.release(self.rid)
+
+
 class Budget:
     def __init__(self, state_dir: pathlib.Path):
         self.dir = pathlib.Path(state_dir)
@@ -238,26 +275,30 @@ class Budget:
                            "(a cheaper model, a lower reasoning level or fewer output tokens may still fit)")
         return True, ""
 
+    def call(self, worst: float, source: str, agent: str, provider: str, model: str, mode: str = "",
+             what: str = "") -> tuple[Call | None, str]:
+        """Hold the worst case of a model call about to be made: (the call, to settle inside `with`, "") or (None, why
+        it does not fit)."""
+        rid, why = self.reserve(worst, what or f"{agent} {provider}/{model}")
+        return (Call(self, rid, worst, source, agent, provider, model, mode), "") if rid else (None, why)
+
     def metered_chat(self, source: str, agent: str, spec, messages: list[dict], tools: list[dict], max_out: int):
-        """One model call under the cap: reserve its worst case, charge what it used (its worst case when it failed
-        after the provider probably ran it), and only then release the reservation, so that a parallel call never
-        sees the room in between. Returns (reply, USD), or (None, why the call does not fit)."""
+        """One model call under the cap. Returns (reply, USD), or (None, why the call does not fit)."""
         from . import llm
 
         worst = worst_case_usd(spec.provider, spec.model, len(json.dumps(messages, default=str)) + len(json.dumps(tools)),
                                max_out, spec.price_x)
-        rid, why = self.reserve(worst, f"{agent} {spec.label()}")
-        if rid is None:
+        call, why = self.call(worst, source, agent, spec.provider, spec.model, spec.mode, f"{agent} {spec.label()}")
+        if call is None:
             return None, why
-        try:
-            reply = llm.chat(spec, messages, tools, max_out)
-            return reply, self.charge_llm(source, agent, spec.provider, spec.model, reply.usage, spec.mode, spec.price_x)
-        except llm.LLMError as e:
-            if e.maybe_billed:  # charged at the worst case, as the gateway does for a call it could not meter
-                self.charge_llm(source, agent, spec.provider, spec.model, {}, spec.mode, spec.price_x, usd=worst, exact=False)
-            raise
-        finally:
-            self.release(rid)
+        with call:
+            try:
+                reply = llm.chat(spec, messages, tools, max_out)
+            except llm.LLMError as e:
+                if not e.maybe_billed:
+                    call.void()
+                raise  # probably billed: left unsettled, charged at its worst case
+            return reply, call.charge(reply.usage, spec.mode, spec.price_x)
 
     def llm_allowed(self, next_call_usd: float = 0.0) -> tuple[bool, str]:
         """Hard cap: refused when what is spent, plus the calls in flight, plus `next_call_usd` exceeds the budget."""

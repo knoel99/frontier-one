@@ -93,6 +93,39 @@ def test_gateway_charges_a_stream_the_upstream_cut(tmp_path):
     assert e["frontier.price_exact"] is False and e["frontier.cost.usd"] > 0 and b.reserved() == 0
 
 
+def test_a_model_call_nobody_settled_is_charged_its_worst_case(tmp_path, monkeypatch):
+    """Eight fixes each closed one path on which a call the provider had run was not charged (an upstream that broke,
+    a harness that hung up, a stream without its final event, a judge call, a reservation released first). A call is
+    now settled inside `with budget.call(...)`: a path that forgets, or raises, charges the worst case."""
+    b = budget.Budget(tmp_path)
+    call, _ = b.call(0.5, "gateway", "harness", "zhipu", "glm-5.3")
+    with pytest.raises(RuntimeError), call:
+        raise RuntimeError("a path that settles nothing")
+    (e,) = b.llm_entries()
+    assert e["frontier.cost.usd"] == 0.5 and e["frontier.price_exact"] is False and b.reserved() == 0
+    call, _ = b.call(0.5, "gateway", "harness", "zhipu", "glm-5.3")
+    with call:
+        assert b.reserved() == 0.5
+        call.void()  # the provider did not run it
+    assert len(b.llm_entries()) == 1 and b.reserved() == 0
+    # the gateway: an answer it fails to read is charged all the same
+    monkeypatch.setattr(gateway, "usage_of", lambda obj: 1 / 0)
+    up = ThreadingHTTPServer(("127.0.0.1", 0), _NoUsage)
+    threading.Thread(target=up.serve_forever, daemon=True).start()
+    gw = gateway.Gateway(("127.0.0.1", 0), b, {"zhipu": (f"http://127.0.0.1:{up.server_address[1]}", "zhipu")})
+    gw.handle_error = lambda *a: None  # the handler's ZeroDivisionError is the point: keep it off the test output
+    threading.Thread(target=gw.serve_forever, daemon=True).start()
+    body = json.dumps({"model": "glm-5.3", "messages": [], "max_tokens": 1000}).encode()
+    req = urllib.request.Request(f"http://127.0.0.1:{gw.server_address[1]}/zhipu/api/paas/v4/chat/completions",
+                                 data=body, headers={"Content-Type": "application/json"})
+    urllib.request.urlopen(req, timeout=10).read()
+    gw.shutdown()
+    up.shutdown()
+    e = b.llm_entries()[-1]
+    assert len(b.llm_entries()) == 2 and e["frontier.cost.usd"] == budget.worst_case_usd("zhipu", "glm-5.3", len(body), 1000)
+    assert e["frontier.price_exact"] is False and b.reserved() == 0
+
+
 def test_gateway_reserves_at_the_requested_mode(cfg):
     def worst(**req):
         body = json.dumps({"input": "x", "max_output_tokens": 1000, **req}).encode()

@@ -299,11 +299,12 @@ def _copy_subject(src: str, dest_dir: pathlib.Path, base: pathlib.Path) -> str:
 def _ping(cfg: dict, provider: str, b: budget_mod.Budget) -> str:
     spec = llm.resolve(cfg, provider, "light", "low")
     try:
-        r = llm.chat(spec, [{"role": "user", "content": "Reply with OK."}], [], max_tokens=200)
-        b.charge_llm("launcher", "key-check", provider, spec.model, r.usage)
-        return f"key checked with {spec.model}: {'answered' if r.content or r.usage.get('output') else 'empty answer'}"
+        r, why = b.metered_chat("launcher", "key-check", spec, [{"role": "user", "content": "Reply with OK."}], [], 200)
     except llm.LLMError as e:
         return f"KEY CHECK FAILED: {str(e)[:160]}"
+    if r is None:
+        return f"key not checked: {why}"
+    return f"key checked with {spec.model}: {'answered' if r.content or r.usage.get('output') else 'empty answer'}"
 
 
 def apply_settings(settings: dict) -> None:
