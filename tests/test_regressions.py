@@ -628,7 +628,9 @@ def test_jury_measures_cost_and_time_and_ranks_delivered_teams_first():
                    "judges": {"x": j(100, 100)}}}
     res = aggregate(teams, 1.0)
     assert res["ranking"] == ["a", "b"]  # a delivered team ranks before one that did not, whatever its grades
-    assert res["teams"]["a"]["scores"]["scientific_quality"] == 50.0 and res["teams"]["a"]["final"] == (50 + 90 + 50 + 60) / 4
+    a = res["teams"]["a"]
+    assert a["scores"]["scientific_quality"] == 50.0 and a["scores"]["efficiency"] == (90 + 50) / 2 * 0.5
+    assert a["final"] == pytest.approx((60 * 50 + 25 * 60 + 15 * 35) / 100, abs=0.06)  # efficiency in proportion to science
 
 
 def test_jury_files_are_anonymous():

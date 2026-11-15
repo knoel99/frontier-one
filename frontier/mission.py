@@ -236,9 +236,9 @@ def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict]
 
 def mission_brief(m: dict, caps: dict, subject: str) -> str:
     g = m.get("grading", {})
-    crit = g.get("criteria") or ["scientific quality", "cost control", "delivery time",
-                                 "compliance with the subject's instructions"]
-    w = g.get("weights") or []
+    crit = g.get("criteria") or ["scientific quality", "compliance with the subject's instructions",
+                                 "efficiency: cost and delivery time, counted in proportion to the science"]
+    w = g.get("weights") or ([] if g.get("criteria") else [60, 25, 15])
     criteria = "\n".join(f"{i + 1}. {c}" + (f" (weight {w[i]})" if i < len(w) else "") for i, c in enumerate(crit))
     budgets = "\n".join([
         f"- LLM: {caps.get('llm_usd', 'no cap')} USD on {', '.join(providers_of(m))}.",

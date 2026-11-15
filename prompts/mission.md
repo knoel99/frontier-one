@@ -15,9 +15,13 @@ Carry out the research that the internship subject describes, and deliver its re
 - **Scientific quality**: the soundness, novelty and rigour of the work as reported, judged on the evidence in the
   repository: claims backed by runs whose code and outputs are here, measured results told apart from published
   ones (with references) and from conjectures, limits stated.
-- **Cost control**: the LLM and cloud spend, measured by the framework's ledgers against the budgets below.
-- **Delivery time**: the time from the start of the mission to your call of `deliver`.
-- **Compliance with the subject's instructions**: every instruction followed, or the departure justified.
+- **Compliance with the subject's instructions**: the share of the instructions met; a justified departure is still a
+  departure.
+- **Efficiency**: the LLM and cloud spend against the budgets below and the time from the start to your call of
+  `deliver`, both measured by the framework, counted in proportion to the scientific quality: a fast, cheap delivery
+  of little science gains little.
+
+Scientific quality and compliance are graded on an absolute scale, the same for any research whatever its means.
 
 ## Budgets and time
 

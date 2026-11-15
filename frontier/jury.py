@@ -2,16 +2,18 @@
 
     python3 -m frontier jury --root DIR --subject FILE --context FILE --out DIR [--judge openai --judge anthropic ...]
 
-Cost control and delivery time are measured from the framework's ledgers (`facts`, `measured_scores`); scientific
-quality and compliance are graded by a panel of LLM judges on several providers, a judge never grading a team of its
-own provider. Grading is anonymous: each team gets a random pseudonym (Team A, B, ...), and every name that tells its
-author (providers, brands, model families and ids, harnesses, from config/providers.toml `names`, `tiers` and the
-harness list) is replaced by [redacted] in what a judge reads; a file in which a name is still found is not sent.
-Each judge reads the subject, the general race context, the incidents of that team (inside or outside its control)
-and the team's file (its report, records, delivered code, repository listing and small result files, as the team
-left them), and answers in JSON (`prompts/jury.md`). The pseudonyms are lifted only in the results. A criterion's grade is the median
-of the judges; the final score is the weighted mean of the four criteria (the mission's `[grading]` weights, else
-equal); delivered teams rank before the others. The jury's own calls are metered against `--cap-usd` in its ledger.
+Three criteria: scientific quality and compliance, graded on an absolute scale out of 100, and efficiency, the mean
+of cost control and delivery time (measured from the framework's ledgers, `facts`, `measured_scores`) times scientific
+quality / 100; weighted 60, 25 and 15 (`WEIGHTS`). Scientific quality and compliance are graded by a panel of LLM
+judges on several providers, a judge never grading a team of its own provider. Grading is anonymous: each team gets a
+random pseudonym (Team A, B, ...), and every name that tells its author (providers, brands, model families and ids,
+harnesses, from config/providers.toml `names`, `tiers` and the harness list) is replaced by [redacted] in what a judge
+reads; a file in which a name is still found is not sent. Each judge reads the subject, the general race context, the
+incidents of that team (inside or outside its control), an optional calibration example (`--calibration`: a study of
+known means that fixes the scale, not a reference the teams are compared with) and the team's file (its report,
+records, delivered code, repository listing and small result files, as the team left them), and answers in JSON
+(`prompts/jury.md`). The pseudonyms are lifted only in the results. A criterion's grade is the median of the judges;
+delivered teams rank before the others. The jury's own calls are metered against `--cap-usd` in its ledger.
 """
 
 from __future__ import annotations
@@ -32,9 +34,11 @@ from .config import ROOT, load_config
 from .harnesses import HARNESSES
 from .mission import report_files
 
-CRITERIA = ("scientific_quality", "cost_control", "delivery_time", "compliance")
-LABELS = {"scientific_quality": "Scientific quality", "cost_control": "Cost control", "delivery_time": "Delivery time",
-          "compliance": "Compliance"}
+CRITERIA = ("scientific_quality", "compliance", "efficiency")
+LABELS = {"scientific_quality": "Scientific quality", "compliance": "Compliance", "efficiency": "Efficiency"}
+# Science dominates; efficiency (cost and time together) counts in proportion to the science it bought, so that a fast,
+# cheap delivery of little gains little (decided 2026-11-15 after the first ranking gave half the score to cost and time).
+WEIGHTS = {"scientific_quality": 60.0, "compliance": 25.0, "efficiency": 15.0}
 RECORDS = ("DELIVERY.md", "COMPLIANCE.md", "CHECKLIST.md", "DECISIONS.md")
 MAX_DOC = 30_000  # characters of one record in a judge's file
 MAX_RESULTS = 120_000  # characters of small result files in a judge's file
@@ -195,9 +199,12 @@ def _json_of(text: str) -> dict:
     return json.loads(m.group(0))
 
 
-def judge(spec: llm.ModelSpec, brief: str, subject: str, context: str, dossier: str) -> tuple[dict, dict]:
+def judge(spec: llm.ModelSpec, brief: str, subject: str, context: str, dossier: str,
+          calibration: str = "") -> tuple[dict, dict]:
+    cal = f"# Calibration example (not a competitor)\n\n{calibration}\n\n" if calibration else ""
     msgs = [{"role": "system", "content": brief},
-            {"role": "user", "content": f"# Race context\n\n{context}\n\n# The subject\n\n{subject}\n\n# The team's file\n\n{dossier}"}]
+            {"role": "user", "content": f"# Race context\n\n{context}\n\n# The subject\n\n{subject}\n\n{cal}"
+                                        f"# The team's file\n\n{dossier}"}]
     last = None
     for _ in range(2):  # one retry when the answer is not the JSON asked for
         r = llm.chat(spec, msgs, [], max_tokens=16_000)
@@ -213,7 +220,7 @@ def judge(spec: llm.ModelSpec, brief: str, subject: str, context: str, dossier: 
 
 
 def run(root: pathlib.Path, subject: str, context: str, out: pathlib.Path, judges: list[str], cap_usd: float,
-        teams: list[str] | None = None) -> dict:
+        teams: list[str] | None = None, calibration: str = "") -> dict:
     cfg = load_config()
     out.mkdir(parents=True, exist_ok=True)
     b = Budget(out)
@@ -226,6 +233,10 @@ def run(root: pathlib.Path, subject: str, context: str, out: pathlib.Path, judge
     names = identity_names(cfg)
     general, incidents = incidents_of(context)
     general = redact(general, names)[0]
+    calibration = redact(calibration, names)[0] if calibration else ""
+    if calibration:
+        (out / "files").mkdir(parents=True, exist_ok=True)
+        (out / "files" / "calibration.md").write_text(calibration)
     labels = pseudonyms([st.name for st in states])
     (out / "identities.json").write_text(json.dumps(labels, indent=1) + "\n")  # for the operator, never a judge
     teams_out: dict[str, dict] = {}
@@ -253,7 +264,7 @@ def run(root: pathlib.Path, subject: str, context: str, out: pathlib.Path, judge
         if b.llm_spent() >= cap_usd:
             return name, p, None, "jury budget spent"
         try:
-            verdict, usage = judge(specs[p], brief, subject, general, teams_out[name]["file"])
+            verdict, usage = judge(specs[p], brief, subject, general, teams_out[name]["file"], calibration)
             b.charge_llm("jury", f"judge:{p}", p, specs[p].model, usage)
             return name, p, verdict, None
         except Exception as e:  # noqa: BLE001 - a failed judge is recorded, the others still count
@@ -269,7 +280,9 @@ def run(root: pathlib.Path, subject: str, context: str, out: pathlib.Path, judge
 
 
 def aggregate(teams: dict, jury_usd: float, weights: dict | None = None) -> dict:
-    w = weights or {c: 1.0 for c in CRITERIA}
+    """Judged criteria: the judges' median. Efficiency: the mean of cost control and delivery time (measured), times
+    scientific quality / 100. Final: the weighted mean (WEIGHTS unless given); delivered teams rank first."""
+    w = weights or dict(WEIGHTS)
     for t in teams.values():
         sc = dict(t["measured"])
         # work that no judge could grade (every call failed) is not graded, not worth 0; no work at all is 0
@@ -278,6 +291,9 @@ def aggregate(teams: dict, jury_usd: float, weights: dict | None = None) -> dict
             v = [j[c]["score"] for j in t["judges"].values()]
             sc[c] = round(statistics.median(v), 1) if v else (0.0 if t["graded"] else None)
             t[c + "_spread"] = round(max(v) - min(v), 2) if len(v) > 1 else None
+        q = sc["scientific_quality"]
+        sc["efficiency"] = (round((sc["cost_control"] + sc["delivery_time"]) / 2 * q / 100, 1)
+                            if q is not None else None)
         t["scores"] = sc
         t["final"] = round(sum(w[c] * sc[c] for c in CRITERIA) / sum(w.values()), 1) if t["graded"] else None
     order = sorted(teams, key=lambda n: (not teams[n]["graded"], not teams[n]["facts"]["delivered"],
@@ -299,23 +315,24 @@ def _spread(x: dict, c: str) -> str:
 def markdown(res: dict, title: str = "Jury of the race") -> str:
     t = res["teams"]
     lines = [f"# {title}", "",
-             "Cost control and delivery time are measured by the framework from its ledgers; scientific quality and "
+             "Efficiency is the mean of cost control and delivery time, measured by the framework from its ledgers, "
+             "times scientific quality / 100; scientific quality and "
              "compliance are the median grade of LLM judges on other providers than the team's, who graded anonymous "
              "files (a pseudonym per team, every name of provider, model or harness redacted). Final score: mean of "
-             "the four criteria" + (" with weights " + ", ".join(f"{LABELS[c]} {res['weights'][c]}" for c in CRITERIA)
-                                    if len(set(res["weights"].values())) > 1 else ", equal weights") +
+             "the three criteria with weights " + ", ".join(f"{LABELS[c]} {res['weights'][c]:g}" for c in CRITERIA) +
              "; delivered teams rank first. All grades out of 100, on an absolute scale (100 for scientific quality is "
              "a historic discovery), not relative to the means.", "",
-             "| Rank | Team | Graded as | Delivered | Final | Scientific quality | Compliance | Cost control | "
-             "Delivery time | LLM / GPU spent (USD) | Judges |",
-             "|---|---|---|---|---|---|---|---|---|---|---|"]
+             "| Rank | Team | Graded as | Delivered | Final | Scientific quality | Compliance | Efficiency | "
+             "Cost control | Delivery time | LLM / GPU spent (USD) | Judges |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for n in res["ranking"]:
         x, f, s = t[n], t[n]["facts"], t[n]["scores"]
         num = lambda v: "not graded" if v is None else f"{v:g}"  # noqa: E731
         lines.append(f"| {x['rank'] or '—'} | {f['team']} | {x['label']} | "
                      f"{f['delivered_at'][11:16] + ' UTC' if f['delivered'] else 'no'} | "
                      f"**{num(x['final'])}** | {num(s['scientific_quality'])}{_spread(x, 'scientific_quality')} | "
-                     f"{num(s['compliance'])}{_spread(x, 'compliance')} | {s['cost_control']:g} | {s['delivery_time']:g} | "
+                     f"{num(s['compliance'])}{_spread(x, 'compliance')} | {num(s['efficiency'])} | "
+                     f"{s['cost_control']:g} | {s['delivery_time']:g} | "
                      f"{f['llm_usd']:.2f} / {f['gpu_usd']:.2f} | {', '.join(x['judges']) or '—'} |")
     lines += ["", f"The jury's own model calls cost {res['jury_llm_usd']:.2f} USD.", ""]
     for n in res["ranking"]:
@@ -355,12 +372,14 @@ def main(argv: list[str] | None = None) -> int:
                     "anthropic, google")
     ap.add_argument("--team", action="append", default=[], help="grade only these missions (repeat)")
     ap.add_argument("--cap-usd", type=float, default=15.0, help="cap on the jury's own model calls")
+    ap.add_argument("--calibration", help="Markdown file: a study of known means that fixes the scale (redacted too)")
     a = ap.parse_args(argv)
     subj = pathlib.Path(a.subject)
     subject = (subprocess.run(["pdftotext", "-layout", str(subj), "-"], capture_output=True, text=True, check=True).stdout
                if subj.suffix.lower() == ".pdf" else subj.read_text())
     res = run(pathlib.Path(a.root), subject, pathlib.Path(a.context).read_text(), pathlib.Path(a.out),
-              a.judge or ["openai", "anthropic", "google"], a.cap_usd, a.team or None)
+              a.judge or ["openai", "anthropic", "google"], a.cap_usd, a.team or None,
+              pathlib.Path(a.calibration).read_text() if a.calibration else "")
     out = pathlib.Path(a.out)
     (out / "jury.json").write_text(json.dumps(res, indent=1) + "\n")
     (out / "JURY.md").write_text(markdown(res))
