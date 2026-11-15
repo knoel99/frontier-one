@@ -1142,3 +1142,15 @@ def test_a_snapshot_waits_when_git_add_fails(tmp_path, monkeypatch):
     assert snapshots.commit(ws, "Snapshot 5min", ("snapshot-5min",), allow_empty=True) is False
     monkeypatch.setattr(snapshots.subprocess, "run", real)
     assert subprocess.run([*git, "tag", "--list", "snapshot-5min"], capture_output=True, text=True).stdout == ""
+
+
+def test_a_harness_inside_the_mission_sandbox_drops_its_own_sandbox(tmp_path, monkeypatch):
+    """Check of 2026-11-15 (F23, a session in the sandbox image under Docker): Codex's own sandbox (bubblewrap,
+    `--sandbox workspace-write`) cannot create a namespace inside a container, so every command and file write of the
+    session failed and the AI gave up; the mission's sandbox already confines it."""
+    info = mission.prepare(_mission(tmp_path), ping=False, offers=False)
+    h = launcher.harness_conf("codex", "openai")
+    cmd, _ = launcher.build_session(info, h, "PROMPT", None)
+    assert cmd[cmd.index("--sandbox") + 1] == "workspace-write"  # on the host, Codex keeps its own sandbox
+    cmd, _ = launcher.build_session({**info, "in_sandbox": True}, h, "PROMPT", None)
+    assert cmd[cmd.index("--sandbox") + 1] == "danger-full-access" and "workspace-write" not in cmd
