@@ -105,7 +105,10 @@ def test_a_session_is_killed_at_the_deadline(tmp_path):
 def _dead(pid: int) -> bool:
     stat = pathlib.Path(f"/proc/{pid}/stat")  # gone, or a zombie left to a PID 1 that does not reap
     for _ in range(50):
-        if not stat.exists() or stat.read_text().rsplit(")", 1)[1].split()[0] == "Z":
+        try:
+            if stat.read_text().rsplit(")", 1)[1].split()[0] == "Z":
+                return True
+        except (FileNotFoundError, ProcessLookupError):  # reaped between two looks (CI, 2026-11-15)
             return True
         time.sleep(0.1)
     return False
