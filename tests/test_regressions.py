@@ -987,3 +987,30 @@ def test_the_gateway_and_the_watchdog_write_a_milestone_once(tmp_path, monkeypat
         t.join()
     ev = [e["label"] for e in budget.read_jsonl(tmp_path / "events.jsonl") if e["event"] == "snapshot_notice"]
     assert ev == ["5min"]
+
+
+def test_parallel_publications_are_all_recorded(tmp_path, cfg, monkeypatch):
+    """publications.json was read, then rewritten: two publications in flight (a sub-agent and the harness) kept one."""
+    r = agent_mod.Run(cfg, workspace=tmp_path, log_dir=tmp_path / "s",
+                      settings={"allow_publish": True, "hf_namespace": "me"})
+    for n in ("a", "b"):
+        (tmp_path / n).mkdir()
+        (tmp_path / n / "README.md").write_text("---\nlicense: mit\n---\n" + "Dataset of runs. " * 20)
+
+    class SlowApi:
+        def create_repo(self, repo_id, **kw):
+            pass
+
+        def upload_folder(self, **kw):
+            time.sleep(0.2)
+            return None
+
+    real = hf._file_in_race
+    monkeypatch.setattr(hf, "_api", lambda: SlowApi())
+    monkeypatch.setattr(hf, "_file_in_race", lambda *a: time.sleep(0.3 if a[2].endswith("a") else 0) or real(*a))
+    threads = [threading.Thread(target=hf.hf_publish, args=(agent_mod.Ctx(r, None), n, n, "dataset")) for n in ("a", "b")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(p["repo_id"] for p in budget.read_json(r.log_dir / "publications.json")) == ["me/a", "me/b"]
