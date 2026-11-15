@@ -18,11 +18,11 @@ OpenShell sandbox is not visible here.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import pathlib
 import subprocess
-import threading
 
 from .budget import CLOUD_CURRENCY, append_chained, now, parse_time, read_jsonl
 
@@ -79,7 +79,7 @@ class Snapshots:
     """Shared by the gateway (notices) and the watchdog (snapshots), through the mission's events.jsonl."""
 
     def __init__(self, budget, cpu_usd_per_core_hour: float = 0.0):
-        self.b, self.price, self.lock = budget, cpu_usd_per_core_hour, threading.Lock()
+        self.b, self.price = budget, cpu_usd_per_core_hour
         self.s = settings(budget.dir)
         self.left, self.text = 0, ""
 
@@ -102,7 +102,9 @@ class Snapshots:
         """Called by the gateway for each model call: the notice to add to it, or ""."""
         if not self.s.get("enabled", True):
             return ""
-        with self.lock:
+        # A file lock: the gateway and the watchdog have a Snapshots each, and both would write a new milestone
+        with open(self.b.dir / ".snapshots.lock", "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
             seen = {(e["kind"], float(e["value"])) for e in self._events("snapshot_notice")}
             new = [c for c in self.crossed() if c not in seen]
             minutes = self._minutes() or 0.0

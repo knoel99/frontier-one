@@ -967,3 +967,50 @@ def test_every_judge_call_is_charged_and_held_under_the_jury_cap(tmp_path, cfg, 
     b.set_caps(llm_usd=b.llm_spent() + 0.0001)  # no worst case fits in what is left
     with pytest.raises(ValueError, match="LLM budget"):
         jury.judge(b, spec, "brief", "subject", "context", "file")
+
+
+def test_the_gateway_and_the_watchdog_write_a_milestone_once(tmp_path, monkeypatch):
+    """Each had its own Snapshots and its own thread lock: both read the events, both wrote the same notice, and the
+    snapshot carried the label twice."""
+    from frontier import snapshots
+
+    b = budget.Budget(tmp_path)
+    b.set_caps(llm_usd=50, start=(budget.now() - dt.timedelta(minutes=6)).isoformat())
+    snapshots.write_settings(tmp_path, {})
+    pair = [snapshots.Snapshots(b), snapshots.Snapshots(b)]
+    real = snapshots.Snapshots.crossed
+    monkeypatch.setattr(snapshots.Snapshots, "crossed", lambda self: time.sleep(0.2) or real(self))
+    threads = [threading.Thread(target=s.notice) for s in pair]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    ev = [e["label"] for e in budget.read_jsonl(tmp_path / "events.jsonl") if e["event"] == "snapshot_notice"]
+    assert ev == ["5min"]
+
+
+def test_parallel_publications_are_all_recorded(tmp_path, cfg, monkeypatch):
+    """publications.json was read, then rewritten: two publications in flight (a sub-agent and the harness) kept one."""
+    r = agent_mod.Run(cfg, workspace=tmp_path, log_dir=tmp_path / "s",
+                      settings={"allow_publish": True, "hf_namespace": "me"})
+    for n in ("a", "b"):
+        (tmp_path / n).mkdir()
+        (tmp_path / n / "README.md").write_text("---\nlicense: mit\n---\n" + "Dataset of runs. " * 20)
+
+    class SlowApi:
+        def create_repo(self, repo_id, **kw):
+            pass
+
+        def upload_folder(self, **kw):
+            time.sleep(0.2)
+            return None
+
+    real = hf._file_in_race
+    monkeypatch.setattr(hf, "_api", lambda: SlowApi())
+    monkeypatch.setattr(hf, "_file_in_race", lambda *a: time.sleep(0.3 if a[2].endswith("a") else 0) or real(*a))
+    threads = [threading.Thread(target=hf.hf_publish, args=(agent_mod.Ctx(r, None), n, n, "dataset")) for n in ("a", "b")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(p["repo_id"] for p in budget.read_json(r.log_dir / "publications.json")) == ["me/a", "me/b"]
