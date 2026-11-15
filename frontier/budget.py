@@ -238,6 +238,27 @@ class Budget:
                            "(a cheaper model, a lower reasoning level or fewer output tokens may still fit)")
         return True, ""
 
+    def metered_chat(self, source: str, agent: str, spec, messages: list[dict], tools: list[dict], max_out: int):
+        """One model call under the cap: reserve its worst case, charge what it used (its worst case when it failed
+        after the provider probably ran it), and only then release the reservation, so that a parallel call never
+        sees the room in between. Returns (reply, USD), or (None, why the call does not fit)."""
+        from . import llm
+
+        worst = worst_case_usd(spec.provider, spec.model, len(json.dumps(messages, default=str)) + len(json.dumps(tools)),
+                               max_out, spec.price_x)
+        rid, why = self.reserve(worst, f"{agent} {spec.label()}")
+        if rid is None:
+            return None, why
+        try:
+            reply = llm.chat(spec, messages, tools, max_out)
+            return reply, self.charge_llm(source, agent, spec.provider, spec.model, reply.usage, spec.mode, spec.price_x)
+        except llm.LLMError as e:
+            if e.maybe_billed:  # charged at the worst case, as the gateway does for a call it could not meter
+                self.charge_llm(source, agent, spec.provider, spec.model, {}, spec.mode, spec.price_x, usd=worst, exact=False)
+            raise
+        finally:
+            self.release(rid)
+
     def llm_allowed(self, next_call_usd: float = 0.0) -> tuple[bool, str]:
         """Hard cap: refused when what is spent, plus the calls in flight, plus `next_call_usd` exceeds the budget."""
         return self._fits(self.reserved() + next_call_usd)

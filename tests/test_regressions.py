@@ -860,3 +860,110 @@ def test_the_launcher_deletes_what_a_delivery_left_alive(tmp_path, cfg, monkeypa
     seen.clear()
     launcher.finish(r, ws, keep_resources=True)
     assert seen == []
+
+
+def test_raw_cloud_calls_cannot_create_outside_the_budget(run, monkeypatch):
+    """With spending allowed, `scaleway POST .../servers` or `runpod_mcp create-pod` billed a machine that no budget
+    check saw, no ledger held and no cleanup deleted."""
+    run.allow_spend = True
+    called = []
+    monkeypatch.setattr(tools, "scw_raw", lambda *a, **k: called.append(a) or (200, "{}"))
+    monkeypatch.setattr(tools, "mcp_call", lambda *a, **k: called.append(a) or (True, "{}"))
+    ctx = agent_mod.Ctx(run, None)
+    assert tools.t_scaleway(ctx, "POST", "/instance/v1/zones/fr-par-2/servers", {}).startswith("HTTP 200")  # no cap
+    run.budget.set_caps(scaleway_eur=10, runpod_usd=10)
+    for path in ("/instance/v1/zones/{zone}/servers", "/block/v1/zones/fr-par-2/volumes", "instance/v1/zones/fr-par-1/ips"):
+        assert tools.t_scaleway(ctx, "POST", path, {}).startswith("refused"), path
+    assert tools.t_runpod_mcp(ctx, "create-pod", {}).startswith("refused")
+    assert tools.t_runpod_mcp(ctx, "deploy-hub-repo", {}).startswith("refused")
+    assert len(called) == 1
+    assert tools.t_scaleway(ctx, "POST", "/instance/v1/zones/fr-par-2/servers/s1/action", {"action": "poweroff"}).startswith("HTTP")
+    assert tools.t_scaleway(ctx, "POST", "/instance/v1/zones/fr-par-2/security_groups", {}).startswith("HTTP")  # not billed
+    assert tools.t_runpod_mcp(ctx, "delete-pod", {"id": "p"}) == "{}"
+
+
+def test_a_sub_agent_call_is_charged_before_its_reservation_is_released(run, monkeypatch):
+    """Released first, the reservation left a gap in which a parallel call could take the same room: both ran over
+    the hard cap together."""
+    monkeypatch.setattr(llm, "chat", lambda spec, m, t, max_tokens=0: llm.Reply(
+        "done", [], {"input": 100, "output": 10}, {"role": "assistant", "content": "done"}))
+    real_release, seen = run.budget.release, []
+    monkeypatch.setattr(run.budget, "release", lambda rid: seen.append(run.budget.llm_spent()) or real_release(rid))
+    agent_mod.Agent(run, "openai", "light", "low", tools=[]).run_task("hi")
+    assert seen and seen[0] > 0  # the spend was in the ledger when the room was given back
+
+
+class _SlowAnswer(BaseHTTPRequestHandler):
+    """A JSON answer with its usage, sent after the client has hung up."""
+
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):  # noqa: N802
+        self.rfile.read(int(self.headers["Content-Length"]))
+        time.sleep(0.5)
+        data = b'{"model": "glm-5.3", "usage": {"prompt_tokens": 1000, "completion_tokens": 100}}' + b" " * 300_000
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
+def test_gateway_charges_an_answer_the_harness_hung_up_on(tmp_path):
+    """A harness that times out on a long call: the provider billed it, the write to the harness fails, and the
+    charge came after that write."""
+    import socket
+    import struct
+
+    up = ThreadingHTTPServer(("127.0.0.1", 0), _SlowAnswer)
+    threading.Thread(target=up.serve_forever, daemon=True).start()
+    b = budget.Budget(tmp_path)
+    gw = gateway.Gateway(("127.0.0.1", 0), b, {"zhipu": (f"http://127.0.0.1:{up.server_address[1]}", "zhipu")})
+    threading.Thread(target=gw.serve_forever, daemon=True).start()
+    body = json.dumps({"model": "glm-5.3", "messages": [], "max_tokens": 1000}).encode()
+    c = socket.create_connection(gw.server_address)
+    c.sendall(b"POST /zhipu/api/paas/v4/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n"
+              b"Content-Length: %d\r\n\r\n" % len(body) + body)
+    time.sleep(0.1)
+    c.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))  # hang up with a reset
+    c.close()
+    for _ in range(50):
+        if b.llm_entries():
+            break
+        time.sleep(0.1)
+    gw.shutdown()
+    up.shutdown()
+    (e,) = b.llm_entries()
+    assert e["gen_ai.usage.input_tokens"] == 1000 and e["frontier.price_exact"] is True and b.reserved() == 0
+
+
+def test_a_stream_that_ends_without_its_final_event_is_charged(run, monkeypatch):
+    """The stream started (the provider ran the call) but closed before response.completed: neither resent nor
+    charged before."""
+    monkeypatch.setattr(llm, "_post_sse", lambda *a, **k: [{"type": "response.created", "response": {"id": "r"}}])
+    with pytest.raises(llm.LLMError):
+        agent_mod.Agent(run, "openai", "light", "low", tools=[]).run_task("hi")
+    (e,) = run.budget.llm_entries()
+    assert e["frontier.price_exact"] is False and e["frontier.cost.usd"] > 0 and run.budget.reserved() == 0
+
+
+def test_every_judge_call_is_charged_and_held_under_the_jury_cap(tmp_path, cfg, monkeypatch):
+    """A judge that first answered in prose was charged for its retry only; parallel judges only checked the spend
+    already written, so six of them in flight overran the cap together."""
+    from frontier import jury
+
+    rub = {"scientific_quality": {"rubrics": {k: {"score": 50} for k in ("soundness", "significance", "positioning", "clarity")},
+                                  "adequacy": "on_subject"},
+           "artifacts": {"rubrics": {k: {"score": 50} for k in ("reproducibility", "code", "data", "traceability")}}}
+    answers = iter(["I think the team did well.", json.dumps(rub)])
+    monkeypatch.setattr(llm, "chat", lambda spec, m, t, max_tokens=0: llm.Reply(
+        next(answers), [], {"input": 1000, "output": 100}, {"role": "assistant", "content": "x"}))
+    b = budget.Budget(tmp_path)
+    b.set_caps(llm_usd=100)
+    spec = llm.resolve(cfg, "openai", "frontier", "high")
+    assert jury.judge(b, spec, "brief", "subject", "context", "file") == rub
+    assert [e["gen_ai.agent.name"] for e in b.llm_entries()] == ["judge", "judge"] and b.reserved() == 0
+    b.set_caps(llm_usd=b.llm_spent() + 0.0001)  # no worst case fits in what is left
+    with pytest.raises(ValueError, match="LLM budget"):
+        jury.judge(b, spec, "brief", "subject", "context", "file")

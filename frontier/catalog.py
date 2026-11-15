@@ -34,6 +34,15 @@ def read_only_mcp_tools() -> set[str]:
     return {e["path"] for e in entries() if e["method"] == "MCP" and e.get("read_only")}
 
 
+def operation(method: str, path: str) -> str:
+    """The catalog id of a raw call (method, path with or without its {placeholders} filled), or ""."""
+    path = "/" + path.split("?", 1)[0].strip("/")
+    for e in entries():
+        if e["method"] == method.upper() and re.fullmatch(re.sub(r"\\\{[^}]*\\\}", "[^/]+", re.escape(e["path"])), path):
+            return e["id"]
+    return ""
+
+
 def overview() -> str:
     lines = ["Catalog (api_docs action=search query=... [doc=...], then action=show id=...):"]
     groups: dict[str, int] = {}
