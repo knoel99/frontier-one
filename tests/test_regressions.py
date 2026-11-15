@@ -1286,3 +1286,20 @@ def test_the_sandbox_image_has_the_policy_user():
     pol, _ = sandbox.policy({}, [])
     user = pol["process"]["run_as_user"]
     assert f"useradd -m -s /bin/bash {user}" in text and f"chown -R {user}:{user} /sandbox" in text
+
+
+def test_openshell_push_puts_the_workspace_and_state_at_their_paths(tmp_path):
+    """First live run with OpenShell 0.1.8 (2026-11-15): `sandbox upload <dir> <dest>` always writes <dest>/<dir name>,
+    so the state landed in /sandbox/state/<mission> and the session found no /sandbox/state/mission.json. Each directory
+    is uploaded to a staging path, then moved into place inside the sandbox."""
+    f = _mission(tmp_path, harness="codex")
+    f.write_text(f.read_text() + '\n[sandbox]\nkind = "openshell"\n')
+    info = mission.prepare(f, ping=False, offers=False)
+    box = sandbox.OpenShell(info, launcher.harness_conf("codex", "openai"), dry_run=True)
+    box.push()
+    for local, inside in ((info["workspace"], sandbox.IN_WS), (info["state"], sandbox.IN_STATE)):
+        up = next(c for c in box.commands if c[:3] == ["openshell", "sandbox", "upload"] and c[4] == str(local))
+        stage = up[5]
+        mv = next(c for c in box.commands if c[:3] == ["openshell", "sandbox", "exec"] and stage in c[-1])
+        assert stage != inside and f"mv {stage}/{pathlib.Path(local).name} {inside}" in mv[-1]
+    assert "mkdir -p /sandbox/workspace" not in sandbox.dockerfile(launcher.harness_conf("codex", "openai"), "x")

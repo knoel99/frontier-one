@@ -99,7 +99,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
     && rm -rf /var/lib/apt/lists/*
 RUN {install or 'true'}
 RUN python3 -m pip install --break-system-packages --no-cache-dir huggingface_hub
-RUN useradd -m -s /bin/bash sandbox && mkdir -p /sandbox/workspace /sandbox/state && chown -R sandbox:sandbox /sandbox
+RUN useradd -m -s /bin/bash sandbox && mkdir -p /sandbox && chown -R sandbox:sandbox /sandbox
 COPY frontier {IN_ROOT}
 ENV PATH={IN_ROOT}/bin:$PATH
 """
@@ -171,9 +171,14 @@ class OpenShell:
         self.push()
 
     def push(self) -> None:
-        """Workspace and state into the sandbox (uploads cannot be combined with the main command)."""
-        self._run(["openshell", "sandbox", "upload", self.name, str(self.info["workspace"]), IN_WS, "--no-git-ignore"])
-        self._run(["openshell", "sandbox", "upload", self.name, str(self.info["state"]), IN_STATE, "--no-git-ignore"])
+        """Workspace and state into the sandbox (uploads cannot be combined with the main command). `sandbox upload
+        <dir> <dest>` writes <dest>/<dir name> (OpenShell 0.1.8, checked live): each goes to a staging path, then is
+        moved into place."""
+        for local, inside in ((self.info["workspace"], IN_WS), (self.info["state"], IN_STATE)):
+            stage = f"{inside}.upload"
+            self._run(["openshell", "sandbox", "upload", self.name, str(local), stage, "--no-git-ignore"])
+            self._run(["openshell", "sandbox", "exec", "-n", self.name, "--", "sh", "-c",
+                       f"rm -rf {inside} && mv {stage}/{pathlib.Path(local).name} {inside} && rmdir {stage}"])
 
     def session_command(self, n: int) -> list[str]:
         return ["openshell", "sandbox", "exec", "-n", self.name, "--workdir", IN_WS, "--",
