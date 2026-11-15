@@ -1117,3 +1117,25 @@ def test_responses_cache_writes_are_booked():
     u = llm.usage_of({"type": "response.completed", "response": {"usage": usage}})
     assert u["cache_write"] == 6006 and u["input"] == 6009 and u["cached"] == 0
     assert budget.llm_cost("openai", "gpt-6-luna", u)[0] > budget.llm_cost("openai", "gpt-6-luna", {**u, "cache_write": 0})[0]
+def test_a_snapshot_waits_when_git_add_fails(tmp_path, monkeypatch):
+    """Level 4 check 2026-11-15: with the index locked only while `git add -A` ran, the add failed silently, the
+    `commit --allow-empty` after it succeeded, and the snapshot was tagged on a tree without the team's latest work."""
+    from frontier import snapshots
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    git = ["git", "-C", str(ws), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+    (ws / "REPORT.md").write_text("results so far\n")
+    real = subprocess.run
+
+    def busy_add(cmd, *a, **k):
+        if "add" in cmd:
+            return subprocess.CompletedProcess(cmd, 128, "", "fatal: Unable to create '.git/index.lock': File exists.")
+        return real(cmd, *a, **k)
+
+    monkeypatch.setattr(snapshots.subprocess, "run", busy_add)
+    assert snapshots.commit(ws, "Snapshot 5min", ("snapshot-5min",), allow_empty=True) is False
+    monkeypatch.setattr(snapshots.subprocess, "run", real)
+    assert subprocess.run([*git, "tag", "--list", "snapshot-5min"], capture_output=True, text=True).stdout == ""
