@@ -21,6 +21,7 @@ from . import infra, llm, mission
 from .agent import Ctx, Run
 from .config import ROOT, load_config
 from .gateway import serve
+from .snapshots import commit
 
 HARNESS_CONF = ROOT / "config" / "harnesses.toml"
 FIRST_PROMPT = ("Read MISSION.md and TOOLS.md, then carry out the mission. You work autonomously: nobody will answer "
@@ -411,18 +412,9 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
             print("not delivered; COSTS.md written")
         else:
             mission.final_costs(run, ws)  # what the harness spent after deliver, finishing its turn
-            commit(ws, "Delivery", tag="delivery")
+            commit(ws, "Delivery", ("delivery",))
             print("delivered: " + (state / "delivery.json").read_text())
     return 0
-
-
-def commit(ws: pathlib.Path, message: str, tag: str = "") -> None:
-    """Commit the workspace from outside the harness (whose sandbox may keep .git read-only)."""
-    subprocess.run(["git", "-C", str(ws), "add", "-A"], capture_output=True)
-    subprocess.run(["git", "-C", str(ws), "-c", "user.name=frontier", "-c", "user.email=frontier@localhost", "commit", "-q",
-                    "-m", message], capture_output=True)
-    if tag:
-        subprocess.run(["git", "-C", str(ws), "tag", "-f", tag], capture_output=True)
 
 
 def _stop_reason(run: Run) -> str:

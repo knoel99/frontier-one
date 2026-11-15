@@ -140,11 +140,7 @@ class Snapshots:
         if not due:
             return None
         labels = [e["label"] for e in due]
-        subprocess.run(["git", "-C", str(ws), "add", "-A"], capture_output=True)
-        subprocess.run(["git", "-C", str(ws), "-c", "user.name=frontier", "-c", "user.email=frontier@localhost",
-                        "commit", "-q", "--allow-empty", "-m", "Snapshot " + ", ".join(labels)], capture_output=True)
-        for lab in labels:
-            subprocess.run(["git", "-C", str(ws), "tag", "-f", f"snapshot-{lab}"], capture_output=True)
+        commit(ws, "Snapshot " + ", ".join(labels), tuple(f"snapshot-{lab}" for lab in labels), allow_empty=True)
         head = subprocess.run(["git", "-C", str(ws), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
         start = parse_time(self.b.caps.get("start"))
         llm, sim = spend(self.b, self.price)
@@ -154,6 +150,17 @@ class Snapshots:
               "core_seconds": round(core_seconds(self.b.dir), 1)}
         append_chained(self.b.dir / "events.jsonl", ev)
         return ev
+
+
+def commit(ws: pathlib.Path, message: str, tags: tuple[str, ...] = (), allow_empty: bool = False) -> None:
+    """Commit and tag the workspace from outside the harness (whose sandbox may keep .git read-only), under the
+    framework's own identity, output captured (inside the MCP server, file descriptor 1 is the JSON-RPC pipe)."""
+    git = ["git", "-C", str(ws)]
+    subprocess.run([*git, "add", "-A"], capture_output=True)
+    subprocess.run([*git, "-c", "user.name=frontier", "-c", "user.email=frontier@localhost", "commit", "-q",
+                    *(["--allow-empty"] if allow_empty else []), "-m", message], capture_output=True)
+    for tag in tags:
+        subprocess.run([*git, "tag", "-f", tag], capture_output=True)
 
 
 class CpuMeter:

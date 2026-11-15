@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import subprocess
 import threading
 import tomllib
 import urllib.error
@@ -246,8 +247,12 @@ def test_deliver_checks_freezes_and_reports(tmp_path, cfg, monkeypatch):
     for f in mission.REQUIRED:
         (ws / f).write_text(f"# {f}\n")
     run.budget.charge_llm("t", "a", "openai", "gpt-6-luna", {"input": 100, "output": 100})
+    for k, v in {"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "EMAIL": ""}.items():
+        monkeypatch.setenv(k, v)  # a machine with no git identity: the delivery commit still lands
     rec = json.loads(mission.deliver(ctx, "done"))
     assert rec["missing"] == [] and rec["llm_usd"] > 0 and (ws / "COSTS.md").exists()
+    git = ["git", "-C", str(ws), "log", "-1", "--format=%s", "delivery"]
+    assert subprocess.run(git, capture_output=True, text=True).stdout.strip() == "Delivery"
     assert not run.budget.llm_allowed(1.0)[0] and run.budget.llm_allowed(0.01)[0]  # frozen, small grace to close the turn
     assert mission.deliver(ctx).startswith("already delivered")
 

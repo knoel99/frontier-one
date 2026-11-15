@@ -28,6 +28,7 @@ from . import budget as budget_mod
 from . import credentials, llm
 from .config import ROOT, load_config
 from .harnesses import HARNESSES, McpCommand, artifacts
+from .snapshots import commit
 
 STATE_ROOT = pathlib.Path.home() / ".frontier" / "missions"
 REQUIRED = ["DELIVERY.md", "COMPLIANCE.md", "DECISIONS.md"]
@@ -503,9 +504,7 @@ def deliver(ctx, summary: str = "", force: bool = False) -> str:
     (ws / "COSTS.md").write_text(costs_markdown(st, ctx.run.budget.resources(), pubs))
     done.write_text(json.dumps(rec, indent=1) + "\n")
     ctx.run.budget.set_caps(frozen=True, frozen_llm_usd=st["llm"]["spent_usd"])
-    subprocess.run(["git", "-C", str(ws), "add", "-A"], check=False)
-    subprocess.run(["git", "-C", str(ws), "commit", "-q", "-m", f"Delivery\n\n{summary}".strip()], check=False)
-    subprocess.run(["git", "-C", str(ws), "tag", "-f", "delivery"], check=False, capture_output=True)
+    commit(ws, f"Delivery\n\n{summary}".strip(), ("delivery",))
     from .hf import publish_delivery
 
     rec["hub_delivery"] = publish_delivery(ctx, rec)  # in a race: the repository on a private dataset of the Hub
