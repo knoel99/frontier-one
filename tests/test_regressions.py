@@ -1174,3 +1174,12 @@ def test_the_jury_listing_does_not_tell_the_length_of_redacted_names(tmp_path, c
              "deliverables": {}, "ledgers_intact": True}
         files[brand] = jury.redact(jury.team_file(ws, f, "Team A", ""), names)[0]
     assert files["OpenAI"] == files["DeepSeek"]
+def test_costs_of_an_undelivered_mission_list_its_publications(tmp_path, cfg):
+    """Commit 4c8df21 (PR #11) had no test: COSTS.md of a mission that did not deliver omitted what it published."""
+    ws, st = tmp_path / "ws", tmp_path / "st"
+    ws.mkdir()
+    st.mkdir()
+    (st / "publications.json").write_text(json.dumps([{"repo": "team/data", "type": "dataset", "visibility": "private",
+                                                       "url": "https://huggingface.co/datasets/team/data"}]))
+    launcher.finish(agent_mod.Run(cfg, workspace=ws, log_dir=st), ws)
+    assert "https://huggingface.co/datasets/team/data (dataset, private)" in (ws / "COSTS.md").read_text()
