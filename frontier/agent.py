@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from . import llm
-from .budget import Budget, append_chained, now, worst_case_usd
+from .budget import Budget, append_chained, now, worst_case_usd, write_json
 from .config import ROOT
 from .tools import GROUPS, INFRA_TOOLS, REGISTRY, Tool, _obj, all_tools
 
@@ -78,7 +78,7 @@ class Run:
             fcntl.flock(lock, fcntl.LOCK_EX)
             items = json.loads(f.read_text()) if f.exists() else []
             yield items
-            f.write_text(json.dumps(items, indent=1) + "\n")
+            write_json(f, items)
             fcntl.flock(lock, fcntl.LOCK_UN)
 
     @property

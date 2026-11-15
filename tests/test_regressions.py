@@ -747,6 +747,19 @@ def test_a_stream_cut_after_it_started_is_not_retried_and_is_charged(run, monkey
     assert entry["frontier.price_exact"] is False and entry["frontier.cost.usd"] > 0 and run.budget.reserved() == 0
 
 
+def test_shared_state_files_are_replaced_whole(run):
+    """budgets.json and resources.json are read by other processes (gateway, dashboard): never written in place."""
+    run.budget.set_caps(llm_usd=5)
+    run.record({"provider": "runpod", "id": "p1"})
+    files = [run.log_dir / "budgets.json", run.log_dir / "resources.json"]
+    inodes = [f.stat().st_ino for f in files]
+    run.budget.set_caps(llm_usd=6)
+    run.record({"provider": "runpod", "id": "p2"})
+    assert all(f.stat().st_ino != i for f, i in zip(files, inodes, strict=True))  # a new file, renamed over the old
+    assert run.budget.caps["llm_usd"] == 6 and [r["id"] for r in run.resources] == ["p1", "p2"]
+    assert not list(run.log_dir.glob("*.tmp"))
+
+
 def test_scoring_log_scales_and_relative_efficiency():
     from frontier import scoring
     assert scoring.log_score(5, 5) == 100 and scoring.log_score(10, 5) == 90 and scoring.log_score(40, 5) == 70
