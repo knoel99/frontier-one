@@ -256,7 +256,7 @@ def responses_from_events(events: list[dict]) -> dict:
             if ev["type"] == "response.failed":
                 raise LLMError(f"response failed: {json.dumps(ev['response'].get('error'))[:500]}")
             return ev["response"]
-    raise LLMError("streamed response ended without a final event")
+    raise LLMError("streamed response ended without a final event", maybe_billed=bool(events))  # it started: it ran
 
 
 def gemini_from_chunks(chunks: list[dict]) -> dict:

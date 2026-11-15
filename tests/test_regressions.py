@@ -936,3 +936,13 @@ def test_gateway_charges_an_answer_the_harness_hung_up_on(tmp_path):
     up.shutdown()
     (e,) = b.llm_entries()
     assert e["gen_ai.usage.input_tokens"] == 1000 and e["frontier.price_exact"] is True and b.reserved() == 0
+
+
+def test_a_stream_that_ends_without_its_final_event_is_charged(run, monkeypatch):
+    """The stream started (the provider ran the call) but closed before response.completed: neither resent nor
+    charged before."""
+    monkeypatch.setattr(llm, "_post_sse", lambda *a, **k: [{"type": "response.created", "response": {"id": "r"}}])
+    with pytest.raises(llm.LLMError):
+        agent_mod.Agent(run, "openai", "light", "low", tools=[]).run_task("hi")
+    (e,) = run.budget.llm_entries()
+    assert e["frontier.price_exact"] is False and e["frontier.cost.usd"] > 0 and run.budget.reserved() == 0
