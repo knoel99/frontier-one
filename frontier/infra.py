@@ -26,9 +26,18 @@ def _j(x) -> str:
 
 
 def _need_spend(ctx, what: str) -> str | None:
+    """The refusal of a call that creates, changes or deletes a cloud resource in a run without --allow-spend."""
     if ctx.allow_spend:
         return None
-    return f"refused: {what} costs money and this run does not allow spending (start it with --allow-spend)."
+    return f"refused: {what}: this run does not allow spending (start it with --allow-spend)."
+
+
+def _not_owned(ctx, resource_id: str, kind: str, forced: bool) -> str | None:
+    """The refusal to delete what this run did not create, unless the task names it (forced) and spending is allowed."""
+    if ctx.run.owns(resource_id) or (forced and ctx.allow_spend):
+        return None
+    return (f"refused: this run did not create that {kind}. Pass not_created_by_this_run=true only if the task names it "
+            "(needs --allow-spend).")
 
 
 def _price_eur_h(p: dict) -> float:
@@ -224,9 +233,8 @@ def _delete_scw_instance(run, server_id: str, zone: str) -> dict:
 def scw_delete_instance(ctx, server_id: str, zone: str = "", not_created_by_this_run: bool = False) -> str:
     """Delete an Instance with its Block Storage volumes and its flexible IPs."""
     zone = zone or scw_defaults()["zone"]
-    if not ctx.run.owns(server_id) and not (not_created_by_this_run and ctx.allow_spend):
-        return ("refused: this run did not create that Instance. Pass not_created_by_this_run=true only if the task "
-                "names it (needs --allow-spend).")
+    if g := _not_owned(ctx, server_id, "Instance", not_created_by_this_run):
+        return g
     return _j(_delete_scw_instance(ctx.run, server_id, zone))
 
 
@@ -348,9 +356,8 @@ def _delete_rp_pod(run, pod_id: str) -> dict:
 
 
 def rp_delete_pod(ctx, pod_id: str, not_created_by_this_run: bool = False) -> str:
-    if not ctx.run.owns(pod_id) and not (not_created_by_this_run and ctx.allow_spend):
-        return ("refused: this run did not create that pod. Pass not_created_by_this_run=true only if the task names it "
-                "(needs --allow-spend).")
+    if g := _not_owned(ctx, pod_id, "pod", not_created_by_this_run):
+        return g
     return _j(_delete_rp_pod(ctx.run, pod_id))
 
 
