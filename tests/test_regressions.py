@@ -1024,3 +1024,18 @@ def test_the_gateway_moves_to_a_free_port_when_its_own_is_taken(tmp_path):
             assert gw.server_address[1] != port and url == f"http://127.0.0.1:{gw.server_address[1]}"
         finally:
             gw.shutdown()
+
+
+def test_the_gateway_tells_a_milestone_the_watchdog_recorded_first(tmp_path):
+    """Race check 2026-11-15: the watchdog ticks every 10 s and recorded the 15-minute milestone first; the gateway then
+    saw it as already seen, so the harness was never asked to bring its report up to date before the snapshot."""
+    from frontier import snapshots
+
+    b = budget.Budget(tmp_path)
+    b.set_caps(llm_usd=50, start=(budget.now() - dt.timedelta(minutes=16)).isoformat())
+    snapshots.write_settings(tmp_path, {"notice_calls": 2})
+    watchdog, gw = snapshots.Snapshots(b), snapshots.Snapshots(b)
+    watchdog.notice()
+    assert "15min reached" in gw.notice()
+    assert "15min reached" in gw.notice()
+    assert gw.notice() == ""  # told notice_calls times, then no more

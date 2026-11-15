@@ -81,7 +81,7 @@ class Snapshots:
     def __init__(self, budget, cpu_usd_per_core_hour: float = 0.0):
         self.b, self.price = budget, cpu_usd_per_core_hour
         self.s = settings(budget.dir)
-        self.left, self.text = 0, ""
+        self.left, self.text, self.told = 0, "", set()  # told: labels whose notice this instance gave
 
     def _events(self, kind: str) -> list[dict]:
         return [e for e in read_jsonl(self.b.dir / "events.jsonl") if e.get("event") == kind]
@@ -105,21 +105,25 @@ class Snapshots:
         # A file lock: the gateway and the watchdog have a Snapshots each, and both would write a new milestone
         with open(self.b.dir / ".snapshots.lock", "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            seen = {(e["kind"], float(e["value"])) for e in self._events("snapshot_notice")}
-            new = [c for c in self.crossed() if c not in seen]
+            notices = self._events("snapshot_notice")
+            seen = {(e["kind"], float(e["value"])) for e in notices}
             minutes = self._minutes() or 0.0
-            for kind, value in new:
+            for kind, value in [c for c in self.crossed() if c not in seen]:
                 nf = float(self.s["notice_from_minutes"])
-                silent = value < nf if kind == "time" else minutes < nf
-                append_chained(self.b.dir / "events.jsonl", {
-                    "t": now().isoformat(timespec="seconds"), "event": "snapshot_notice", "kind": kind,
-                    "value": value, "label": label(kind, value), "silent": silent})
-                if not silent:
-                    self.left = int(self.s["notice_calls"])
-                    self.text = (f"[Frontier snapshot notice: {label(kind, value).replace('usd', ' USD')} reached. Bring "
-                                 "the report up to date with what you have now (results so far, figures, limits); the "
-                                 f"framework takes a snapshot of the repository in {self.s['grace_minutes']:g} minutes, "
-                                 "which the jury grades to draw your quality against time and spend. Then go on.]")
+                ev = {"t": now().isoformat(timespec="seconds"), "event": "snapshot_notice", "kind": kind,
+                      "value": value, "label": label(kind, value), "silent": value < nf if kind == "time" else minutes < nf}
+                append_chained(self.b.dir / "events.jsonl", ev)
+                notices.append(ev)
+            # whoever recorded it (the watchdog ticks without model calls), the gateway tells each pending milestone
+            taken = {lab for e in self._events("snapshot") for lab in e.get("labels", [])}
+            fresh = [e["label"] for e in notices if not e.get("silent") and e["label"] not in taken | self.told]
+            if fresh:
+                self.told.update(fresh)
+                self.left = int(self.s["notice_calls"])
+                self.text = (f"[Frontier snapshot notice: {fresh[-1].replace('usd', ' USD')} reached. Bring "
+                             "the report up to date with what you have now (results so far, figures, limits); the "
+                             f"framework takes a snapshot of the repository in {self.s['grace_minutes']:g} minutes, "
+                             "which the jury grades to draw your quality against time and spend. Then go on.]")
             if self.left <= 0:
                 return ""
             self.left -= 1
