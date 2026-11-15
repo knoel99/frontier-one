@@ -830,3 +830,14 @@ def test_jury_sees_the_team_files_only_and_all_its_code(tmp_path):
     assert "### résultat.py" in text and "### model.rs" in text
     assert "opencode.json" not in text and ".mcp.json" not in text and "role" not in text
     assert jury.deliverables(tmp_path / "missing", tmp_path)["code"] is False
+
+
+def test_concurrent_set_caps_keep_every_update(tmp_path):
+    b = budget.Budget(tmp_path)
+    keys = [f"k{i}" for i in range(40)]
+    threads = [threading.Thread(target=b.set_caps, kwargs={k: 1}) for k in keys]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert set(keys) <= set(b.caps)

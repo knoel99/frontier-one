@@ -246,7 +246,7 @@ def _rp_gone(pod: str) -> bool:
         infra.mcp_json("get-pod", {"id": pod})
         return False
     except infra.APIError as e:
-        return "404" in str(e) or "not found" in str(e).lower()
+        return infra.gone(e)
 
 
 @check("F13", "Scaleway runner")

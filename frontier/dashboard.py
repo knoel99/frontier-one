@@ -16,8 +16,8 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .budget import Budget, now, parse_time, read_json, read_jsonl
+from .mission import STATE_ROOT as ROOT_DEFAULT
 
-ROOT_DEFAULT = pathlib.Path.home() / ".frontier" / "missions"
 FEED = 300  # actions kept in the global feed
 
 
@@ -50,7 +50,7 @@ def _event_text(e: dict) -> tuple[str, str] | None:
     return None
 
 
-def _harness_actions(log: pathlib.Path, limit: int = 60) -> list[dict]:
+def _harness_actions(log: pathlib.Path) -> list[dict]:
     """Actions of the harness itself, from its live JSON output (Codex --json, Claude stream-json, …)."""
     out = []
     try:
@@ -79,7 +79,7 @@ def _harness_actions(log: pathlib.Path, limit: int = 60) -> list[dict]:
                     out.append({"kind": "tool", "text": f"{c.get('name')} {_short(c.get('input', {}), 130)}"})
                 elif c.get("type") == "text" and c.get("text", "").strip():
                     out.append({"kind": "message", "text": _short(c["text"], 160)})
-    return out[-limit:]
+    return out[-60:]  # the last actions of the session
 
 
 def subagents(events: list[dict], llm: list[dict], logs: list[pathlib.Path]) -> list[dict]:

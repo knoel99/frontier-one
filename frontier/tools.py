@@ -97,21 +97,17 @@ def t_api_docs(ctx, action: str, query: str = "", id: str = "", doc: str = "") -
     return "action must be list, search or show"
 
 
-def _refuse(what: str) -> str:
-    return f"refused: {what} creates, changes or deletes a cloud resource and this run does not allow spending (--allow-spend)."
-
-
 def t_scaleway(ctx, method: str, path: str, body: dict | None = None, query: dict | None = None, raw_body: str = "",
                content_type: str = "") -> str:
-    if method.upper() != "GET" and not ctx.allow_spend:
-        return _refuse(f"{method} {path}")
+    if method.upper() != "GET" and (g := infra._need_spend(ctx, f"{method} {path}")):
+        return g
     code, text = scw_raw(method, path, raw_body or body, query, content_type)
     return f"HTTP {code}\n{text}"
 
 
 def t_runpod_mcp(ctx, tool: str, arguments: dict | None = None) -> str:
-    if tool not in catalog.read_only_mcp_tools() and tool != "describe-tool" and not ctx.allow_spend:
-        return _refuse(f"Runpod MCP tool {tool}")
+    if tool not in catalog.read_only_mcp_tools() and tool != "describe-tool" and (g := infra._need_spend(ctx, f"Runpod MCP tool {tool}")):
+        return g
     ok, text = mcp_call(tool, arguments)
     return text if ok else "ERROR: " + text
 
@@ -232,6 +228,3 @@ def all_tools() -> list[str]:
     for names in GROUPS.values():
         out += [n for n in names if n not in out]
     return out
-
-
-DEFAULT_TOOLS = BASE_TOOLS  # kept for callers that want the workspace tools only

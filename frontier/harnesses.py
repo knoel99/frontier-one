@@ -224,15 +224,9 @@ def artifacts(mcp: McpCommand, which: list[str] | None = None, target: dict | No
             conf = {"$schema": "https://opencode.ai/config.json",
                     "mcp": {"servers": {"frontier": {"type": "local", "command": mcp.argv}}}}
             if target:
-                from .config import load_config
-                from .gateway import base_url_for
-
-                cfg = load_config()
-                style = cfg["providers"][target["provider"]]["style"]
-                port = int(target["gateway"].rsplit(":", 1)[1])
                 conf["provider"] = {"frontier": {
-                    "npm": OPENCODE_PACKAGE.get(style, OPENCODE_PACKAGE["openai-chat"]), "name": "Frontier gateway",
-                    "options": {"baseURL": base_url_for(port, target["provider"], cfg),
+                    "npm": OPENCODE_PACKAGE.get(target["style"], OPENCODE_PACKAGE["openai-chat"]), "name": "Frontier gateway",
+                    "options": {"baseURL": target["base_url"],
                                 "apiKey": "{env:" + target["key_env"] + "}"},
                     "models": {target["model"]: {}}}}
             out["opencode.json"] = _j(conf)
