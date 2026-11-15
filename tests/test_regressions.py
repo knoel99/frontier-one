@@ -526,3 +526,13 @@ def test_hub_calls_survive_a_bracketed_ipv6_no_proxy(monkeypatch):
     monkeypatch.setenv("NO_PROXY", "localhost,[::1],api.example.com")
     hf._bracketless_no_proxy()
     assert os.environ["NO_PROXY"] == "localhost,::1,api.example.com"
+
+
+def test_dashboard_skips_json_lines_that_are_not_objects(tmp_path):
+    """Race 2026-11-15: a session log line holding a JSON list ("tool_use" inside) stopped every dashboard snapshot."""
+    from frontier.dashboard import subagents
+    log = tmp_path / "01.log"
+    log.write_text('[{"type": "tool_use"}]\n"tool_use"\n{"type": "assistant", "message": {"content": [{"type": "tool_use", '
+                   '"name": "Agent", "input": {"description": "read papers"}}]}}\n')
+    out = subagents([], [], [log])
+    assert [r["task"] for r in out if r["kind"] == "native"] == ["read papers"]

@@ -130,6 +130,8 @@ def subagents(events: list[dict], llm: list[dict], logs: list[pathlib.Path]) -> 
                 e = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if not isinstance(e, dict) or not isinstance(e.get("message"), (dict, type(None))):
+                continue  # a harness may print other JSON (a list, a bare string) on its own lines
             for c in (e.get("message") or {}).get("content", []) if e.get("type") == "assistant" else []:
                 if c.get("type") == "tool_use" and c.get("name") in ("Agent", "Task"):
                     inp = c.get("input") or {}
