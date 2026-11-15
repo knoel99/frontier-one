@@ -117,7 +117,25 @@ def cmd_mission(a, cfg) -> int:
                               max_sessions=a.max_sessions, ping=not a.no_ping, dry_run=a.dry_run)
     if a.action == "session":
         return launcher.session(a.target, a.n)
+    if a.action == "red-flag":
+        return red_flag(pathlib.Path(a.target), a.minutes, a.reason)
     return launcher.status(a.target)
+
+
+def red_flag(state: pathlib.Path, minutes: float | None, reason: str | None) -> int:
+    """Neutralise time a team lost to an incident outside its control: the jury subtracts it from its delay."""
+    from .budget import append_chained, now
+
+    if not minutes or minutes <= 0 or not reason:
+        print("red-flag needs --minutes (> 0) and --reason", file=sys.stderr)
+        return 2
+    if not (state / "events.jsonl").exists():
+        print(f"no events.jsonl in {state}", file=sys.stderr)
+        return 2
+    append_chained(state / "events.jsonl", {"t": now().isoformat(timespec="seconds"), "event": "red_flag", "minutes": float(minutes),
+                                            "reason": reason, "by": "operator"})
+    print(f"red flag: {minutes:g} min neutralised for {state.name} ({reason})")
+    return 0
 
 
 def cmd_harnesses(a, cfg) -> int:
@@ -190,8 +208,10 @@ def main(argv=None) -> int:
     k.add_argument("--allow-spend", action="store_true")
     k.add_argument("--state", help="a mission's state directory (.frontier/); default $FRONTIER_STATE")
     ms = sub.add_parser("mission", help="prepare and run a mission (see config/mission.example.toml)")
-    ms.add_argument("action", choices=["start", "status", "session"])
-    ms.add_argument("target", help="the mission .toml file (session: the state directory)")
+    ms.add_argument("action", choices=["start", "status", "session", "red-flag"])
+    ms.add_argument("target", help="the mission .toml file (session, red-flag: the state directory)")
+    ms.add_argument("--minutes", type=float, help="red-flag: minutes lost to an incident outside the team's control")
+    ms.add_argument("--reason", help="red-flag: the incident")
     ms.add_argument("n", nargs="?", type=int, default=1, help="session: its number")
     ms.add_argument("--dry-run", action="store_true", help="sandbox: print the OpenShell commands instead of running them")
     ms.add_argument("--prepare-only", action="store_true", help="write the workspace, do not launch the harness")

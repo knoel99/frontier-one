@@ -189,6 +189,9 @@ max_tokens_per_run = 3_000_000   # input + output tokens of the whole tree
 max_output_tokens = 16_000 # per model call
 max_reserved_output_tokens = 32_000  # gateway: output reserved per harness call at most (a call that outputs more
                                     # goes over the cap by the difference, once)
+# Local computation of a team (CPU time of its processes on the race machine) is billed as simulation at this price:
+# Scaleway POP2-2C-8G, fr-par-1, 0.0735 EUR per hour for 2 dedicated vCPU (public catalog, 2026-11-15), rounded.
+local_cpu_usd_per_core_hour = 0.04
 tool_output_chars = 20_000 # longer tool outputs are truncated (head and tail kept)
 shell_timeout_s = 600
 [providers.zhipu.modes.flashx]

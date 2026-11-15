@@ -2,9 +2,8 @@
 
     python3 -m frontier jury --root DIR --subject FILE --context FILE --out DIR [--judge openai --judge anthropic ...]
 
-Three criteria: scientific quality and compliance, graded on an absolute scale out of 100, and efficiency, the mean
-of cost control and delivery time (measured from the framework's ledgers, `facts`, `measured_scores`) times scientific
-quality / 100; weighted 60, 25 and 15 (`WEIGHTS`). Scientific quality and compliance are graded by a panel of LLM
+The scores are frontier/scoring.py's: scientific quality (rubrics x adequacy to the subject) and code and data graded
+by the jury, efficiency measured from the ledgers (`facts`), weighted 50, 25 and 25. They are graded by a panel of LLM
 judges on several providers, a judge never grading a team of its own provider. Grading is anonymous: each team gets a
 random pseudonym (Team A, B, ...), and every name that tells its author (providers, brands, model families and ids,
 harnesses, from config/providers.toml `names`, `tiers` and the harness list) is replaced by [redacted] in what a judge
@@ -32,13 +31,11 @@ from . import llm
 from .budget import CLOUD_CURRENCY, Budget, parse_time
 from .config import ROOT, load_config
 from .harnesses import HARNESSES
+from . import scoring
 from .mission import report_files
 
-CRITERIA = ("scientific_quality", "compliance", "efficiency")
-LABELS = {"scientific_quality": "Scientific quality", "compliance": "Compliance", "efficiency": "Efficiency"}
-# Science dominates; efficiency (cost and time together) counts in proportion to the science it bought, so that a fast,
-# cheap delivery of little gains little (decided 2026-11-15 after the first ranking gave half the score to cost and time).
-WEIGHTS = {"scientific_quality": 60.0, "compliance": 25.0, "efficiency": 15.0}
+CRITERIA = ("scientific_quality", "artifacts", "efficiency")
+LABELS = {"scientific_quality": "Scientific quality", "artifacts": "Code and data", "efficiency": "Efficiency"}
 RECORDS = ("DELIVERY.md", "COMPLIANCE.md", "CHECKLIST.md", "DECISIONS.md")
 MAX_DOC = 30_000  # characters of one record in a judge's file
 MAX_RESULTS = 120_000  # characters of small result files in a judge's file
@@ -105,9 +102,42 @@ def incidents_of(context: str) -> tuple[str, dict[str, str]]:
 # ---------------------------------------------------------------- measured by the framework
 
 
+CODE_EXT = (".py", ".jl", ".m", ".r", ".R", ".cpp", ".c", ".f90", ".rs", ".go", ".ipynb", ".sh", ".js", ".ts")
+
+
+def deliverables(ws: pathlib.Path, state: pathlib.Path) -> dict[str, bool]:
+    """The deliverables any mission asks for, whatever the discipline: present or not."""
+    files = subprocess.run(["git", "-C", str(ws), "ls-files"], capture_output=True, text=True).stdout.split("\n")
+    files = [x for x in files if x and not x.startswith(HIDDEN)]
+    reports = report_files(ws) if ws.is_dir() else []
+    pubs = json.loads((state / "publications.json").read_text()) if (state / "publications.json").exists() else []
+    checklist = (ws / "CHECKLIST.md").exists() or any("checklist" in p.read_text(errors="replace").lower() for p in reports)
+    return {"report": bool(reports), "code": any(x.endswith(CODE_EXT) for x in files),
+            "DELIVERY.md": (ws / "DELIVERY.md").exists(), "DECISIONS.md": (ws / "DECISIONS.md").exists(),
+            "COMPLIANCE.md": (ws / "COMPLIANCE.md").exists(), "CITATION.cff": (ws / "CITATION.cff").exists(),
+            "checklist": checklist, "publications": bool(pubs)}
+
+
+def stewards(events: list[dict], dv: dict | None, intact: bool) -> tuple[list[dict], bool]:
+    """Infractions found in the ledgers: (penalties with their points and reason, disqualified)."""
+    out = []
+    refused = sorted({e.get("host") for e in events if e.get("event") == "egress" and e.get("allowed") is False})
+    for h in refused:
+        out.append({"points": 5, "reason": f"tried to reach a blocked host ({h})"})
+    if dv and dv.get("missing"):
+        out.append({"points": 5, "reason": "forced a delivery with deliverables missing: " + ", ".join(dv["missing"])})
+    if dv and dv.get("report_paths"):
+        out.append({"points": 2, "reason": "delivered a report that names files of its repository"})
+    if not intact:
+        out.append({"points": 0, "reason": "a ledger was altered: disqualified"})
+    return out, not intact
+
+
 def facts(state: pathlib.Path) -> dict:
-    """What the ledgers say about one mission: delivery, time, spend against caps, models called, integrity."""
+    """What the ledgers say about one mission: delivery, time (red flags neutralised), spend on model calls and on
+    simulations (rented machines and local CPU), deliverables, integrity, stewards' penalties."""
     s = json.loads((state / "mission.json").read_text())
+    cfg = load_config()
     b = Budget(state)
     caps = b.caps
     start, deadline = parse_time(caps.get("start")), parse_time(caps.get("deadline"))
@@ -116,31 +146,32 @@ def facts(state: pathlib.Path) -> dict:
     for e in b.llm_entries():
         if e["frontier.source"] != "launcher":
             models[e["gen_ai.request.model"]] = models.get(e["gen_ai.request.model"], 0) + 1
-    gpu_spent = sum(b.cloud_spent(p) for p in CLOUD_CURRENCY)
-    gpu_cap = sum(float(caps[k]) for k, _, _ in CLOUD_CURRENCY.values() if caps.get(k))
+    rented = sum(b.cloud_spent(p) for p in CLOUD_CURRENCY)
+    sim_cap = sum(float(caps[k]) for k, _, _ in CLOUD_CURRENCY.values() if caps.get(k))
     events = [json.loads(ln) for ln in (state / "events.jsonl").read_text().splitlines()] if (state / "events.jsonl").exists() else []
+    core_s = max([e.get("core_seconds", 0) for e in events if e.get("event") == "cpu_usage"], default=None)
+    local_usd = (core_s / 3600 * cfg["limits"].get("local_cpu_usd_per_core_hour", 0)) if core_s is not None else None
+    neutral_min = sum(float(e.get("minutes", 0)) for e in events if e.get("event") == "red_flag")
+    duration_h = (deadline - start).total_seconds() / 3600 if start and deadline else None
+    elapsed_h = float(dv["elapsed_hours"]) if dv else duration_h
+    intact = all(v is True for v in b.verify().values())
+    have = deliverables(pathlib.Path(s["workspace"]), state)
+    penalties, dsq = stewards(events, dv, intact)
+    llm_usd = b.llm_spent()
     return {"team": s.get("name", state.name), "provider": s["provider"], "harness": s["harness"], "tier": s["tier"],
             "reasoning": s["reasoning"], "delivered": dv is not None,
-            "delivered_at": dv and dv["delivered_at"], "elapsed_hours": dv and float(dv["elapsed_hours"]),
-            "duration_hours": round((deadline - start).total_seconds() / 3600, 3) if start and deadline else None,
-            "llm_usd": round(b.llm_spent(), 4), "llm_cap_usd": caps.get("llm_usd"),
-            "gpu_usd": round(gpu_spent, 4), "gpu_cap_usd": gpu_cap or None, "models_called": models,
-            "sessions": sum(e.get("event") == "session_start" for e in events),
-            "ledgers_intact": all(v is True for v in b.verify().values())}
-
-
-def measured_scores(f: dict) -> dict:
-    """Cost control: 100 x the share of the budgets left (LLM and cloud weighed alike); delivery time: 100 x the share
-    of the allowed time left at delivery. Both 0 for a team that did not deliver: a budget not spent on a delivery is
-    not a saving."""
-    if not f["delivered"]:
-        return {"cost_control": 0.0, "delivery_time": 0.0}
-    shares = [f["llm_usd"] / f["llm_cap_usd"]] if f["llm_cap_usd"] else []
-    if f["gpu_cap_usd"]:
-        shares.append(f["gpu_usd"] / f["gpu_cap_usd"])
-    used = min(statistics.mean(shares), 1.0) if shares else 0.0
-    t = (1 - min(f["elapsed_hours"] / f["duration_hours"], 1.0)) if f["duration_hours"] else 0.0
-    return {"cost_control": round(100 * (1 - used), 1), "delivery_time": round(100 * t, 1)}
+            "delivered_at": dv and dv["delivered_at"], "elapsed_hours": elapsed_h and round(elapsed_h, 3),
+            "duration_hours": duration_h and round(duration_h, 3), "neutralised_minutes": round(neutral_min, 1),
+            "minutes": round(max((elapsed_h or 0) * 60 - neutral_min, 0), 1),
+            "llm_usd": round(llm_usd, 4), "llm_cap_usd": caps.get("llm_usd"),
+            "rented_usd": round(rented, 4), "local_cpu_core_hours": core_s and round(core_s / 3600, 3),
+            "local_cpu_usd": local_usd and round(local_usd, 4),
+            "simulation_usd": round(rented + (local_usd or 0), 4), "simulation_cap_usd": sim_cap or None,
+            "total_usd": round(llm_usd + rented + (local_usd or 0), 4), "models_called": models,
+            "sessions": sum(e.get("event") == "session_start" for e in events), "ledgers_intact": intact,
+            "deliverables": have, "deliverables_share": round(sum(have.values()) / len(have), 3),
+            "classified": dv is not None or sum(have.values()) / len(have) >= scoring.CLASSIFIED_SHARE,
+            "penalties": penalties, "disqualified": dsq}
 
 
 # ---------------------------------------------------------------- the team's file
@@ -152,10 +183,12 @@ def _clip(text: str, n: int) -> str:
 
 def team_file(ws: pathlib.Path, f: dict, label: str, incidents: str) -> str:
     """What a judge reads about one team, as the team left it, before redaction."""
-    shown = {"team": label, "delivered": f["delivered"], "delivered_after_hours": f["elapsed_hours"],
-             "allowed_hours": f["duration_hours"], "llm_usd": f["llm_usd"], "llm_cap_usd": f["llm_cap_usd"],
-             "gpu_usd": f["gpu_usd"], "gpu_cap_usd": f["gpu_cap_usd"], "sessions": f["sessions"],
-             "ledgers_intact": f["ledgers_intact"]}
+    shown = {"team": label, "delivered": f["delivered"], "minutes_counted": f["minutes"],
+             "minutes_neutralised": f["neutralised_minutes"], "allowed_hours": f["duration_hours"],
+             "model_calls_usd": f["llm_usd"], "model_calls_cap_usd": f["llm_cap_usd"],
+             "simulations_usd": f["simulation_usd"], "rented_machines_usd": f["rented_usd"],
+             "local_cpu_core_hours": f["local_cpu_core_hours"], "simulations_cap_usd": f["simulation_cap_usd"],
+             "sessions": f["sessions"], "deliverables": f["deliverables"], "ledgers_intact": f["ledgers_intact"]}
     parts = [f"## {label}: facts measured by the framework", "", json.dumps(shown, indent=1), "",
              f"## Incidents of {label} during the race", "", incidents or "None recorded.", ""]
     reps = report_files(ws)
@@ -199,6 +232,16 @@ def _json_of(text: str) -> dict:
     return json.loads(m.group(0))
 
 
+def validate(v: dict) -> None:
+    """A judge's answer has every rubric, scored 0 to 100, and an adequacy among scoring.ADEQUACY (raises if not)."""
+    sq, art = v["scientific_quality"], v["artifacts"]
+    for rubric_set, part in ((scoring.SCIENCE_RUBRICS, sq["rubrics"]), (scoring.ARTIFACT_RUBRICS, art["rubrics"])):
+        for k in rubric_set:
+            part[k]["score"] = scoring.clip(float(part[k]["score"]))
+    if sq.get("adequacy") not in scoring.ADEQUACY:
+        raise ValueError(f"adequacy must be one of {sorted(scoring.ADEQUACY)}")
+
+
 def judge(spec: llm.ModelSpec, brief: str, subject: str, context: str, dossier: str,
           calibration: str = "") -> tuple[dict, dict]:
     cal = f"# Calibration example (not a competitor)\n\n{calibration}\n\n" if calibration else ""
@@ -210,8 +253,7 @@ def judge(spec: llm.ModelSpec, brief: str, subject: str, context: str, dossier: 
         r = llm.chat(spec, msgs, [], max_tokens=16_000)
         try:
             out = _json_of(r.content)
-            for k in ("scientific_quality", "compliance"):
-                out[k]["score"] = max(0.0, min(100.0, float(out[k]["score"])))
+            validate(out)
             return out, r.usage
         except (ValueError, KeyError, TypeError) as e:
             last = e
@@ -251,7 +293,7 @@ def run(root: pathlib.Path, subject: str, context: str, out: pathlib.Path, judge
         leak = leaks(text, names)
         (out / "files").mkdir(exist_ok=True)
         (out / "files" / f"{labels[st.name]}.md").write_text(text)  # exactly what the judges read
-        teams_out[st.name] = {"label": labels[st.name], "facts": f, "measured": measured_scores(f), "judges": {},
+        teams_out[st.name] = {"label": labels[st.name], "facts": f, "judges": {},
                               "errors": {}, "has_work": has_work, "redactions": n, "leaks": leak, "file": text}
         for p in judges:
             if p != f["provider"] and has_work and not leak:
@@ -279,76 +321,100 @@ def run(root: pathlib.Path, subject: str, context: str, out: pathlib.Path, judge
     return aggregate(teams_out, b.llm_spent())
 
 
-def aggregate(teams: dict, jury_usd: float, weights: dict | None = None) -> dict:
-    """Judged criteria: the judges' median. Efficiency: the mean of cost control and delivery time (measured), times
-    scientific quality / 100. Final: the weighted mean (WEIGHTS unless given); delivered teams rank first."""
-    w = weights or dict(WEIGHTS)
+def _median(vals: list[float]) -> float | None:
+    return round(statistics.median(vals), 1) if vals else None
+
+
+def aggregate(teams: dict, jury_usd: float) -> dict:
+    """Each rubric: the judges' median. Scientific quality, code and data, efficiency and the final score as
+    frontier/scoring.py defines them. Classified teams (delivered, or 90 % of the deliverables) rank first."""
     for t in teams.values():
-        sc = dict(t["measured"])
+        js = list(t["judges"].values())
         # work that no judge could grade (every call failed) is not graded, not worth 0; no work at all is 0
-        t["graded"] = bool(t["judges"]) or not t.get("has_work", bool(t["judges"]))
-        for c in ("scientific_quality", "compliance"):
-            v = [j[c]["score"] for j in t["judges"].values()]
-            sc[c] = round(statistics.median(v), 1) if v else (0.0 if t["graded"] else None)
-            t[c + "_spread"] = round(max(v) - min(v), 2) if len(v) > 1 else None
-        q = sc["scientific_quality"]
-        sc["efficiency"] = (round((sc["cost_control"] + sc["delivery_time"]) / 2 * q / 100, 1)
-                            if q is not None else None)
-        t["scores"] = sc
-        t["final"] = round(sum(w[c] * sc[c] for c in CRITERIA) / sum(w.values()), 1) if t["graded"] else None
-    order = sorted(teams, key=lambda n: (not teams[n]["graded"], not teams[n]["facts"]["delivered"],
+        t["graded"] = bool(js) or not t.get("has_work", bool(js))
+        sr = {k: _median([j["scientific_quality"]["rubrics"][k]["score"] for j in js]) for k in scoring.SCIENCE_RUBRICS}
+        ar = {k: _median([j["artifacts"]["rubrics"][k]["score"] for j in js]) for k in scoring.ARTIFACT_RUBRICS}
+        adeq = [j["scientific_quality"]["adequacy"] for j in js]
+        adequacy = min(adeq, key=lambda a: scoring.ADEQUACY[a]) if adeq else "on_subject"  # the strictest judge
+        if js:
+            q, a = scoring.science(sr, adequacy), scoring.artifacts(ar)
+        else:
+            q, a = (0.0, 0.0) if t["graded"] else (None, None)
+        t["rubrics"] = {"science": sr, "artifacts": ar, "adequacy": adequacy}
+        t["scores"] = {"scientific_quality": q if q is None else round(q, 1), "artifacts": a if a is None else round(a, 1)}
+        spread = [j["scientific_quality"]["rubrics"]["soundness"]["score"] for j in js]
+        t["soundness_spread"] = round(max(spread) - min(spread), 1) if len(spread) > 1 else None
+    eff = scoring.efficiency({n: {"quality": t["scores"]["scientific_quality"], "usd": t["facts"]["total_usd"],
+                                  "minutes": t["facts"]["minutes"], "classified": t["facts"]["classified"]}
+                              for n, t in teams.items()})
+    for n, t in teams.items():
+        t["efficiency"] = eff[n]
+        t["scores"]["efficiency"] = eff[n]["efficiency"]
+        pen = sum(p["points"] for p in t["facts"]["penalties"])
+        t["penalty"] = pen
+        t["final"] = (scoring.final(t["scores"]["scientific_quality"], t["scores"]["artifacts"], eff[n]["efficiency"], pen,
+                                    t["facts"]["disqualified"]) if t["graded"] else None)
+    order = sorted(teams, key=lambda n: (not teams[n]["graded"], not teams[n]["facts"]["classified"],
                                          -(teams[n]["final"] or 0)))
     for i, n in enumerate(order, 1):
         teams[n]["rank"] = i if teams[n]["graded"] else None
         teams[n].pop("file", None)
-    return {"criteria": list(CRITERIA), "weights": w, "jury_llm_usd": round(jury_usd, 4), "ranking": order, "teams": teams}
+    return {"criteria": list(CRITERIA), "weights": dict(scoring.WEIGHTS), "jury_llm_usd": round(jury_usd, 4),
+            "ranking": order, "teams": teams}
 
 
 # ---------------------------------------------------------------- report
 
 
-def _spread(x: dict, c: str) -> str:
-    """Half the range of the judges' grades, when there are several."""
-    return f" (±{x[c + '_spread'] / 2:g})" if x.get(c + "_spread") else ""
+def _num(v) -> str:
+    return "not graded" if v is None else f"{v:g}"
 
 
 def markdown(res: dict, title: str = "Jury of the race") -> str:
     t = res["teams"]
+    w = res["weights"]
     lines = [f"# {title}", "",
-             "Efficiency is the mean of cost control and delivery time, measured by the framework from its ledgers, "
-             "times scientific quality / 100; scientific quality and "
-             "compliance are the median grade of LLM judges on other providers than the team's, who graded anonymous "
-             "files (a pseudonym per team, every name of provider, model or harness redacted). Final score: mean of "
-             "the three criteria with weights " + ", ".join(f"{LABELS[c]} {res['weights'][c]:g}" for c in CRITERIA) +
-             "; delivered teams rank first. All grades out of 100, on an absolute scale (100 for scientific quality is "
-             "a historic discovery), not relative to the means.", "",
-             "| Rank | Team | Graded as | Delivered | Final | Scientific quality | Compliance | Efficiency | "
-             "Cost control | Delivery time | LLM / GPU spent (USD) | Judges |",
+             f"Final score = {w['scientific_quality']:g} % scientific quality + {w['artifacts']:g} % code and data + "
+             f"{w['efficiency']:g} % efficiency, minus the stewards' penalties (frontier/scoring.py). Scientific quality "
+             "and code and data are graded by the jury on anonymous files, on absolute logarithmic scales; efficiency is "
+             "measured: half absolute (total spend and time, 10 points per doubling above 5 USD or 5 minutes), half "
+             "relative (doublings of advance on the competitors of the same order of science). Classified teams "
+             "(delivered, or 90 % of the deliverables) rank first. All out of 100.", "",
+             "| Rank | Team | Graded as | Delivered | Final | Scientific quality | Code and data | Efficiency | "
+             "Penalty | Spent: model calls / simulations (USD) | Time (min) | Judges |",
              "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for n in res["ranking"]:
         x, f, s = t[n], t[n]["facts"], t[n]["scores"]
-        num = lambda v: "not graded" if v is None else f"{v:g}"  # noqa: E731
         lines.append(f"| {x['rank'] or '—'} | {f['team']} | {x['label']} | "
-                     f"{f['delivered_at'][11:16] + ' UTC' if f['delivered'] else 'no'} | "
-                     f"**{num(x['final'])}** | {num(s['scientific_quality'])}{_spread(x, 'scientific_quality')} | "
-                     f"{num(s['compliance'])}{_spread(x, 'compliance')} | {num(s['efficiency'])} | "
-                     f"{s['cost_control']:g} | {s['delivery_time']:g} | "
-                     f"{f['llm_usd']:.2f} / {f['gpu_usd']:.2f} | {', '.join(x['judges']) or '—'} |")
+                     f"{f['delivered_at'][11:16] + ' UTC' if f['delivered'] else ('classified' if f['classified'] else 'no')} | "
+                     f"**{_num(x['final'])}** | {_num(s['scientific_quality'])} | {_num(s['artifacts'])} | "
+                     f"{_num(s['efficiency'])} | {x['penalty'] or '—'} | {f['llm_usd']:.2f} / {f['simulation_usd']:.2f} | "
+                     f"{f['minutes']:g} | {', '.join(x['judges']) or '—'} |")
     lines += ["", f"The jury's own model calls cost {res['jury_llm_usd']:.2f} USD.", ""]
     for n in res["ranking"]:
         x, f = t[n], t[n]["facts"]
         lines += [f"## {x['rank'] or 'Not graded'}. {f['team']} ({x['label']})", "",
                   f"{f['harness']} on {f['provider']} ({f['tier']} tier, {f['reasoning']} reasoning). "
-                  + (f"Delivered at {f['delivered_at'][11:16]} UTC after {f['elapsed_hours']:.2f} h of "
-                     f"{f['duration_hours']:g} h." if f["delivered"] else "Did not deliver.")
-                  + f" Spent {f['llm_usd']:.2f} of {f['llm_cap_usd']} USD of model calls and {f['gpu_usd']:.2f} of "
-                  f"{f['gpu_cap_usd']} USD of GPU.", ""]
+                  + (f"Delivered at {f['delivered_at'][11:16]} UTC after {f['minutes']:g} min counted." if f["delivered"]
+                     else "Did not deliver.")
+                  + f" Spent {f['llm_usd']:.2f} USD on model calls and {f['simulation_usd']:.2f} USD on simulations.", ""]
+        r = x.get("rubrics") or {}
+        if r.get("science") and any(v is not None for v in r["science"].values()):
+            lines += ["Rubrics: " + ", ".join(f"{k} {_num(v)}" for k, v in r["science"].items())
+                      + f"; adequacy to the subject: {r['adequacy']}; code and data: "
+                      + ", ".join(f"{k} {_num(v)}" for k, v in r["artifacts"].items()) + ".", ""]
+        e = x.get("efficiency") or {}
+        if e:
+            lines += [f"Efficiency: absolute {e['absolute']:g}, relative {e['relative']:g} against "
+                      f"{', '.join(t[p]['label'] for p in e['peers']) or 'no competitor of the same order'}, "
+                      f"counted at {e['guard']:g}.", ""]
+        for pen in f["penalties"]:
+            lines += [f"- Stewards: {pen['reason']} ({pen['points']} points)."]
         if not x["judges"]:
             lines += ["No work to grade: " + ("; ".join(x["errors"].values()) or "nothing in the repository.") + "", ""]
             continue
         for p, j in x["judges"].items():
-            lines += [f"**Judge {p}** ({j['model']}): scientific quality {j['scientific_quality']['score']:g}, "
-                      f"compliance {j['compliance']['score']:g}. {j.get('summary', '')}", ""]
+            lines += [f"**Judge {p}** ({j['model']}). {j.get('summary', '')}", ""]
             if j.get("means"):
                 lines += [f"- Means: {j['means']}"]
             ctx = j.get("context") or {}
@@ -357,8 +423,8 @@ def markdown(res: dict, title: str = "Jury of the race") -> str:
             for k, lab in (("strengths", "Strength"), ("weaknesses", "Weakness")):
                 lines += [f"- {lab}: {s}" for s in (j.get(k) or [])[:3] if s]
             lines += [""]
-        for p, e in x["errors"].items():
-            lines += [f"Judge {p} gave no grade: {e}", ""]
+        for p, err in x["errors"].items():
+            lines += [f"Judge {p} gave no grade: {err}", ""]
     return "\n".join(lines)
 
 

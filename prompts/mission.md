@@ -12,16 +12,22 @@ Carry out the research that the internship subject describes, and deliver its re
 
 {{criteria}}
 
-- **Scientific quality**: the soundness, novelty and rigour of the work as reported, judged on the evidence in the
-  repository: claims backed by runs whose code and outputs are here, measured results told apart from published
-  ones (with references) and from conjectures, limits stated.
-- **Compliance with the subject's instructions**: the share of the instructions met; a justified departure is still a
-  departure.
-- **Efficiency**: the LLM and cloud spend against the budgets below and the time from the start to your call of
-  `deliver`, both measured by the framework, counted in proportion to the scientific quality: a fast, cheap delivery
-  of little science gains little.
+- **Scientific quality**: soundness and rigour, significance and originality, positioning in the literature, clarity
+  and limits, judged on the evidence in the repository (claims backed by runs whose code and outputs are here,
+  measured results told apart from published ones and from conjectures), times the adequacy to the subject.
+- **Code and data**: reproducibility of the reported results from the delivered commands, the code (runs, documented,
+  tested, pinned dependencies, licence), the data and models (findable, accessible, open formats, licence and
+  provenance), and the traceability from every figure and number to what produced it.
+- **Efficiency**: your total spend (model calls and simulations, on rented machines and on this machine, whose CPU time
+  is measured and billed) and your time to `deliver`, both measured by the framework; on an absolute scale where every
+  doubling costs the same, and against the teams whose science is of the same order.
 
-Scientific quality and compliance are graded on an absolute scale, the same for any research whatever its means.
+Scientific quality and code and data are graded by an anonymous jury on absolute scales, the same for any research
+whatever its means. A team that did not call `deliver` is classified when its repository holds 90 % of the
+deliverables; the stewards take points off for infractions found in the ledgers. At fixed times (5, 15 and 30 minutes,
+then 1, 2, 4, 8 hours and so on) and spends (5, 10, 20, 50, 100 USD and so on), a notice asks you to bring the report up
+to date with what you have; the framework then takes a snapshot of the repository, which the jury grades to draw your
+quality against time and against spend.
 
 ## Budgets and time
 

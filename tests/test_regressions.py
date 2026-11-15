@@ -616,23 +616,6 @@ def test_deliver_refuses_a_report_that_names_paths(run, tmp_path):
     assert not (run.log_dir / "delivery.json").exists()
 
 
-def test_jury_measures_cost_and_time_and_ranks_delivered_teams_first():
-    from frontier.jury import aggregate, measured_scores
-    f = {"delivered": True, "llm_usd": 1.0, "llm_cap_usd": 5.0, "gpu_usd": 0.0, "gpu_cap_usd": 5.0,
-         "elapsed_hours": 0.75, "duration_hours": 1.5}
-    assert measured_scores(f) == {"cost_control": 90.0, "delivery_time": 50.0}
-    assert measured_scores({**f, "delivered": False}) == {"cost_control": 0.0, "delivery_time": 0.0}
-    j = lambda q, c: {"scientific_quality": {"score": q}, "compliance": {"score": c}}  # noqa: E731
-    teams = {"a": {"facts": {**f, "team": "a"}, "measured": measured_scores(f), "judges": {"x": j(40, 40), "y": j(60, 80)}},
-             "b": {"facts": {**f, "team": "b", "delivered": False}, "measured": {"cost_control": 0.0, "delivery_time": 0.0},
-                   "judges": {"x": j(100, 100)}}}
-    res = aggregate(teams, 1.0)
-    assert res["ranking"] == ["a", "b"]  # a delivered team ranks before one that did not, whatever its grades
-    a = res["teams"]["a"]
-    assert a["scores"]["scientific_quality"] == 50.0 and a["scores"]["efficiency"] == (90 + 50) / 2 * 0.5
-    assert a["final"] == pytest.approx((60 * 50 + 25 * 60 + 15 * 35) / 100, abs=0.06)  # efficiency in proportion to science
-
-
 def test_jury_files_are_anonymous():
     from frontier.config import load_config
     from frontier.jury import identity_names, incidents_of, leaks, pseudonyms, redact
@@ -680,18 +663,6 @@ def test_streamed_answers_are_rebuilt_whole():
     assert g["candidates"][0]["finishReason"] == "STOP" and g["usageMetadata"] == {"promptTokenCount": 3}
 
 
-def test_jury_work_no_judge_could_grade_is_not_graded_rather_than_zero():
-    from frontier.jury import aggregate
-    f = {"delivered": True, "team": "x"}
-    m = {"cost_control": 90.0, "delivery_time": 50.0}
-    teams = {"x": {"facts": f, "measured": m, "judges": {}, "has_work": True},
-             "y": {"facts": {**f, "team": "y", "delivered": False}, "measured": {"cost_control": 0.0, "delivery_time": 0.0},
-                   "judges": {}, "has_work": False}}
-    res = aggregate(teams, 0.0)
-    assert res["teams"]["x"]["final"] is None and res["teams"]["x"]["rank"] is None
-    assert res["teams"]["y"]["final"] == 0.0 and res["teams"]["y"]["rank"] == 1
-
-
 def test_a_slow_server_failure_is_not_retried(monkeypatch):
     """Race jury 2026-11-15: a proxy cut calls at 180 s and every one was retried 4 times, each billed by the provider."""
     real_time = llm.time.time  # the module's own function, kept before it is patched
@@ -713,3 +684,52 @@ def test_a_slow_server_failure_is_not_retried(monkeypatch):
     with pytest.raises(llm.LLMError):
         llm._post("https://x/y", {}, {}, retries=2)
     assert len(calls) == 3  # a fast failure is still retried
+
+
+def test_scoring_log_scales_and_relative_efficiency():
+    from frontier import scoring
+    assert scoring.log_score(5, 5) == 100 and scoring.log_score(10, 5) == 90 and scoring.log_score(40, 5) == 70
+    assert scoring.log_score(5 * 2 ** 12, 5) == 0
+    assert scoring.relative(10, [40]) == 100 and scoring.relative(40, [40]) == 50 and scoring.relative(160, [40]) == 0
+    teams = {"fast": {"quality": 15, "usd": 2, "minutes": 20, "classified": True},
+             "slow": {"quality": 12, "usd": 8, "minutes": 80, "classified": True},
+             "empty": {"quality": 2, "usd": 1, "minutes": 5, "classified": True},
+             "out": {"quality": 30, "usd": 1, "minutes": 5, "classified": False}}
+    e = scoring.efficiency(teams)
+    assert e["fast"]["peers"] == ["slow"] and e["fast"]["relative"] == 100  # 4x cheaper and 4x faster than its peer
+    assert e["slow"]["relative"] == 0 and e["out"]["efficiency"] == 0
+    assert e["empty"]["guard"] == 0.2 and e["empty"]["efficiency"] == 15.0  # no peer (relative 50), scaled down by its science
+    assert scoring.science({"soundness": 20, "significance": 10, "positioning": 40, "clarity": 50}, "partial") == \
+        pytest.approx((20 * 20 + 15 * 10 + 5 * 40 + 10 * 50) / 50 * 0.5)
+    assert scoring.final(20, 40, 60, penalty=5) == pytest.approx((50 * 20 + 25 * 40 + 25 * 60) / 100 - 5)
+    assert scoring.final(20, 40, 60, disqualified=True) == 0
+
+
+def test_jury_aggregate_ranks_classified_teams_first_and_keeps_ungraded_work_unranked():
+    from frontier.jury import aggregate
+    rub = lambda q, a: {"scientific_quality": {"rubrics": {k: {"score": q} for k in ("soundness", "significance",  # noqa: E731
+                                                                                     "positioning", "clarity")},
+                                               "adequacy": "on_subject"},
+                        "artifacts": {"rubrics": {k: {"score": a} for k in ("reproducibility", "code", "data", "traceability")}}}
+    f = {"team": "a", "classified": True, "delivered": True, "total_usd": 3.0, "minutes": 40, "penalties": [],
+         "disqualified": False}
+    teams = {"a": {"facts": f, "judges": {"x": rub(10, 30), "y": rub(14, 30)}, "has_work": True},
+             "b": {"facts": {**f, "team": "b", "classified": False, "delivered": False}, "judges": {"x": rub(60, 60)},
+                   "has_work": True},
+             "c": {"facts": {**f, "team": "c"}, "judges": {}, "has_work": True}}
+    res = aggregate(teams, 0.0)
+    assert res["ranking"][:2] == ["a", "b"] and res["teams"]["c"]["final"] is None and res["teams"]["c"]["rank"] is None
+    assert res["teams"]["a"]["scores"]["scientific_quality"] == 12.0  # the judges' median, rubric by rubric
+
+
+
+def test_red_flag_appends_a_chained_event_the_jury_reads(tmp_path):
+    from frontier.__main__ import red_flag
+    from frontier.budget import verify_chain
+
+    (tmp_path / "events.jsonl").write_text("")
+    assert red_flag(tmp_path, 27, "framework failure") == 0
+    assert red_flag(tmp_path, None, "x") == 2
+    ev = [json.loads(ln) for ln in (tmp_path / "events.jsonl").read_text().splitlines()]
+    assert ev[-1]["event"] == "red_flag" and ev[-1]["minutes"] == 27.0
+    assert verify_chain(tmp_path / "events.jsonl") is True
