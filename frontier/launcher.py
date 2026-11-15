@@ -28,6 +28,11 @@ FIRST_PROMPT = ("Read MISSION.md and TOOLS.md, then carry out the mission. You w
                 "ready, call the `deliver` tool.")
 GOAL_CONDITION = ("The goal is met when the `deliver` tool has returned a delivery record; it is impossible when "
                   "`budget_status` shows the LLM budget spent or no time left.")
+# Variables of the agent session that runs the launcher (a Claude Code cloud session): a Claude Code harness that
+# inherits them believes it runs in that session and puts its own proxy in front of its tools, bypassing the mission's
+# outbound filter (race 2026-11-15: every Runpod call of the Anthropic team failed through it).
+OPERATOR_ENV = ("CLAUDE_CODE_", "CCR_", "GLOBAL_AGENT_")
+FAST_FAILS, FAST_FAIL_S = 3, 15  # this many sessions in a row ending in error this fast: the harness cannot start
 NEXT_PROMPT = ("Continue the mission (session {n}). Your previous session ended. Read MISSION.md, DECISIONS.md and the "
                "state of the repository, call `budget_status` for the spend and the time left, then carry on. When the "
                "deliverables are ready, call the `deliver` tool.")
@@ -68,13 +73,21 @@ def build_session(info: dict, h: dict, prompt: str, gateway: str | None) -> tupl
     values = {"prompt": prompt, "model": spec.model, "effort": effort, "max_turns": 500, "workspace": info["workspace"],
               "state": info["state"], "key": os.environ.get(key_env) or llm.PROXY_PLACEHOLDER, "frontier": ROOT,
               "provider_model": f"{provider}/{spec.model}", "gateway": gateway or ""}
-    env = dict(os.environ)
+    env = {k: v for k, v in os.environ.items() if not k.startswith(OPERATOR_ENV)}
     env.setdefault(key_env, values["key"])  # the provider's own variable, for harnesses that read it themselves
     env.update({k: str(v) for k, v in _fill(h.get("env", {}), values).items()})
     if gateway and h.get("route"):
         env.update({k: str(v) for k, v in _fill(h["route"], values).items()})
     else:
         env.update({k: str(v) for k, v in _fill(h.get("default_base_url", {}), values).items()})
+    if info.get("egress"):  # no sandbox and hosts to block: every request of the harness goes through the filter
+        env.update({k: info["egress"] for k in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy")})
+    for k in h.get("proxy_env", []):  # a harness with a proxy variable of its own (ZCode: ZCODE_HTTP_PROXY)
+        if env.get("HTTPS_PROXY"):
+            env[k] = env["HTTPS_PROXY"]
+    for k in h.get("no_proxy_env", []):  # and its own bypass list, so that the local gateway is reached directly
+        if env.get("NO_PROXY") or env.get("no_proxy"):
+            env[k] = env.get("NO_PROXY") or env["no_proxy"]
     env["FRONTIER_STATE"] = str(info["state"])
     env["PATH"] = f"{ROOT / 'bin'}{os.pathsep}{env.get('PATH', '')}"
     cmd = _fill(h["command"], values)
@@ -221,16 +234,26 @@ def _watchdog(run: Run, stop: threading.Event) -> None:
             print(f"watchdog: {e}", file=sys.stderr)
 
 
+def model_map(s: dict, h: dict) -> dict[str, str]:
+    """The recipe's `model_map` (a model the harness calls by itself -> a tier of the team's provider, or a model id),
+    resolved to model ids, so that a helper model hard-wired in the harness runs on a model of the mission's choice."""
+    tiers = load_config()["providers"].get(s["provider"], {}).get("tiers", {})
+    return {src: tiers.get(dst, dst) for src, dst in (h.get("model_map") or {}).items()}
+
+
 def open_gateway(state: pathlib.Path, s: dict, h: dict):
     """Start the metering gateway when the harness can be routed through it: (server, base URL) or (None, None)."""
     if not routable(h):
         print("this harness cannot be routed through the gateway: its main-thread spend comes from its own usage "
               "report when it gives one (config/harnesses.toml `usage`)")
         return None, None
+    mm = model_map(s, h)
     try:
-        gw = serve(str(state), s.get("gateway_port", 0), agent=f"harness:{s['harness']}")
+        gw = serve(str(state), s.get("gateway_port", 0), agent=f"harness:{s['harness']}", model_map=mm,
+                   providers=s.get("providers"))
     except OSError:  # the port chosen at preparation is taken: harnesses configured by file will miss the gateway
-        gw = serve(str(state), 0, agent=f"harness:{s['harness']}")
+        gw = serve(str(state), 0, agent=f"harness:{s['harness']}", model_map=mm,
+                   providers=s.get("providers"))
         print(f"warning: port {s.get('gateway_port')} busy, gateway on {gw.server_address[1]}")
     gateway = f"http://127.0.0.1:{gw.server_address[1]}"
     print(f"metering gateway {gateway}")
@@ -326,6 +349,13 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
         if box:  # inside the try: a failed setup still deletes what it created
             box.setup()
         else:
+            deny = info["mission"].get("network", {}).get("deny", [])
+            if deny:  # without a sandbox, the deny list is applied by an outbound filter (frontier/egress.py)
+                from .egress import start as start_egress
+
+                eg = start_egress(state, deny)
+                info["egress"] = eg.url
+                print(f"outbound filter {eg.url}, blocking {', '.join(deny)}")
             gw, gateway = open_gateway(state, s, h)
             harness_setup(info, h, gateway, run)
         for n in range(1, sessions + 1):
@@ -387,12 +417,22 @@ def _stop_reason(run: Run) -> str:
     if not ok:
         return why
     # The gateway refuses a call when what is left does not cover its worst case, before the spend reaches the cap.
-    # A last session whose calls were refused, with nothing charged since, would only be refused again.
+    # A call late in a session carries the whole context, so a fresh session can still fit what is left: stop only
+    # when the last session was refused without one call charged (a fresh session's first call did not fit either).
     events = budget_mod.read_jsonl(state / "events.jsonl")
     starts = [e for e in events if e.get("event") == "session_start"]
-    refused = [e for e in events if e.get("event") == "llm_refused" and starts and e.get("t", "") >= starts[-1].get("t", "")]
-    if refused and not any(e["t"] >= refused[-1]["t"] for e in run.budget.llm_entries()):
-        return f"LLM budget: the gateway refused the last session's calls ({refused[-1].get('why', '')[:160]})"
+    since = starts[-1].get("t", "") if starts else ""
+    refused = [e for e in events if e.get("event") == "llm_refused" and starts and e.get("t", "") >= since]
+    charged = [e for e in run.budget.llm_entries() if e["t"] >= since and e.get("frontier.source") != "launcher"]
+    if refused and not charged:
+        return f"LLM budget: the gateway refused the first calls of a fresh session ({refused[-1].get('why', '')[:160]})"
+    # A harness that fails as it starts (provider credit exhausted, a broken install) would burn every session left.
+    ends = [e for e in events if e.get("event") == "session_end"][-FAST_FAILS:]
+    if len(ends) == FAST_FAILS and all(e.get("code") not in (0, DEADLINE_EXIT) and e.get("seconds", 99) < FAST_FAIL_S
+                                       for e in ends):
+        logs = sorted((state / "sessions").glob("[0-9]*.log"), key=lambda q: int(q.stem)) if (state / "sessions").exists() else []
+        tail = logs[-1].read_text(errors="replace").strip()[-240:] if logs else ""
+        return f"the harness failed within {FAST_FAIL_S} s in {FAST_FAILS} sessions in a row; last output: {tail}"
     return ""
 
 

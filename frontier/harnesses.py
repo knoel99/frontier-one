@@ -78,6 +78,9 @@ HARNESSES: dict[str, Harness] = {h.name: h for h in [
     Harness("cursor", "Cursor (IDE and CLI)", "vendor", "", ["cursor_mcp", "claude_agents", "codex_agents", "agents_skill"],
             notes="reads .claude/agents and .codex/agents as its own sub-agents"),
     Harness("opencode", "OpenCode", "community", "", ["opencode", "opencode_agents", "agents_skill"]),
+    Harness("zcode", "ZCode Agent CLI (Z.ai)", "vendor", "zhipu", ["agents_skill"],
+            user_config="~/.zcode/cli/config.json: mcp.servers.frontier {type: stdio, command, args}",
+            notes="its project config may not declare MCP servers; the mission gives it a home of its own"),
     Harness("hermes", "Hermes Agent (Nous Research)", "community", "", ["agents_skill"],
             user_config="~/.hermes/config.yaml: mcp_servers.frontier {command, args}",
             notes="no project MCP file; delegation through its delegate_task tool"),
@@ -158,9 +161,10 @@ Prices, models, speed modes, compute offers and budgets of the current mission: 
 """
 
 
-OPENCODE_PACKAGE = {"openai-chat": "@opencode/ai/providers/openai-compatible",
-                    "openai-responses": "@opencode/ai/providers/openai-compatible/responses",
-                    "anthropic": "@opencode/ai/providers/anthropic-compatible", "gemini": "@opencode/ai/providers/google"}
+# AI SDK packages of OpenCode's custom providers (`provider.<id>.npm`). openai-compatible checked live with OpenCode
+# 1.19.5 on 2026-11-14 (its newer `providers` section with `package` was ignored: "Model not found").
+OPENCODE_PACKAGE = {"openai-chat": "@ai-sdk/openai-compatible", "openai-responses": "@ai-sdk/openai",
+                    "anthropic": "@ai-sdk/anthropic", "gemini": "@ai-sdk/google"}
 
 
 def artifacts(mcp: McpCommand, which: list[str] | None = None, target: dict | None = None) -> dict[str, str]:
@@ -209,6 +213,11 @@ def artifacts(mcp: McpCommand, which: list[str] | None = None, target: dict | No
                 "- insert:\n    - id: mcp-frontier\n      name: '@deepseek-ai/dsh-mcp-client'\n      config:\n"
                 f"        serverName: frontier\n        transport: stdio\n        command: {mcp.command}\n"
                 f"        args: [{args}]\n        env: {{}}\n")
+            if target and target.get("model"):  # dsh reads its model here only: DSH_MODEL is ignored (dsh 0.2.2)
+                out[".dsh/frontier.patch.yml"] += (
+                    "- id: agent-default-model\n  config:\n    provider: deepseek-official\n"
+                    f"    model: {target['model']}\n"
+                    + (f"    reasoningEffort: {target['effort']}\n" if target.get("effort") else ""))
         elif key == "cursor_mcp":
             out[".cursor/mcp.json"] = _j({"mcpServers": {"frontier": {"type": "stdio", **server}}})
         elif key == "opencode":
@@ -221,9 +230,10 @@ def artifacts(mcp: McpCommand, which: list[str] | None = None, target: dict | No
                 cfg = load_config()
                 style = cfg["providers"][target["provider"]]["style"]
                 port = int(target["gateway"].rsplit(":", 1)[1])
-                conf["providers"] = {"frontier": {
-                    "package": OPENCODE_PACKAGE.get(style, OPENCODE_PACKAGE["openai-chat"]), "env": [target["key_env"]],
-                    "settings": {"baseURL": base_url_for(port, target["provider"], cfg), "transport": "http"},
+                conf["provider"] = {"frontier": {
+                    "npm": OPENCODE_PACKAGE.get(style, OPENCODE_PACKAGE["openai-chat"]), "name": "Frontier gateway",
+                    "options": {"baseURL": base_url_for(port, target["provider"], cfg),
+                                "apiKey": "{env:" + target["key_env"] + "}"},
                     "models": {target["model"]: {}}}}
             out["opencode.json"] = _j(conf)
         elif key == "kilo":

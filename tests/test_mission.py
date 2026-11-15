@@ -25,11 +25,12 @@ def cfg():
 # ---------------------------------------------------------------- budget
 
 
-def test_llm_cost_uses_cache_and_mode_prices():
-    pr = budget.prices()["gpt-6.1-sol"]
-    usd, exact = budget.llm_cost("openai", "gpt-6.1-sol", {"input": 1_000_000, "cached": 400_000, "output": 100_000})
+def test_llm_cost_uses_cache_and_mode_prices(cfg):
+    std = cfg["providers"]["openai"]["tiers"]["standard"]
+    pr = budget.prices()[std]
+    usd, exact = budget.llm_cost("openai", std, {"input": 1_000_000, "cached": 400_000, "output": 100_000})
     assert exact and usd == pytest.approx((600_000 * pr["input"] + 400_000 * pr["cache_read"] + 100_000 * pr["output"]) / 1e6)
-    usd2, _ = budget.llm_cost("openai", "gpt-6.1-sol", {"input": 1000, "output": 0}, price_x=2.0)
+    usd2, _ = budget.llm_cost("openai", std, {"input": 1000, "output": 0}, price_x=2.0)
     assert usd2 == pytest.approx(2 * 1000 * pr["input"] / 1e6)
     _, exact = budget.llm_cost("openai", "not-a-model", {"input": 1})
     assert not exact  # unknown model: priced as the provider's most expensive one
@@ -39,7 +40,7 @@ def test_llm_cap_is_hard(tmp_path):
     b = budget.Budget(tmp_path)
     b.set_caps(llm_usd=0.01)
     assert b.llm_allowed()[0]
-    b.charge_llm("t", "a", "openai", "gpt-6.1-sol", {"input": 1000, "output": 1000})  # 0.012 USD
+    b.charge_llm("t", "a", "openai", "gpt-6-astra", {"input": 1000, "output": 1000})  # 0.06 USD
     ok, why = b.llm_allowed()
     assert not ok and "cap" in why
     b2 = budget.Budget(tmp_path / "b2")
@@ -257,7 +258,8 @@ def test_deliver_checks_freezes_and_reports(tmp_path, cfg, monkeypatch):
 
 def test_harness_choice_and_launch_command(tmp_path, monkeypatch):
     assert mission.load(_mission(tmp_path, provider="anthropic"))["harness"]["name"] == "claude"
-    assert mission.load(_mission(tmp_path, provider="zhipu"))["harness"]["name"] == "opencode"
+    assert mission.load(_mission(tmp_path, provider="zhipu"))["harness"]["name"] == "zcode"  # Z.ai's own Agent CLI
+    assert mission.NATIVE_HARNESS.get("a-provider-without-one", mission.FALLBACK_HARNESS) == "opencode"
     info = mission.prepare(_mission(tmp_path), ping=False, offers=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     h = launcher.harness_conf("codex", "openai")
@@ -351,8 +353,9 @@ def test_file_configured_harnesses_are_routed(tmp_path):
     info = mission.prepare(_mission(tmp_path, harness="opencode", provider="zhipu"), ping=False, offers=False)
     port = info["settings"]["gateway_port"]
     oc = json.loads((info["workspace"] / "opencode.json").read_text())
-    prov = oc["providers"]["frontier"]
-    assert prov["settings"]["baseURL"] == f"http://127.0.0.1:{port}/zhipu/api/paas/v4" and prov["env"] == ["ZAI_API_KEY"]
+    prov = oc["provider"]["frontier"]  # the format OpenCode 1.19.5 loads (its `providers` section was ignored)
+    assert prov["options"]["baseURL"] == f"http://127.0.0.1:{port}/zhipu/api/paas/v4"
+    assert prov["options"]["apiKey"] == "{env:ZAI_API_KEY}" and prov["npm"] == "@ai-sdk/openai-compatible"
     assert list(prov["models"]) == ["glm-5.3"] and oc["mcp"]["servers"]["frontier"]["command"][0].endswith("frontier-mcp")
     (tmp_path / "h").mkdir()
     info2 = mission.prepare(_mission(tmp_path / "h", harness="hermes", provider="openai"), ping=False, offers=False)

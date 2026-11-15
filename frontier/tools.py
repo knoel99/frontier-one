@@ -172,6 +172,13 @@ register("rp_delete_pod", "Delete a Runpod pod (stops billing). Only pods of thi
 register("infra_resources", "Cloud resources created by this run (all agents), with state and hourly price.",
          _obj({}), infra.infra_resources)
 register("infra_cleanup", "Delete every resource of this run that is still alive.", _obj({}), infra.infra_cleanup)
+from .status import mission_status  # noqa: E402
+
+register("mission_status", "Everything the race dashboard shows about this mission, for planning: LLM and cloud budgets "
+         "(spent, in flight, cap, left), the rate of spend over the last 10 minutes and the hours until each cap at "
+         "that rate (compared with the hours left before the deadline), tokens by model, sub-agents (model, effort, "
+         "time, cost, status), machines (cost so far, committed until max_hours, last log lines), failed tool calls, "
+         "sessions. This mission only.", _obj({}), mission_status)
 register("budget_status", "Budgets and spend so far: LLM (USD, by model and mode, every agent of the run including "
          "metered harness traffic), Scaleway (EUR) and Runpod (USD) spent and committed by alive resources, elapsed "
          "time and hours left before the deadline.", _obj({}), infra.budget_status)
@@ -215,7 +222,7 @@ BASE_TOOLS = ["shell", "read_file", "write_file", "edit_file", "http_request", "
 INFRA_TOOLS = ["scw_offers", "scw_create_instance", "scw_instance", "scw_list_instances", "scw_delete_instance",
                "rp_offers", "rp_create_pod", "rp_pod", "rp_list_pods", "rp_exec", "rp_logs", "rp_delete_pod",
                "infra_resources", "infra_cleanup", "api_docs", "scaleway", "runpod_mcp"]
-GROUPS = {"base": BASE_TOOLS, "infra": INFRA_TOOLS, "budget": ["budget_status"], "hf": ["hf_whoami", "hf_publish"],
+GROUPS = {"base": BASE_TOOLS, "infra": INFRA_TOOLS, "budget": ["mission_status", "budget_status"], "hf": ["hf_whoami", "hf_publish"],
           "mission": ["deliver"]}
 
 

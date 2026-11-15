@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import datetime as dt
 import json
 import os
 import pathlib
@@ -18,7 +19,7 @@ from test_frontier import FakeScaleway
 from test_mission import _mission
 
 from frontier import agent as agent_mod
-from frontier import budget, gateway, hf, infra, launcher, mcp, mission, sandbox, tools
+from frontier import budget, gateway, hf, infra, launcher, llm, mcp, mission, sandbox, tools
 from frontier.config import load_config
 
 
@@ -376,3 +377,214 @@ def test_costs_include_what_was_spent_after_delivery(tmp_path, cfg):
     assert rec["final_llm_usd"] > rec["llm_usd"] and rec["llm_usd_after_delivery"] > 0
     costs = (ws / "COSTS.md").read_text()
     assert "after delivery" in costs and "of None" not in costs and "- scaleway: 0.0000 EUR of 3" in costs
+
+
+# ---------------------------------------------------------------- race without a sandbox: outbound filter, extra skills
+
+
+def test_outbound_filter_blocks_denied_hosts_and_logs_every_host(tmp_path, monkeypatch):
+    from frontier import egress
+
+    for v in ("NO_PROXY", "no_proxy"):  # 127.0.0.1 stands for an allowed site: it must go through the filter
+        monkeypatch.delenv(v, raising=False)
+
+    assert egress.denied("knoel99.github.io", ["knoel99.github.io"]) and egress.denied("a.b.example.org", ["*.example.org"])
+    assert not egress.denied("scheng2024.github.io", ["knoel99.github.io"]) and not egress.denied("github.io", ["knoel99.github.io"])
+    up = ThreadingHTTPServer(("127.0.0.1", 0), _NoUsage)  # stands for any allowed site
+    threading.Thread(target=up.serve_forever, daemon=True).start()
+    e = egress.Egress(tmp_path, ["knoel99.github.io"])
+    threading.Thread(target=e.serve_forever, daemon=True).start()
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({"http": e.url}))
+    with pytest.raises(urllib.error.HTTPError) as err:
+        opener.open("http://knoel99.github.io/milady-2027/", timeout=10)
+    assert err.value.code == 403
+    ok = opener.open(urllib.request.Request(f"http://127.0.0.1:{up.server_address[1]}/x", data=b"{}"), timeout=10).read()
+    e.shutdown()
+    up.shutdown()
+    assert b"output" in ok
+    log = [ev for ev in budget.read_jsonl(tmp_path / "events.jsonl") if ev.get("event") == "egress"]
+    assert {(ev["host"], ev["allowed"]) for ev in log} == {("knoel99.github.io", False), ("127.0.0.1", True)}
+
+
+def test_extra_skills_are_copied_next_to_the_frontier_skill(tmp_path):
+    src = tmp_path / "skillrepo"
+    (src / "skills" / "drawing").mkdir(parents=True)
+    (src / "skills" / "drawing" / "SKILL.md").write_text("---\nname: drawing\n---\n")
+    for cmd in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "s"]):
+        subprocess.run(["git", "-C", str(src), *cmd], check=True)
+    rev = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    f = _mission(tmp_path)
+    f.write_text(f.read_text() + f'\n[[skills]]\nrepo = "{src}"\nrev = "{rev}"\npath = "skills/drawing"\n')
+    info = mission.prepare(f, ping=False, offers=False)
+    ws = info["workspace"]
+    assert (ws / ".agents/skills/drawing/SKILL.md").exists()  # beside .agents/skills/frontier (Codex)
+    assert "`drawing`" in (ws / "TOOLS.md").read_text()
+
+
+def test_reservation_caps_a_huge_requested_output_window(cfg):
+    body = json.dumps({"model": "kimi-k3", "messages": [], "max_tokens": 262144}).encode()  # what Kimi Code sends
+    capped = gateway.worst_case(cfg, "moonshot", "/v1/chat/completions", body)
+    full = budget.worst_case_usd("moonshot", "kimi-k3", len(body), 262144)
+    limit = cfg["limits"]["max_reserved_output_tokens"]
+    assert capped == pytest.approx(budget.worst_case_usd("moonshot", "kimi-k3", len(body), limit)) and capped < full / 5
+
+
+def test_mission_status_gives_the_team_its_dashboard_with_rate_and_projection(tmp_path, cfg):
+    from frontier.status import mission_status
+
+    info = mission.prepare(_mission(tmp_path), ping=False, offers=False)
+    r = agent_mod.Run(cfg, workspace=info["workspace"], log_dir=info["state"], settings=info["settings"], allow_spend=True)
+    r.budget.charge_llm("gateway", "harness", "openai", "gpt-6-astra", {"input": 10_000, "output": 2_000})  # 0.2 USD now
+    r.record({"provider": "runpod", "kind": "pod", "id": "p9", "type": "1x X", "usd_per_hour": 0.5, "max_hours": 1})
+    d = json.loads(mission_status(agent_mod.Ctx(r, None)))
+    assert d["llm"]["rate_usd_per_hour_last_10_min"] == pytest.approx(0.2 * 6, rel=0.01)
+    assert d["llm"]["hours_until_cap_at_this_rate"] == pytest.approx((5 - 0.2) / 1.2, rel=0.01)
+    assert d["cloud"]["runpod"]["committed_until_max_hours"] > 0 and d["machines"][0]["id"] == "p9"
+    assert set(d) >= {"tokens", "sub_agents", "tool_calls", "sessions", "hours_left"}
+
+
+def test_gateway_remaps_a_hard_wired_helper_model():
+    from frontier.gateway import remap
+    from frontier.launcher import model_map
+    mm = model_map({"provider": "google"}, {"model_map": {"gemini-3.8-flash": "light"}})
+    assert mm == {"gemini-3.8-flash": "gemini-4-hydrogen"}
+    path, body = remap("/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse", b"{}", mm)
+    assert path == "/v1beta/models/gemini-4-hydrogen:streamGenerateContent?alt=sse" and body == b"{}"
+    assert remap("/v1beta/models/gemini-4-argon:generateContent", b"{}", mm)[0].endswith("gemini-4-argon:generateContent")
+    _, body = remap("/v1/chat/completions", b'{"model": "gemini-3.8-flash"}', mm)
+    assert json.loads(body)["model"] == "gemini-4-hydrogen"
+    assert remap("/x", b"not json", mm) == ("/x", b"not json")
+
+
+def test_gateway_serves_only_the_mission_providers(tmp_path):
+    from frontier.gateway import serve
+    gw = serve(str(tmp_path), 0, providers=["google"])
+    try:
+        assert set(gw.routes) == {"google"}
+        u = f"http://127.0.0.1:{gw.server_address[1]}/deepseek/v1/chat/completions"
+        req = urllib.request.Request(u, data=b"{}", method="POST")
+        try:
+            urllib.request.urlopen(req, timeout=10)
+            raise AssertionError("a route of another provider was served")
+        except urllib.error.HTTPError as e:
+            assert e.code == 404
+    finally:
+        gw.shutdown()
+
+
+def test_a_refusal_late_in_a_session_does_not_end_the_mission(tmp_path):
+    """A late call carries the whole context; a fresh session's first call may still fit (race 2026-11-15, xAI)."""
+    import time
+
+    from frontier.budget import append_chained, now
+    from frontier.launcher import _stop_reason
+    cfg = load_config()
+    r = agent_mod.Run(cfg, workspace=tmp_path / "ws", log_dir=tmp_path / "state")
+    r.budget.set_caps(llm_usd=5.0)
+    ev = tmp_path / "state" / "events.jsonl"
+    append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "session_start"})
+    r.budget.charge_llm("gateway", "harness:x", "xai", "grok-4.7", {"input_tokens": 1000, "output_tokens": 100})
+    time.sleep(1.1)
+    append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "llm_refused", "why": "worst case 0.80 > 0.79"})
+    assert _stop_reason(r) == ""
+    time.sleep(1.1)
+    append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "session_start"})
+    append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "llm_refused", "why": "worst case 0.80 > 0.79"})
+    assert "fresh session" in _stop_reason(r)
+
+
+def test_a_harness_failing_at_start_stops_the_mission(tmp_path):
+    """Race 2026-11-15: the Google credit ran out and the launcher burned 18 sessions of 1-2 s each."""
+    from frontier.budget import append_chained, now
+    from frontier.launcher import _stop_reason
+    r = agent_mod.Run(load_config(), workspace=tmp_path / "ws", log_dir=tmp_path / "state")
+    r.budget.set_caps(llm_usd=5.0)
+    ev = tmp_path / "state" / "events.jsonl"
+    (tmp_path / "state" / "sessions").mkdir()
+    for n in (1, 2, 3):
+        append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "session_start", "n": n})
+        (tmp_path / "state" / "sessions" / f"{n:02d}.log").write_text("Error 402: prepayment credits are depleted")
+        assert _stop_reason(r) == ""
+        append_chained(ev, {"t": now().isoformat(timespec="seconds"), "event": "session_end", "n": n, "code": 3, "seconds": 1.5})
+    assert "credits are depleted" in _stop_reason(r)
+
+
+def test_the_operator_session_variables_do_not_reach_the_harness(monkeypatch, tmp_path):
+    from frontier.launcher import build_session
+    monkeypatch.setenv("CCR_AGENT_PROXY_ENABLED", "1")
+    monkeypatch.setenv("CLAUDE_CODE_ENTRYPOINT", "remote_mobile")
+    monkeypatch.setenv("GLOBAL_AGENT_HTTPS_PROXY", "http://127.0.0.1:1")
+    info = {"settings": {"provider": "anthropic", "tier": "standard", "reasoning": "high"}, "workspace": str(tmp_path),
+            "state": str(tmp_path), "egress": "http://127.0.0.1:2"}
+    _, env = build_session(info, {"command": ["true"]}, "go", None)
+    assert not [k for k in env if k.startswith(("CCR_", "CLAUDE_CODE_", "GLOBAL_AGENT_"))]
+    assert env["HTTPS_PROXY"] == "http://127.0.0.1:2"
+
+
+def test_hub_calls_survive_a_bracketed_ipv6_no_proxy(monkeypatch):
+    """Race 2026-11-15: Kimi Code's NO_PROXY held "[::1]" and httpx refused every Hub call, so no delivery copy."""
+    from frontier import hf
+    monkeypatch.setenv("NO_PROXY", "localhost,[::1],api.example.com")
+    hf._bracketless_no_proxy()
+    assert os.environ["NO_PROXY"] == "localhost,::1,api.example.com"
+
+
+def test_dashboard_skips_json_lines_that_are_not_objects(tmp_path):
+    """Race 2026-11-15: a session log line holding a JSON list ("tool_use" inside) stopped every dashboard snapshot."""
+    from frontier.dashboard import subagents
+    log = tmp_path / "01.log"
+    log.write_text('[{"type": "tool_use"}]\n"tool_use"\n{"type": "assistant", "message": {"content": [{"type": "tool_use", '
+                   '"name": "Agent", "input": {"description": "read papers"}}]}}\n')
+    out = subagents([], [], [log])
+    assert [r["task"] for r in out if r["kind"] == "native"] == ["read papers"]
+
+
+def test_dsh_patch_sets_the_main_model_and_effort():
+    """Race 2026-11-15: dsh ignored DSH_MODEL and ran deepseek-flash, its profile default, instead of deepseek-v4-pro."""
+    from frontier.harnesses import McpCommand, artifacts
+    files = artifacts(McpCommand("frontier-mcp", ["--state", "/s"]), ["dsh"],
+                      {"provider": "deepseek", "model": "deepseek-v4-pro", "effort": "high", "gateway": "http://127.0.0.1:1"})
+    patch = files[".dsh/frontier.patch.yml"]
+    assert "- id: agent-default-model" in patch and "model: deepseek-v4-pro" in patch and "reasoningEffort: high" in patch
+
+
+def test_two_model_providers_run_their_frontier_model_on_standard():
+    cfg = load_config()
+    assert llm.resolve(cfg, "moonshot", "standard", "high").model == cfg["providers"]["moonshot"]["tiers"]["frontier"]
+    assert llm.resolve(cfg, "zhipu", "standard", "high").model == cfg["providers"]["zhipu"]["tiers"]["frontier"]
+
+
+def test_budget_milestones_reach_the_main_agent(tmp_path):
+    """The gateway tells the harness when a budget crosses 10, 25, 50, 80, 95 and 98 %: on the next calls only."""
+    from frontier.milestones import NOTICE_CALLS, Milestones, inject
+    b = budget.Budget(tmp_path)
+    b.set_caps(llm_usd=1.0, start=budget.now().isoformat(), deadline=(budget.now() + dt.timedelta(hours=1)).isoformat())
+    ms = Milestones(b)
+    assert ms.notice() == ""
+    b.charge_llm("gateway", "harness:x", "openai", "gpt-6.1-terra", {}, usd=0.30)
+    notes = [ms.notice() for _ in range(NOTICE_CALLS + 1)]
+    assert "LLM budget: 25 % reached" in notes[0] and "0.30 of 1.00 USD" in notes[0] and notes[-1] == ""
+    events = [e for e in budget.read_jsonl(tmp_path / "events.jsonl") if e["event"] == "budget_milestone"]
+    assert [e["percent"] for e in events] == [10, 25]
+    assert Milestones(b).notice() == ""  # a restarted gateway does not repeat a milestone already told
+    note = "[notice]"
+    anth = json.loads(inject("/v1/messages", json.dumps({"messages": [{"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "t", "content": "x"}]}]}).encode(), note))
+    assert anth["messages"][-1]["content"][-1] == {"type": "text", "text": note}
+    chat = json.loads(inject("/v1/chat/completions", json.dumps({"messages": [{"role": "tool", "content": "x"}]}).encode(), note))
+    assert chat["messages"][-1] == {"role": "user", "content": note}
+    resp = json.loads(inject("/v1/responses", json.dumps({"input": [{"role": "user", "content": "hi"}]}).encode(), note))
+    assert resp["input"][-1]["content"][0]["text"] == note
+    gem = json.loads(inject("/v1beta/models/m:generateContent", json.dumps({"contents": [{"role": "user", "parts": []}]}).encode(), note))
+    assert gem["contents"][-1] == {"role": "user", "parts": [{"text": note}]}
+    assert inject("/v1/messages", b'{"messages": [{"role": "assistant", "content": "pre"}]}', note).endswith(b'"pre"}]}')
+
+
+def test_an_empty_reservations_file_does_not_stop_the_gateway(tmp_path):
+    """A process killed while writing left reservations.json empty: every later call failed (JSONDecodeError)."""
+    b = budget.Budget(tmp_path)
+    b.set_caps(llm_usd=1.0)
+    (tmp_path / "reservations.json").write_text("")
+    rid, why = b.reserve(0.1, "x")
+    assert rid and why == "" and b.reserved() == 0.1
+    assert not (tmp_path / "reservations.json.tmp").exists()

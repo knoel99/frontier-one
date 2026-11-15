@@ -68,7 +68,10 @@ def resolve(cfg: dict, provider: str, tier: str, reasoning: str, mode: str = "")
         raise LLMError(f"reasoning must be one of {LEVELS}")
     p = provs[provider]
     tiers = p["tiers"]
-    order = TIERS[TIERS.index(tier):] + list(reversed(TIERS[: TIERS.index(tier)]))
+    # A tier the provider lacks: the nearest stronger tier first (a two-model provider's standard is its frontier
+    # model, not its light one: race 2026-11-15, Kimi and ZCode ran kimi-k3 and glm-5.3-flash), then weaker ones.
+    i = TIERS.index(tier)
+    order = [tier] + list(reversed(TIERS[:i])) + TIERS[i + 1:]
     used_tier = next(t for t in order if t in tiers)
     rmap = p.get("reasoning", {})
     rmap = {**rmap, **p.get("model_reasoning", {}).get(tiers[used_tier], {})}

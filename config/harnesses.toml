@@ -41,12 +41,15 @@ wire = "openai-responses"
 usage = "jsonl:turn.completed"
 
 [antigravity]
-install = "curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --skip-aliases"
+install = "curl -fsSL https://antigravity.google/cli/install.sh | bash"  # --skip-aliases refused since (checked 2026-11-14)
 setup = "mkdir -p ~/.gemini/antigravity-cli && [ -f ~/.gemini/antigravity-cli/settings.json ] || echo '{\"modelProvider\": \"gemini\"}' > ~/.gemini/antigravity-cli/settings.json"
 command = ["agy", "-p", "{prompt}", "--model", "{model}", "--effort", "{effort}", "--output-format", "json", "--dangerously-skip-permissions"]
 effort = "provider"
 env = { GEMINI_API_KEY = "{key}" }
 route = { GOOGLE_GEMINI_BASE_URL = "{gateway}/google" }   # antigravity.google/docs/settings; wire method UNCONFIRMED
+# Its safety monitor calls a model hard-wired in the binary (MODEL_TIER_FLASH, seen in its log 2026-11-15) whatever
+# --model says; it sends the whole trajectory each turn. The gateway sends those calls to the team's light tier.
+model_map = { "gemini-3.8-flash" = "light" }
 wire = "gemini"
 usage = "json-usage"
 
@@ -64,9 +67,11 @@ install = "curl -fsSL https://x.ai/cli/install.sh | bash"
 command = ["grok", "-p", "{prompt}", "-m", "{model}", "--effort", "{effort}", "--max-turns", "{max_turns}", "--always-approve", "--output-format", "json", "--no-auto-update"]
 effort = "provider"
 env = { XAI_API_KEY = "{key}" }
-# GROK_XAI_API_BASE_URL = "{gateway}/xai/v1" would route it, but Grok Build documents TLS-only connections: a plain
-# http gateway is UNCONFIRMED. Until checked, its spend comes from its usage report or the provider-side cap.
-route = {}
+# Routed through the metering gateway (plain http on loopback), checked live on 2026-11-15 with grok 1.0.77: the
+# gateway's charge matched xAI's own cost_in_usd_ticks (0.03017 USD).
+route = { GROK_XAI_API_BASE_URL = "{gateway}/xai/v1" }
+# Grok Build calls grok-4.6 by itself for small helper calls (3 of 50 in the race, 2026-11-15), whatever -m says.
+model_map = { "grok-4.6" = "frontier" }
 wire = "openai-chat"
 usage = "json-usage"
 
@@ -94,7 +99,7 @@ goal = "/goal"   # enforced goalTokenBudget / goalMaxTurns (qwen-code-docs featu
 
 [vibe]
 install = "uv tool install mistral-vibe"
-command = ["vibe", "-p", "{prompt}", "--model", "{model}", "--auto-approve", "--max-turns", "{max_turns}", "--output", "json"]
+command = ["vibe", "-p", "{prompt}", "--trust", "--model", "{model}", "--auto-approve", "--max-turns", "{max_turns}", "--output", "json"]  # --trust: else .vibe/ (MCP) is ignored (vibe 3.1.2)
 effort = "provider"
 env = { MISTRAL_API_KEY = "{key}" }
 # Vibe routes only through [[providers]] api_base in ~/.vibe/config.toml (docs.mistral.ai/vibe configuration
@@ -104,8 +109,8 @@ wire = "openai-chat"
 usage = "json-usage"
 
 [dsh]
-install = "npm install -g @deepseek-ai/dsh"
-command = ["dsh", "--profile", "headless", "--json", "--approval-policy", "never", "--patch", "{workspace}/.dsh/frontier.patch.yml", "{prompt}"]
+install = "npm install -g @deepseek-ai/dsh@latest"  # prereleases only: npm skips them without a tag (2026-11-14)
+command = ["dsh", "--profile", "headless", "--patch", "{workspace}/.dsh/frontier.patch.yml", "--json", "--approval-policy", "never", "{prompt}"]  # launcher flags first (dsh 0.2.2-rc.1)
 effort = "provider"
 env = { DEEPSEEK_API_KEY = "{key}", DSH_MODEL = "{model}", DSH_REASONING_EFFORT = "{effort}" }
 route = { DEEPSEEK_BASE_URL = "{gateway}/deepseek/anthropic" }   # dsh speaks Anthropic Messages to DeepSeek
@@ -120,6 +125,20 @@ command = ["opencode", "run", "--auto", "--format", "json", "-m", "frontier/{mod
 effort = "provider"
 env = {}
 route = { FRONTIER_GATEWAY = "{gateway}" }
+wire = "provider"
+usage = "json-usage"
+
+[zcode]
+# Z.ai's Agent CLI, built from github.com/zai-org/ZCode (apps/zcode-cli, pnpm workspace, Node 24) into /opt/zcode-cli.
+# HOME is a home of the mission (state/zcode): MCP in .zcode/cli/config.json, the model in provider_config.json on
+# the gateway. Checked live on 2026-11-15 with v0.17.1 and glm-5.3: MCP tool called, JSON usage report.
+install = "git clone --depth 1 https://github.com/zai-org/ZCode.git /opt/zcode-src && cd /opt/zcode-src && pnpm install --frozen-lockfile --filter '@zcode/cli...' && pnpm --filter '@zcode/cli...' build && cp -r apps/zcode-cli/packages/cli/dist /opt/zcode-cli"
+command = ["/opt/node24/bin/node", "/opt/zcode-cli/zcode.cjs", "--prompt", "{prompt}", "--cwd", "{workspace}", "--mode", "yolo", "--disallowed-tools", "AskUserQuestion EnterPlanMode ExitPlanMode", "--json", "--no-color"]
+effort = "provider"
+env = { HOME = "{state}/zcode", ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = "{state}/zcode/provider_config.json" }
+route = { FRONTIER_GATEWAY = "{gateway}" }
+proxy_env = ["ZCODE_HTTP_PROXY"]
+no_proxy_env = ["ZCODE_NO_PROXY"]
 wire = "provider"
 usage = "json-usage"
 

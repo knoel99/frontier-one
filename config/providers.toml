@@ -28,7 +28,7 @@ style = "openai-responses"   # Chat Completions refuses function tools together 
 base_url = "https://api.openai.com/v1"
 key_env = "OPENAI_API_KEY"
 effort_field = "reasoning.effort"
-tiers = { frontier = "gpt-6-astra", standard = "gpt-6.1-sol", light = "gpt-6-luna" }
+tiers = { frontier = "gpt-6-astra", standard = "gpt-6.1-terra", light = "gpt-6-luna" }
 reasoning = { none = "none", low = "low", medium = "medium", high = "high", max = "max" }
 # Speed and price modes (developers.openai.com/api/docs/guides/{flex-processing,fast-mode,ultrafast-mode}, read
 # 2026-11-14). The response's service_tier says which tier was served; the gateway prices what was served.
@@ -39,13 +39,13 @@ note = "slower (beta); may answer 429 Resource Unavailable (not billed) when cap
 [providers.openai.modes.fast]
 body = { service_tier = "priority" }
 price_x = 2.0
-models = ["gpt-6-astra", "gpt-6.1-sol"]
+models = ["gpt-6-astra", "gpt-6.1-terra", "gpt-6-luna"]  # served as "fast" on each, checked live 2026-11-14
 note = "up to 2.5x faster, steadier latency (named priority before 2026-07-30); above 1M tokens/min growth is ramp-limited and excess requests are served, and billed, at standard"
 [providers.openai.modes.ultrafast]
 body = { service_tier = "ultrafast" }
 price_x = 6.0
-models = ["gpt-6-astra", "gpt-6.1-sol"]
-note = "fastest tier, separate rate limits; the docs disagree on who has access (UNCONFIRMED)"
+models = ["gpt-6-astra"]  # served on gpt-6-astra; gpt-6.1-terra and gpt-6-luna answer 400 (checked live 2026-11-14)
+note = "fastest tier, separate rate limits"
 
 [providers.anthropic]
 style = "anthropic"
@@ -66,7 +66,7 @@ style = "gemini"
 base_url = "https://generativelanguage.googleapis.com/v1beta"
 key_env = "GEMINI_API_KEY"
 effort_field = "generationConfig.thinkingConfig.thinkingLevel"
-tiers = { frontier = "gemini-4-carbon", standard = "gemini-4-argon", light = "gemini-3.8-flash" }
+tiers = { frontier = "gemini-4-carbon", standard = "gemini-4-argon", light = "gemini-4-hydrogen" }
 reasoning = { low = "low", medium = "medium", high = "high", max = "high" }
 [providers.google.modes.flex]
 body = { service_tier = "flex" }
@@ -75,14 +75,14 @@ note = "preview; synchronous but sheddable: 1-15 min latency, 503/429 when there
 [providers.google.modes.priority]
 body = { service_tier = "priority" }
 price_x = 1.8
-note = "preview; latency in seconds, never shed; over its dynamic limit served and billed at standard; needs billing tier 2 or 3"
+note = "preview; latency in seconds, never shed; over its dynamic limit served and billed at standard; needs billing tier 2 or 3. On this account every Gemini 4 model answered priority requests at standard (checked live 2026-11-14): no faster, billed at standard"
 
 [providers.xai]
 style = "openai-chat"
 base_url = "https://api.x.ai/v1"
 key_env = "XAI_API_KEY"
 effort_field = "reasoning_effort"
-tiers = { frontier = "grok-4.7", light = "grok-4.3" }
+tiers = { frontier = "grok-4.7" }  # the latest version on every tier
 reasoning = { low = "low", medium = "medium", high = "high", max = "xhigh" }
 [providers.xai.modes.priority]
 body = { service_tier = "priority" }
@@ -163,6 +163,8 @@ max_agents = 12            # sub-agents per run
 max_turns = 40             # model turns per agent (a role or a spawn call can lower it)
 max_tokens_per_run = 3_000_000   # input + output tokens of the whole tree
 max_output_tokens = 16_000 # per model call
+max_reserved_output_tokens = 32_000  # gateway: output reserved per harness call at most (a call that outputs more
+                                    # goes over the cap by the difference, once)
 tool_output_chars = 20_000 # longer tool outputs are truncated (head and tail kept)
 shell_timeout_s = 600
 [providers.zhipu.modes.flashx]

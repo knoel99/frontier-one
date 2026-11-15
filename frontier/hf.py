@@ -30,7 +30,16 @@ def _api():
         from huggingface_hub import HfApi
     except ImportError as e:
         raise RuntimeError("huggingface_hub is not installed: pip install huggingface_hub") from e
+    _bracketless_no_proxy()
     return HfApi(token=_token())
+
+
+def _bracketless_no_proxy() -> None:
+    """httpx refuses a bracketed IPv6 entry in NO_PROXY ("[::1]": InvalidURL, every Hub call fails; race 2026-11-15,
+    Kimi Code sets it): the entries are kept without their brackets."""
+    for k in ("NO_PROXY", "no_proxy"):
+        if "[" in os.environ.get(k, ""):
+            os.environ[k] = ",".join(e.strip().strip("[]") for e in os.environ[k].split(","))
 
 
 def card_problems(folder: pathlib.Path, repo_type: str) -> list[str]:
@@ -74,7 +83,7 @@ def hf_publish(ctx, repo_name: str, folder: str, repo_type: str = "model", names
         return "refused: fix the card first:\n- " + "\n- ".join(problems)
     api = _api()
     ns = namespace or settings.get("hf_namespace") or api.whoami()["name"]
-    repo_id = f"{ns}/{repo_name}"
+    repo_id = f"{ns}/{race_name(settings, repo_name)}"
     visibility = settings.get("publish_visibility", "private")
     kw = {"space_sdk": space_sdk} if repo_type == "space" else {}
     api.create_repo(repo_id, repo_type=repo_type, private=(visibility != "public"), exist_ok=True, **kw)
@@ -87,5 +96,98 @@ def hf_publish(ctx, repo_name: str, folder: str, repo_type: str = "model", names
     f = ctx.run.log_dir / "publications.json"
     items = json.loads(f.read_text()) if f.exists() else []
     f.write_text(json.dumps(items + [rec], indent=1) + "\n")
+    rec["race"] = _file_in_race(api, settings, repo_id, repo_type)
+    f.write_text(json.dumps(items + [rec], indent=1) + "\n")
     ctx.run.log(event="hf_publish", **rec)
     return json.dumps(rec, indent=1)
+
+
+def race_name(settings: dict, name: str) -> str:
+    """In a race every repository is named <prefix>-<team>-<name>: teams cannot collide or overwrite each other."""
+    prefix = settings.get("hf_prefix")
+    if not prefix:
+        return name
+    head = f"{prefix}-{settings.get('name', 'team')}-"
+    return name if name.startswith(head) else head + name
+
+
+def _file_in_race(api, settings: dict, repo_id: str, repo_type: str) -> dict:
+    """Tags of the race on the card, and the repository in the race's private collection. Best effort."""
+    out = {}
+    if not settings.get("hf_prefix"):
+        return out
+    try:
+        from huggingface_hub import metadata_update
+
+        tags = [settings["hf_prefix"], f"team-{settings.get('name', '')}", f"harness-{settings.get('harness', '')}",
+                f"provider-{settings.get('provider', '')}", "frontier-race"]
+        from huggingface_hub import RepoCard
+
+        try:  # keep the team's own tags
+            own = RepoCard.load(repo_id, repo_type=repo_type, token=_token()).data.to_dict().get("tags") or []
+        except Exception:  # noqa: BLE001 - no card yet
+            own = []
+        tags = list(dict.fromkeys([*own, *tags]))
+        metadata_update(repo_id, {"tags": tags}, repo_type=repo_type, overwrite=True, token=_token())
+        out["tags"] = tags
+    except Exception as e:  # noqa: BLE001
+        out["tags_error"] = f"{type(e).__name__}: {str(e)[:200]}"
+    try:
+        title = settings.get("hf_collection") or settings["hf_prefix"]
+        col = api.create_collection(title, namespace=repo_id.split("/")[0], private=True, exists_ok=True)
+        api.add_collection_item(col.slug, item_id=repo_id, item_type=repo_type, exists_ok=True)
+        out["collection"] = f"https://huggingface.co/collections/{col.slug}"
+    except Exception as e:  # noqa: BLE001
+        out["collection_error"] = f"{type(e).__name__}: {str(e)[:200]}"
+    return out
+
+
+def publish_delivery(ctx, rec: dict) -> dict:
+    """At deliver, in a race: the team's repository as tracked by git (report, code, DELIVERY.md, COMPLIANCE.md,
+    DECISIONS.md, COSTS.md) on a private dataset <prefix>-<team>-delivery, with a generated card."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    settings = getattr(ctx.run, "settings", {}) or {}
+    if not settings.get("hf_prefix") or not settings.get("allow_publish"):
+        return {}
+    ws = ctx.workspace
+    ls = subprocess.run(["git", "-C", str(ws), "ls-files", "-z", "-co", "--exclude-standard"], capture_output=True, text=True)
+    files = [f for f in ls.stdout.split("\0") if f]  # -z: names with spaces stay whole
+    if ls.returncode or not files:  # git busy or broken at that instant: every file but git's own
+        files = [str(q.relative_to(ws)) for q in ws.rglob("*") if q.is_file() and ".git" not in q.relative_to(ws).parts]
+    with tempfile.TemporaryDirectory() as d:
+        root = pathlib.Path(d) / "delivery"
+        root.mkdir()
+        for rel in files:
+            src = ws / rel
+            if src.is_file() and not rel.startswith((".frontier/", ".git/")):
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, root / rel)
+        team = settings.get("name", "team")
+        card = ["---", "license: other", "tags:", f"- {settings['hf_prefix']}", f"- team-{team}", "- frontier-race", "---", "",
+                f"# Delivery of team {team}", "",
+                f"Harness `{settings.get('harness')}` on provider `{settings.get('provider')}` "
+                f"(tier `{settings.get('tier')}`, reasoning `{settings.get('reasoning')}`).", "",
+                f"- Delivered at {rec.get('delivered_at')}, after {rec.get('elapsed_hours')} h.",
+                f"- LLM: {rec.get('llm_usd')} USD of {rec.get('llm_cap_usd')}; Runpod: {rec.get('runpod_usd')} USD of "
+                f"{rec.get('runpod_cap_usd')}; Scaleway: {rec.get('scaleway_eur')} EUR.",
+                f"- Missing deliverables: {', '.join(rec.get('missing') or []) or 'none'}.",
+                f"- Other publications: {', '.join(rec.get('publications') or []) or 'none'}.", "",
+                "The files are the team's repository at delivery, as tracked by git. See DELIVERY.md for the report, the "
+                "code and how to reproduce the results; COSTS.md is written by the framework from its ledgers. "
+                "The license of each part is the team's, stated in the repository.", ""]
+        if (root / "README.md").exists():
+            (root / "README.md").rename(root / "README.team.md")
+        (root / "README.md").write_text("\n".join(card))
+        api = _api()
+        ns = settings.get("hf_namespace") or api.whoami()["name"]
+        repo_id = f"{ns}/{race_name(settings, 'delivery')}"
+        try:
+            api.create_repo(repo_id, repo_type="dataset", private=True, exist_ok=True)
+            api.upload_folder(repo_id=repo_id, folder_path=str(root), repo_type="dataset", commit_message="Delivery")
+        except Exception as e:  # noqa: BLE001 - the delivery itself stands without the copy on the Hub
+            return {"error": f"{type(e).__name__}: {str(e)[:300]}"}
+    return {"repo_id": repo_id, "url": f"https://huggingface.co/datasets/{repo_id}", "files": len(files),
+            **_file_in_race(api, settings, repo_id, "dataset")}

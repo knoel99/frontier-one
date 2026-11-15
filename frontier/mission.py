@@ -14,6 +14,7 @@ of the mission and written only by the framework: mission.json, budgets.json, ll
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
 import pathlib
@@ -31,7 +32,7 @@ from .harnesses import HARNESSES, McpCommand, artifacts
 STATE_ROOT = pathlib.Path.home() / ".frontier" / "missions"
 REQUIRED = ["DELIVERY.md", "COMPLIANCE.md", "DECISIONS.md"]
 NATIVE_HARNESS = {"anthropic": "claude", "openai": "codex", "google": "antigravity", "xai": "grok", "moonshot": "kimi",
-                  "alibaba": "qwen", "mistral": "vibe", "deepseek": "dsh"}
+                  "alibaba": "qwen", "mistral": "vibe", "deepseek": "dsh", "zhipu": "zcode"}
 FALLBACK_HARNESS = "opencode"
 
 
@@ -148,12 +149,40 @@ def _offers_section(ctx) -> str:
     return "\n".join(lines)
 
 
-def _main_model(cfg: dict, m: dict) -> str:
+def _main_spec(cfg: dict, m: dict):
     try:
         return llm.resolve(cfg, m["llm"]["provider"], m["harness"].get("tier", "frontier"),
-                           m["harness"].get("reasoning", "high")).model
+                           m["harness"].get("reasoning", "high"))
     except (KeyError, llm.LLMError):
-        return "?"
+        return None
+
+
+def _main_model(cfg: dict, m: dict) -> str:
+    spec = _main_spec(cfg, m)
+    return spec.model if spec else "?"
+
+
+def install_skills(skills: list[dict], state: pathlib.Path, ws: pathlib.Path, files: dict) -> list[str]:
+    """Extra Agent Skills given by the mission (`[[skills]]` repo, rev, path), fetched at their pinned revision on the
+    host and copied next to the frontier skill, into every skills folder the harness reads."""
+    roots = sorted({str(pathlib.PurePosixPath(rel).parent.parent) for rel in files if rel.endswith("/frontier/SKILL.md")})
+    roots = roots or [".agents/skills"]
+    names = []
+    for sk in skills:
+        name = pathlib.PurePosixPath(sk["path"]).name
+        src = state / "skills" / name
+        if not (src / ".git").exists():
+            src.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["git", "init", "-q", str(src)], check=True)
+            subprocess.run(["git", "-C", str(src), "remote", "add", "origin", sk["repo"]], check=True)
+        subprocess.run(["git", "-C", str(src), "fetch", "-q", "--depth", "1", "origin", sk["rev"]], check=True)
+        subprocess.run(["git", "-C", str(src), "checkout", "-q", "FETCH_HEAD"], check=True)
+        if not (src / sk["path"] / "SKILL.md").exists():
+            raise FileNotFoundError(f"skill {sk['repo']}@{sk['rev']}: no SKILL.md in {sk['path']}")
+        for root in roots:
+            shutil.copytree(src / sk["path"], ws / root / name, dirs_exist_ok=True)
+        names.append(name)
+    return names
 
 
 def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict], offers: bool = True) -> str:
@@ -169,7 +198,12 @@ def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict]
         f"{h.title} on `{_main_model(cfg, m)}` (provider `{m.get('llm', {}).get('provider')}`, tier "
         f"`{m['harness'].get('tier', 'frontier')}`, reasoning `{m['harness'].get('reasoning', 'high')}`); its LLM calls "
         "are charged to the LLM budget like those of the sub-agents. Its own tools (shell, files, web, native "
-        "sub-agents, skills) are yours as well." + (f" Note: {h.notes}." if h.notes else ""), "",
+        "sub-agents, skills) are yours as well. The speed modes of its provider (under Models below) apply to its "
+        "own calls too when it sends the mode's request field; the metering gateway bills the tier each response says "
+        "was served." + (f" Note: {h.notes}." if h.notes else ""), "",
+        *(["## Extra skills", "", "Agent Skills given by the mission, in the skills folder of your harness: "
+            + ", ".join(f"`{pathlib.PurePosixPath(s['path']).name}` ({s['repo']} at {s['rev'][:7]})" for s in m["skills"])
+            + ".", ""] if m.get("skills") else []),
         "## Frontier tools", "",
         "Served by the `frontier` MCP server of this workspace. Without MCP, the same tools run from the shell: "
         f"`{_paths(m, ctx.run.log_dir)[0]}/bin/frontier call <tool> '<json>' --state {_paths(m, ctx.run.log_dir)[1]}` "
@@ -293,12 +327,15 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     origin = credentials.load(m, cfg)  # every key under its standard name, from wherever the mission keeps it
     hf_env = credentials.services(cfg)["huggingface"].env
     old_settings = json.loads((state / "mission.json").read_text()) if (state / "mission.json").exists() else {}
-    settings = {"gateway_port": old_settings.get("gateway_port") or _free_port(), "name": m["mission"].get("name", "mission"),
+    # a port of its own per mission: missions prepared together would all find the same first free port
+    own = 20000 + int(hashlib.sha256(str(state.resolve()).encode()).hexdigest(), 16) % 20000
+    settings = {"gateway_port": old_settings.get("gateway_port") or _free_port(own), "name": m["mission"].get("name", "mission"),
                 "workspace": str(ws), "harness": m["harness"]["name"],
                 "provider": m.get("llm", {}).get("provider"), "providers": providers_of(m),
                 "tier": m["harness"].get("tier", "frontier"), "reasoning": m["harness"].get("reasoning", "high"),
                 "allow_spend": True, "allow_publish": "huggingface" in m and credentials.available(origin, hf_env),
                 "publish_visibility": hf.get("visibility", "private"), "hf_namespace": hf.get("namespace", ""),
+                "hf_prefix": hf.get("prefix", ""), "hf_collection": hf.get("collection", ""),
                 "mission_file": m["_file"], "subject": subject, "state": str(state),
                 "sandbox": "" if sandbox_kind(m) == "none" else sandbox_kind(m),
                 "conf": {k: v for k, v in m.items() if k != "_file"}}
@@ -318,14 +355,20 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     (ws / "AGENTS.md").write_text(AGENTS_MD.format(frontier=f"{root_in}/bin/frontier", state=state_in))
     mcp = McpCommand(command=f"{root_in}/bin/frontier-mcp", args=["--state", str(state_in)])
     gateway = f"http://127.0.0.1:{settings['gateway_port']}"
-    target = {"provider": settings["provider"], "model": _main_model(cfg, m), "gateway": gateway,
+    spec = _main_spec(cfg, m)
+    target = {"provider": settings["provider"], "model": spec.model if spec else "?", "gateway": gateway,
+              "effort": spec.effort_value if spec else None,
               "key_env": cfg["providers"][settings["provider"]]["key_env"]}
+    if m["harness"]["name"] == "zcode":
+        _zcode_home(state, cfg, target, mcp)
     if m["harness"]["name"] == "hermes":
         _hermes_home(state, cfg, target, mcp)
-    for rel, content in artifacts(mcp, [m["harness"]["name"]], target).items():
+    files = artifacts(mcp, [m["harness"]["name"]], target)
+    for rel, content in files.items():
         p = ws / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content)
+    install_skills(m.get("skills", []), state, ws, files)
     gi = ws / ".gitignore"
     lines = gi.read_text().splitlines() if gi.exists() else []
     for pat in ["__pycache__/", ".env"]:
@@ -347,6 +390,33 @@ def _free_port(start: int = 8787) -> int:
             except OSError:
                 continue
     return 0
+
+
+def _zcode_home(state: pathlib.Path, cfg: dict, target: dict, mcp: McpCommand) -> None:
+    """ZCode reads MCP servers from HOME/.zcode/cli/config.json only, and its model from a provider file: a home of
+    the mission's own, with the model on the metering gateway. The provider file holds the key's value when the
+    mission has one (else the proxy placeholder): it stays in the state directory, out of the workspace, mode 600."""
+    from .gateway import base_url_for
+
+    port = int(target["gateway"].rsplit(":", 1)[1])
+    style = cfg["providers"][target["provider"]]["style"]
+    api = {"anthropic": "anthropic-messages", "openai-responses": "openai-responses"}.get(style, "openai-chat-completions")
+    home = state / "zcode"
+    (home / ".zcode" / "cli").mkdir(parents=True, exist_ok=True)
+    (home / ".zcode" / "cli" / "config.json").write_text(json.dumps({"features": {"mcp": True}, "mcp": {"servers": {
+        "frontier": {"type": "stdio", "command": mcp.command, "args": mcp.args, "enabled": True, "timeoutMs": 3_600_000}}}},
+        indent=1) + "\n")
+    rule = {"providerId": "frontier", "providerName": "Frontier gateway", "config": {
+        "group": "standard-personal",
+        "access": {"type": "api-key", "apiKey": os.environ.get(target["key_env"]) or credentials.PLACEHOLDER},
+        "api": {"type": api, "baseUrl": base_url_for(port, target["provider"], cfg)},
+        "personalModelIds": [target["model"]]}}
+    f = home / "provider_config.json"
+    f.write_text(json.dumps({"schemaVersion": 1, "config": {
+        "providerConfigRules": {"providerRules": [rule]},
+        "modelConfigRules": {"providerModelRules": [], "manualProviderModelRules": []},
+        "defaultModelSelection": {"providerId": "frontier", "modelId": target["model"]}}}, indent=1) + "\n")
+    f.chmod(0o600)
 
 
 def _hermes_home(state: pathlib.Path, cfg: dict, target: dict, mcp: McpCommand) -> None:
@@ -394,6 +464,10 @@ def deliver(ctx, summary: str = "", force: bool = False) -> str:
     subprocess.run(["git", "-C", str(ws), "add", "-A"], check=False)
     subprocess.run(["git", "-C", str(ws), "commit", "-q", "-m", f"Delivery\n\n{summary}".strip()], check=False)
     subprocess.run(["git", "-C", str(ws), "tag", "-f", "delivery"], check=False, capture_output=True)
+    from .hf import publish_delivery
+
+    rec["hub_delivery"] = publish_delivery(ctx, rec)  # in a race: the repository on a private dataset of the Hub
+    done.write_text(json.dumps(rec, indent=1) + "\n")
     ctx.run.log(event="delivered", **{k: v for k, v in rec.items() if k != "cleanup"})
     return json.dumps(rec, indent=1)
 

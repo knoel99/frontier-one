@@ -95,7 +95,8 @@ def subagents(events: list[dict], llm: list[dict], logs: list[pathlib.Path]) -> 
             kind = "spawn_agent" if e.get("depth") else "main (API agent)"
             rows[a] = {"kind": kind, "agent": a, "parent": e.get("parent"), "depth": e.get("depth"),
                        "model": f"{e.get('provider')}/{e.get('model')}", "effort": e.get("reasoning"),
-                       "effort_value": e.get("effort_value"), "start": e.get("t"), "end": None, "status": "running",
+                       "effort_value": e.get("effort_value"), "mode": e.get("mode") or "standard",
+                       "start": e.get("t"), "end": None, "status": "running",
                        "task": _short(e.get("task", ""), 300), "calls": 0, "tool_calls": 0, "input": 0, "cached": 0,
                        "output": 0, "reasoning": 0, "usd": 0.0, "answer": ""}
         elif k == "model_call" and a in rows:
@@ -111,8 +112,8 @@ def subagents(events: list[dict], llm: list[dict], logs: list[pathlib.Path]) -> 
             r["output"] += e["gen_ai.usage.output_tokens"]
             r["reasoning"] += e["gen_ai.usage.reasoning.output_tokens"]
             r["usd"] = round(r["usd"] + e["frontier.cost.usd"], 6)
-            if e.get("frontier.mode"):
-                r["model"] = r["model"].split("+")[0] + "+" + e["frontier.mode"]
+            if e.get("frontier.mode"):  # the mode the response says was served
+                r["mode"] = e["frontier.mode"]
     for r in rows.values():
         s, f = parse_time(r["start"]), parse_time(r["end"])
         r["seconds"] = round(((f or now()) - s).total_seconds()) if s else None
@@ -129,11 +130,14 @@ def subagents(events: list[dict], llm: list[dict], logs: list[pathlib.Path]) -> 
                 e = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if not isinstance(e, dict) or not isinstance(e.get("message"), (dict, type(None))):
+                continue  # a harness may print other JSON (a list, a bare string) on its own lines
             for c in (e.get("message") or {}).get("content", []) if e.get("type") == "assistant" else []:
                 if c.get("type") == "tool_use" and c.get("name") in ("Agent", "Task"):
                     inp = c.get("input") or {}
                     out.append({"kind": "native", "agent": inp.get("subagent_type") or "agent", "parent": "harness",
-                                "model": inp.get("model") or "harness model", "effort": "", "start": None, "end": None,
+                                "model": inp.get("model") or "harness model", "effort": "", "mode": "harness",
+                                "start": None, "end": None,
                                 "status": "native", "task": _short(inp.get("description") or inp.get("prompt", ""), 300),
                                 "calls": None, "tool_calls": None, "input": None, "cached": None, "output": None,
                                 "reasoning": None, "usd": None, "seconds": None, "answer": "", "session": log.stem})
@@ -231,6 +235,9 @@ def team_state(d: pathlib.Path) -> dict:
             "tier": settings.get("tier"), "reasoning": settings.get("reasoning"), "status": st, "tokens": tokens,
             "series": series, "alive": alive, "jobs": jobs[-10:], "running": running, "delivered": delivered,
             "actions": actions[-120:], "subagents": subs, "runners": runners,
+            "model_calls": [{"t": e["t"], "model": f"{e['gen_ai.provider.name']}/{e['gen_ai.request.model']}",
+                             "mode": e.get("frontier.mode") or "standard", "source": e["frontier.source"],
+                             "usd": e["frontier.cost.usd"]} for e in llm[-600:]],
             "activities": activities(settings.get("name", d.name), settings, events, subs, b.resources())}
 
 
@@ -246,7 +253,8 @@ def snapshot(root: pathlib.Path) -> dict:
     history = sorted(({**r, "team": t["name"]} for t in teams for r in t["subagents"]),
                      key=lambda r: r.get("start") or "", reverse=True)
     return {"time": now().isoformat(timespec="seconds"), "root": str(root), "teams": teams, "feed": feed[::-1],
-            "subagents": history, "activities": [a for t in teams for a in t["activities"]]}
+            "subagents": history, "activities": [a for t in teams for a in t["activities"]],
+            "model_calls": [{**c, "team": t["name"]} for t in teams for c in t.get("model_calls", [])]}
 
 
 PAGE = (pathlib.Path(__file__).with_name("dashboard.html")).read_text()

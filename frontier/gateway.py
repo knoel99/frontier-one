@@ -24,6 +24,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from .milestones import Milestones, inject
 from .budget import Budget, append_chained, now, worst_case_usd
 from .config import load_config
 
@@ -126,6 +127,9 @@ def worst_case(cfg: dict, provider: str, path: str, body: bytes) -> float:
         obj = {}
     out = (obj.get("max_output_tokens") or obj.get("max_completion_tokens") or obj.get("max_tokens")
            or (obj.get("generationConfig") or {}).get("maxOutputTokens") or DEFAULT_MAX_OUT)
+    # Some harnesses ask for the model's whole output window on every call (Kimi Code: 262,144 tokens); reserving that
+    # would let one call hold most of a small budget. The reservation is capped; the call is charged what it used.
+    out = min(int(out), int(cfg.get("limits", {}).get("max_reserved_output_tokens", DEFAULT_MAX_OUT)))
     model = model_of(body, path, None)
     return worst_case_usd(provider, model, len(body), int(out), requested_price_x(cfg, provider, obj, model))
 
@@ -149,6 +153,26 @@ def is_generation(method: str, rest: str) -> bool:
     return method == "POST" and rest.split("?", 1)[0].rstrip("/").endswith(GENERATION)
 
 
+def remap(path: str, body: bytes, model_map: dict[str, str]) -> tuple[str, bytes]:
+    """Send a call for a model the harness picks by itself (a hard-wired helper model) to the one the mission maps it to:
+    the model in the Gemini path (/models/<model>:...) or the body's `model` field."""
+    if not model_map:
+        return path, body
+    if "/models/" in path:
+        head, tail = path.split("/models/", 1)
+        m, sep, after = tail.partition(":")
+        if m in model_map:
+            return f"{head}/models/{model_map[m]}{sep}{after}", body
+    try:
+        obj = json.loads(body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return path, body
+    if isinstance(obj, dict) and obj.get("model") in model_map:
+        obj["model"] = model_map[obj["model"]]
+        return path, json.dumps(obj).encode()
+    return path, body
+
+
 def model_of(req_body: bytes, path: str, resp_obj: dict | None) -> str:
     try:
         m = json.loads(req_body or b"{}").get("model")
@@ -168,9 +192,10 @@ class Gateway(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, addr, budget: Budget, routes: dict[str, tuple[str, str]], agent: str = "harness",
-                 cfg: dict | None = None):
+                 cfg: dict | None = None, model_map: dict[str, str] | None = None):
         super().__init__(addr, Handler)
-        self.budget, self.routes, self.agent = budget, routes, agent
+        self.budget, self.routes, self.agent, self.model_map = budget, routes, agent, dict(model_map or {})
+        self.milestones = Milestones(budget)
         self.cfg = cfg if cfg is not None else load_config()
 
 
@@ -212,6 +237,7 @@ class Handler(BaseHTTPRequestHandler):
         rest = "/" + (parts[1] if len(parts) > 1 else "")
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
+        rest, body = remap(rest, body, self.server.model_map)
         is_llm_call = is_generation(self.command, rest)
         rid, worst = None, 0.0
         if is_llm_call:
@@ -222,6 +248,7 @@ class Handler(BaseHTTPRequestHandler):
                     "t": now().isoformat(timespec="seconds"), "event": "llm_refused", "agent": self.server.agent,
                     "why": why})
                 return self._send_json(402, {"error": {"type": "budget_exhausted", "code": "budget_exhausted", "message": why}})
+            body = inject(rest, body, self.server.milestones.notice())  # 10, 25, 50, 80, 95, 98 % of a budget
             body = self._with_stream_usage(rest, body)
         try:
             self._forward(origin, rest, body, provider, is_llm_call, worst)
@@ -315,13 +342,17 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
 
-def serve(state: str, port: int = 0, extra_routes: dict[str, str] | None = None, agent: str = "harness") -> Gateway:
+def serve(state: str, port: int = 0, extra_routes: dict[str, str] | None = None, agent: str = "harness",
+          model_map: dict[str, str] | None = None, providers: list[str] | None = None) -> Gateway:
+    """`providers`: when given, only their routes are served (a mission's harness reaches no other provider)."""
     cfg = load_config()
     routes = routes_from_config(cfg)
+    if providers:
+        routes = {k: v for k, v in routes.items() if v[1] in providers}
     for name, url in (extra_routes or {}).items():
         u = urllib.parse.urlsplit(url)
         routes[name] = (f"{u.scheme}://{u.netloc}", name.split("-")[0])
-    gw = Gateway(("127.0.0.1", port), Budget(pathlib.Path(state)), routes, agent, cfg)
+    gw = Gateway(("127.0.0.1", port), Budget(pathlib.Path(state)), routes, agent, cfg, model_map)
     threading.Thread(target=gw.serve_forever, daemon=True).start()
     return gw
 

@@ -24,7 +24,12 @@ Carry out the research that the internship subject describes, and deliver its re
 {{budgets}}
 
 These are hard caps enforced by the framework: a model call or a cloud resource that would go beyond a budget is
-refused. `budget_status` gives the spend so far and the time left at any moment.
+refused. `mission_status` gives at any moment what the race dashboard shows about your mission: spend and what is
+left of each budget, your rate of spend and when each cap would be reached at that rate, compared with the time left,
+tokens by model, sub-agents, machines and failed tool calls. Use it to plan. `budget_status` is its short form.
+When a budget crosses 10, 25, 50, 80, 95 and 98 % of its cap, a `[Frontier budget notice: …]` with the current
+figures is added to your next model requests. A call is refused as soon as its worst case (the whole context plus the
+largest answer) exceeds what is left, so the last part of a budget cannot be spent in long calls.
 
 ## What you have
 
