@@ -120,7 +120,10 @@ class OpenShell:
         self.commands.append(args)
         if self.dry_run:
             return None
-        return subprocess.run(args, check=check, text=True, capture_output=True)
+        p = subprocess.run(args, text=True, capture_output=True)
+        if check and p.returncode != 0:  # the tool's own message says what to do: keep it in the error
+            raise RuntimeError(f"{' '.join(args[:3])} failed (exit {p.returncode}): {(p.stderr or p.stdout).strip()[-1500:]}")
+        return p
 
     def write_files(self) -> list[str]:
         self.dir.mkdir(parents=True, exist_ok=True)

@@ -1256,3 +1256,16 @@ def test_openshell_gets_a_built_image_not_a_dockerfile(tmp_path):
     box.teardown()
     delete = box.commands.index(["openshell", "sandbox", "delete", box.name])
     assert box.commands[delete + 1] == ["docker", "rmi", "-f", image]
+
+
+def test_a_failed_openshell_command_says_why(tmp_path, monkeypatch):
+    """First live run with OpenShell (2026-11-15): a failed `sandbox create` surfaced as a bare CalledProcessError, the
+    OpenShell message that said what to do (captured) never shown."""
+    f = _mission(tmp_path, harness="codex")
+    f.write_text(f.read_text() + '\n[sandbox]\nkind = "openshell"\n')
+    info = mission.prepare(f, ping=False, offers=False)
+    box = sandbox.OpenShell(info, launcher.harness_conf("codex", "openai"))
+    monkeypatch.setattr(sandbox.subprocess, "run", lambda a, **k: subprocess.CompletedProcess(a, 1, "", "× '--from' no longer builds"))
+    with pytest.raises(RuntimeError, match="no longer builds"):
+        box._run(["openshell", "sandbox", "create"])
+    assert box._run(["openshell", "provider", "delete", "x"], check=False).returncode == 1  # check=False: no raise
