@@ -28,6 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from .milestones import Milestones, inject
 from .budget import Budget, append_chained, now, worst_case_usd
 from .config import load_config
+from .llm import usage_of
 
 DEFAULT_MAX_OUT = 32000  # output tokens assumed for a call that sets no limit
 
@@ -51,53 +52,6 @@ def base_url_for(port: int, provider: str, cfg: dict) -> str:
 
 
 # ---------------------------------------------------------------- usage extraction
-
-
-def usage_of(obj) -> dict:
-    """Normalised usage found in one JSON object of a response (any of the four wire formats), or {}."""
-    if not isinstance(obj, dict):
-        return {}
-    if obj.get("type") == "message_start":  # Anthropic stream
-        obj = obj.get("message") or {}
-    if obj.get("type") in ("response.completed", "response.incomplete", "response.failed"):  # OpenAI Responses stream
-        obj = obj.get("response") or {}
-    out: dict = {}
-    u = obj.get("usage")
-    if isinstance(u, dict):
-        if "prompt_tokens" in u or "completion_tokens" in u:  # Chat Completions
-            out["input"] = u.get("prompt_tokens") or 0
-            out["output"] = u.get("completion_tokens") or 0
-            out["cached"] = (u.get("prompt_tokens_details") or {}).get("cached_tokens") or u.get("prompt_cache_hit_tokens") or 0
-            out["reasoning"] = (u.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0
-        elif "input_tokens_details" in u or "output_tokens_details" in u or "total_tokens" in u:  # Responses
-            out["input"] = u.get("input_tokens") or 0
-            out["output"] = u.get("output_tokens") or 0
-            out["cached"] = (u.get("input_tokens_details") or {}).get("cached_tokens") or 0
-            out["reasoning"] = (u.get("output_tokens_details") or {}).get("reasoning_tokens") or 0
-        else:  # Anthropic (message, message_start, message_delta)
-            if "input_tokens" in u or "cache_read_input_tokens" in u:
-                out["input"] = ((u.get("input_tokens") or 0) + (u.get("cache_read_input_tokens") or 0)
-                                + (u.get("cache_creation_input_tokens") or 0))
-                out["cached"] = u.get("cache_read_input_tokens") or 0
-                out["cache_write"] = u.get("cache_creation_input_tokens") or 0
-            if "output_tokens" in u:
-                out["output"] = u.get("output_tokens") or 0
-    if isinstance(u, dict) and isinstance(u.get("cost"), (int, float)):  # OpenRouter reports the cost itself
-        out["cost_usd"] = float(u["cost"])
-    if isinstance(u, dict) and isinstance(u.get("cost_in_usd_ticks"), (int, float)):  # xAI: 1 tick = 1e-10 USD
-        out["cost_usd"] = u["cost_in_usd_ticks"] * 1e-10
-    served = obj.get("service_tier") or (u.get("service_tier") if isinstance(u, dict) else None)
-    if isinstance(u, dict) and u.get("speed"):  # Anthropic fast mode
-        served = u["speed"]
-    if served:
-        out["served_tier"] = served
-    um = obj.get("usageMetadata")
-    if isinstance(um, dict):  # Gemini (cumulative in a stream)
-        out["input"] = um.get("promptTokenCount") or 0
-        out["output"] = (um.get("candidatesTokenCount") or 0) + (um.get("thoughtsTokenCount") or 0)
-        out["reasoning"] = um.get("thoughtsTokenCount") or 0
-        out["cached"] = um.get("cachedContentTokenCount") or 0
-    return out
 
 
 def merge(total: dict, part: dict) -> None:
