@@ -1089,3 +1089,20 @@ def test_a_snapshot_waits_for_a_busy_git(tmp_path):
     assert ev["labels"] == ["5min"]
     show = subprocess.run([*git, "show", "snapshot-5min:REPORT.md"], capture_output=True, text=True)
     assert show.stdout == "results so far\n"
+
+
+def test_a_runpod_call_refused_by_the_rate_limit_is_retried(monkeypatch):
+    """Race check 2026-11-15: a burst of rp_exec calls got six 429 refusals from Runpod back as errors; a refused call
+    did no work, and the watchdog's or the cleanup's delete would have left a pod billing."""
+    from frontier import http
+
+    answers = [{"result": {"isError": True, "content": [{"type": "text", "text": '{"status": 429, "title": "Too Many Requests"}'}]}},
+               {"result": {"isError": True, "content": [{"type": "text", "text": '{"status": 429, "title": "Too Many Requests"}'}]}},
+               {"result": {"content": [{"type": "text", "text": '{"exitCode": 0}'}]}}]
+    calls = []
+    monkeypatch.setattr(http, "mcp_rpc", lambda *a, **k: calls.append(a) or answers.pop(0))
+    monkeypatch.setattr(http.time, "sleep", lambda s: None)
+    assert http.mcp_call("exec-pod", {"id": "p"}) == (True, '{"exitCode": 0}')
+    assert len(calls) == 3
+    monkeypatch.setattr(http, "mcp_rpc", lambda *a, **k: {"result": {"isError": True, "content": [{"text": "bad input"}]}})
+    assert http.mcp_call("exec-pod", {"id": "p"}) == (False, "bad input")  # other errors are not retried

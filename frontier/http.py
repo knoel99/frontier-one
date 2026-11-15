@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -85,16 +86,24 @@ def mcp_rpc(method: str, params: dict | None = None, timeout: float = 180) -> di
         raise APIError(text[:1500]) from None
 
 
+RATE_LIMIT_RETRIES = 4
+
+
 def mcp_call(tool: str, arguments: dict | None = None, timeout: float = 180) -> tuple[bool, str]:
-    """Call a Runpod MCP tool. Returns (ok, text)."""
-    try:
-        r = mcp_rpc("tools/call", {"name": tool, "arguments": arguments or {}}, timeout)
-    except APIError as e:
-        return False, str(e)
-    if "error" in r:
-        return False, json.dumps(r["error"])
-    res = r.get("result", {})
-    return not res.get("isError"), "\n".join(c.get("text", json.dumps(c)) for c in res.get("content", []))
+    """Call a Runpod MCP tool. Returns (ok, text). A call refused by the rate limit (429: no work done) is retried."""
+    for attempt in range(RATE_LIMIT_RETRIES + 1):
+        try:
+            r = mcp_rpc("tools/call", {"name": tool, "arguments": arguments or {}}, timeout)
+        except APIError as e:
+            ok, text = False, str(e)
+        else:
+            res = r.get("result", {})
+            ok, text = ((False, json.dumps(r["error"])) if "error" in r else
+                        (not res.get("isError"), "\n".join(c.get("text", json.dumps(c)) for c in res.get("content", []))))
+        if ok or attempt == RATE_LIMIT_RETRIES or not (text.startswith("HTTP 429") or '"status": 429' in text):
+            return ok, text
+        time.sleep(1 + attempt)
+    raise AssertionError("unreachable")
 
 
 def mcp_json(tool: str, arguments: dict | None = None):
