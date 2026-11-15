@@ -909,6 +909,38 @@ def test_raw_cloud_calls_leave_alone_what_the_run_did_not_create(run, monkeypatc
     assert tools.t_scaleway(ctx, "GET", f"/instance/v1/zones/fr-par-2/servers/{other}").startswith("HTTP")
 
 
+def test_raw_cloud_calls_the_framework_does_not_know_are_refused_under_a_budget(run, monkeypatch):
+    """The guards listed what is billed, and three fixes each added what a live check had found missing. Read on
+    2026-11-15: under a Scaleway cap, `scaleway POST /k8s/v1/regions/fr-par/clusters` (an API outside the bundled
+    catalog) was forwarded. The lists name what is free: the rest is refused."""
+    run.allow_spend = True
+    called = []
+    monkeypatch.setattr(tools, "scw_raw", lambda *a, **k: called.append(a) or (200, "{}"))
+    monkeypatch.setattr(tools, "mcp_call", lambda *a, **k: called.append(a) or (True, "{}"))
+    ctx = agent_mod.Ctx(run, None)
+    run.budget.set_caps(scaleway_eur=10, runpod_usd=10)
+    own, other = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
+    run.record({"provider": "scaleway", "kind": "instance", "id": own, "volumes": [], "ips": []})
+    run.record({"provider": "runpod", "kind": "pod", "id": "p1"})
+    for method, path in (("POST", "/k8s/v1/regions/fr-par/clusters"), ("POST", "/rdb/v1/regions/fr-par/instances"),
+                         ("POST", "/block/v1/zones/fr-par-1/snapshots/import-from-object-storage"),
+                         ("DELETE", f"/k8s/v1/regions/fr-par/clusters/{other}"),
+                         ("PATCH", f"/rdb/v1/regions/fr-par/instances/{other}")):
+        assert tools.t_scaleway(ctx, method, path, {}).startswith("refused"), path
+    for tool, args in (("create-something-new", {}), ("update-ssh-keys", {}), ("update-cluster", {"clusterId": "theirs"}),
+                       ("cancel-job", {"endpointId": "theirs", "jobId": "j"})):
+        assert tools.t_runpod_mcp(ctx, tool, args).startswith("refused"), tool
+    assert not called
+    for method, path in (("POST", "/instance/v1/zones/fr-par-2/placement_groups"),
+                         ("PATCH", f"/instance/v1/zones/fr-par-2/security_groups/{other}"),
+                         ("DELETE", f"/instance/v1/zones/fr-par-2/servers/{own}/private_nics/{other}"),
+                         ("POST", f"/instance/v1/zones/fr-par-2/servers/{own}/attach-volume")):
+        assert tools.t_scaleway(ctx, method, path, {}).startswith("HTTP"), path
+    for tool, args in (("create-template", {}), ("create-secret", {}), ("delete-template", {"id": "theirs"}),
+                       ("exec-pod", {"id": "p1", "body": {"command": ["ls"]}})):
+        assert tools.t_runpod_mcp(ctx, tool, args) == "{}", tool
+
+
 def test_a_sub_agent_call_is_charged_before_its_reservation_is_released(run, monkeypatch):
     """Released first, the reservation left a gap in which a parallel call could take the same room: both ran over
     the hard cap together."""

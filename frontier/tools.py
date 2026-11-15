@@ -98,29 +98,29 @@ def t_api_docs(ctx, action: str, query: str = "", id: str = "", doc: str = "") -
     return "action must be list, search or show"
 
 
-# Raw calls that start something billed: refused under a cloud budget, which only the ready-made functions price and
-# record in the ledger (a raw creation would bill outside the cap, and be left out of the cleanup).
-BILLED_SCALEWAY = re.compile(r":(Create(Server|Ip|Image|Snapshot|Volume|Deployment)|StartJobDefinition)$")
-BILLED_RUNPOD = {"create-pod", "create-endpoint", "create-network-volume", "deploy-hub-repo", "create-cluster",
-                 "create-global-volume"}  # the live server has more tools than the bundled catalog
+# Raw calls under a cloud budget. The lists name what is free, not what is billed: the live APIs have more operations
+# and tools than the bundled catalog, so a raw call the framework does not know is refused, not forwarded.
+# - A creation is forwarded only when it is known to bill nothing; the ready-made functions price, reserve and record
+#   the billed ones (a raw creation would bill outside the cap, and be left out of the cleanup).
+# - A call that changes, runs on or deletes a resource is forwarded only for resources of the run's ledger (the teams
+#   of a race share the accounts). Templates, security groups and the like are not billed and stay open.
+FREE_SCW_CREATE = re.compile(r":Create(PlacementGroup|SecurityGroup|SecurityGroupRule|JobDefinition)$")
+FREE_SCW_COLLECTIONS = {"security_groups", "rules", "placement_groups", "private_nics"}
+SCW_ID = re.compile(r"/([A-Za-z_-]+)/([0-9a-fA-F]{8}-[0-9a-fA-F-]{27})(?=/|$)")
+FREE_RUNPOD = {"create-template", "create-secret", "create-registry", "describe-tool"}
 
 
-def _unmetered(ctx, provider: str, what: str) -> str | None:
-    if ctx.run.budget.caps.get(budget.CLOUD_CURRENCY[provider][0]) is None:
-        return None
-    return (f"refused: {what} would bill outside the {provider} budget and the run's ledger; use scw_create_instance or "
-            "rp_create_pod, which price it, reserve it and delete it at the end.")
+def _capped(ctx, provider: str) -> bool:
+    return ctx.run.budget.caps.get(budget.CLOUD_CURRENCY[provider][0]) is not None
 
 
-# Raw calls that change, run on or delete an existing billed resource: under a cloud budget, the run's own only (the
-# teams of a race share the accounts). Templates, security groups and the like are not billed and stay open.
-RUNPOD_ID_ARGS = ("id", "podId", "endpointId")
-SCW_BILLED_ID = re.compile(r"/(servers|ips|volumes|snapshots|images|deployments|job-definitions|job-runs)/([0-9a-fA-F-]{36})")
+def _unmetered(provider: str, what: str) -> str:
+    return (f"refused: under a {provider} budget a raw call goes through when it reads, creates what is known to bill "
+            f"nothing or acts on the run's own resources, and {what} does none of these; scw_create_instance and "
+            "rp_create_pod price what they create, reserve it and delete it at the end.")
 
 
-def _foreign(ctx, provider: str, ids: list[str]) -> str | None:
-    if not ids or ctx.run.budget.caps.get(budget.CLOUD_CURRENCY[provider][0]) is None:
-        return None
+def _foreign(ctx, ids: list[str]) -> str | None:
     owned = {x for r in ctx.run.resources for x in [r["id"], *r.get("volumes", []), *r.get("ips", [])]}
     if bad := [i for i in ids if i not in owned]:
         return (f"refused: this run did not create {', '.join(bad)}; raw calls only change the run's own resources "
@@ -130,24 +130,31 @@ def _foreign(ctx, provider: str, ids: list[str]) -> str | None:
 
 def t_scaleway(ctx, method: str, path: str, body: dict | None = None, query: dict | None = None, raw_body: str = "",
                content_type: str = "") -> str:
-    if method.upper() != "GET" and (g := infra._need_spend(ctx, f"{method} {path}")):
-        return g
-    if BILLED_SCALEWAY.search(op := catalog.operation(method, path)) and (g := _unmetered(ctx, "scaleway", op)):
-        return g
-    if method.upper() != "GET" and (g := _foreign(ctx, "scaleway", [m[1] for m in SCW_BILLED_ID.findall(path)])):
-        return g
+    if method.upper() != "GET":
+        if g := infra._need_spend(ctx, f"{method} {path}"):
+            return g
+        if _capped(ctx, "scaleway"):
+            ids = [i for collection, i in SCW_ID.findall("/" + path.split("?", 1)[0].strip("/"))
+                   if collection not in FREE_SCW_COLLECTIONS]
+            if g := _foreign(ctx, ids):
+                return g
+            op = catalog.operation(method, path)
+            if method.upper() == "POST" and not ids and not FREE_SCW_CREATE.search(op):
+                return _unmetered("scaleway", op or f"{method} {path}")
     code, text = scw_raw(method, path, raw_body or body, query, content_type)
     return f"HTTP {code}\n{text}"
 
 
 def t_runpod_mcp(ctx, tool: str, arguments: dict | None = None) -> str:
-    if tool not in catalog.read_only_mcp_tools() and tool != "describe-tool" and (g := infra._need_spend(ctx, f"Runpod MCP tool {tool}")):
-        return g
-    if tool in BILLED_RUNPOD and (g := _unmetered(ctx, "runpod", f"Runpod MCP tool {tool}")):
-        return g
-    if (tool not in catalog.read_only_mcp_tools() and not tool.endswith("-template")
-            and (g := _foreign(ctx, "runpod", [str(v) for k, v in (arguments or {}).items() if k in RUNPOD_ID_ARGS]))):
-        return g
+    if tool not in catalog.read_only_mcp_tools() and tool != "describe-tool":
+        if g := infra._need_spend(ctx, f"Runpod MCP tool {tool}"):
+            return g
+        if _capped(ctx, "runpod") and tool not in FREE_RUNPOD and not tool.endswith("-template"):
+            ids = [str(v) for k, v in (arguments or {}).items() if k == "id" or k.endswith("Id")]
+            if tool.startswith(("create-", "deploy-")) or not ids:  # a creation, or a tool the catalog does not know
+                return _unmetered("runpod", f"Runpod MCP tool {tool}")
+            if g := _foreign(ctx, ids):
+                return g
     ok, text = mcp_call(tool, arguments)
     return text if ok else "ERROR: " + text
 
