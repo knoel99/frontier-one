@@ -662,3 +662,29 @@ def test_gateway_strips_message_fields_a_provider_refuses():
 def test_opencode_runs_in_the_workspace_whatever_the_launcher_directory():
     from frontier.launcher import harness_conf
     assert ["--dir", "{workspace}"] == harness_conf("opencode", "cerebras")["command"][3:5]
+
+
+def test_streamed_answers_are_rebuilt_whole():
+    """Responses and Gemini calls are streamed (a proxy cut idle connections at 180 s on 2026-11-15)."""
+    done = {"output": [{"type": "message", "content": [{"type": "output_text", "text": "ok"}]}], "status": "completed"}
+    assert llm.responses_from_events([{"type": "response.output_text.delta", "delta": "o"},
+                                      {"type": "response.completed", "response": done}]) == done
+    with pytest.raises(llm.LLMError):
+        llm.responses_from_events([{"type": "response.output_text.delta"}])
+    g = llm.gemini_from_chunks([{"candidates": [{"content": {"parts": [{"text": "a", "thoughtSignature": "s"}]}}]},
+                                {"candidates": [{"content": {"parts": [{"text": "b"}]}, "finishReason": "STOP"}],
+                                 "usageMetadata": {"promptTokenCount": 3}}])
+    assert [x["text"] for x in g["candidates"][0]["content"]["parts"]] == ["a", "b"]
+    assert g["candidates"][0]["finishReason"] == "STOP" and g["usageMetadata"] == {"promptTokenCount": 3}
+
+
+def test_jury_work_no_judge_could_grade_is_not_graded_rather_than_zero():
+    from frontier.jury import aggregate
+    f = {"delivered": True, "team": "x"}
+    m = {"cost_control": 9.0, "delivery_time": 5.0}
+    teams = {"x": {"facts": f, "measured": m, "judges": {}, "has_work": True},
+             "y": {"facts": {**f, "team": "y", "delivered": False}, "measured": {"cost_control": 0.0, "delivery_time": 0.0},
+                   "judges": {}, "has_work": False}}
+    res = aggregate(teams, 0.0)
+    assert res["teams"]["x"]["final"] is None and res["teams"]["x"]["rank"] is None
+    assert res["teams"]["y"]["final"] == 0.0 and res["teams"]["y"]["rank"] == 1

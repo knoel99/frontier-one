@@ -272,15 +272,18 @@ def aggregate(teams: dict, jury_usd: float, weights: dict | None = None) -> dict
     w = weights or {c: 1.0 for c in CRITERIA}
     for t in teams.values():
         sc = dict(t["measured"])
+        # work that no judge could grade (every call failed) is not graded, not worth 0; no work at all is 0
+        t["graded"] = bool(t["judges"]) or not t.get("has_work", bool(t["judges"]))
         for c in ("scientific_quality", "compliance"):
             v = [j[c]["score"] for j in t["judges"].values()]
-            sc[c] = round(statistics.median(v), 2) if v else 0.0
+            sc[c] = round(statistics.median(v), 2) if v else (0.0 if t["graded"] else None)
             t[c + "_spread"] = round(max(v) - min(v), 2) if len(v) > 1 else None
         t["scores"] = sc
-        t["final"] = round(sum(w[c] * sc[c] for c in CRITERIA) / sum(w.values()), 2)
-    order = sorted(teams, key=lambda n: (not teams[n]["facts"]["delivered"], -teams[n]["final"]))
+        t["final"] = round(sum(w[c] * sc[c] for c in CRITERIA) / sum(w.values()), 2) if t["graded"] else None
+    order = sorted(teams, key=lambda n: (not teams[n]["graded"], not teams[n]["facts"]["delivered"],
+                                         -(teams[n]["final"] or 0)))
     for i, n in enumerate(order, 1):
-        teams[n]["rank"] = i
+        teams[n]["rank"] = i if teams[n]["graded"] else None
         teams[n].pop("file", None)
     return {"criteria": list(CRITERIA), "weights": w, "jury_llm_usd": round(jury_usd, 4), "ranking": order, "teams": teams}
 
@@ -307,15 +310,16 @@ def markdown(res: dict, title: str = "Jury of the race") -> str:
              "|---|---|---|---|---|---|---|---|---|---|---|"]
     for n in res["ranking"]:
         x, f, s = t[n], t[n]["facts"], t[n]["scores"]
-        lines.append(f"| {x['rank']} | {f['team']} | {x['label']} | "
+        num = lambda v: "not graded" if v is None else f"{v:g}"  # noqa: E731
+        lines.append(f"| {x['rank'] or '—'} | {f['team']} | {x['label']} | "
                      f"{f['delivered_at'][11:16] + ' UTC' if f['delivered'] else 'no'} | "
-                     f"**{x['final']:g}** | {s['scientific_quality']:g}{_spread(x, 'scientific_quality')} | "
-                     f"{s['compliance']:g}{_spread(x, 'compliance')} | {s['cost_control']:g} | {s['delivery_time']:g} | "
+                     f"**{num(x['final'])}** | {num(s['scientific_quality'])}{_spread(x, 'scientific_quality')} | "
+                     f"{num(s['compliance'])}{_spread(x, 'compliance')} | {s['cost_control']:g} | {s['delivery_time']:g} | "
                      f"{f['llm_usd']:.2f} / {f['gpu_usd']:.2f} | {', '.join(x['judges']) or '—'} |")
     lines += ["", f"The jury's own model calls cost {res['jury_llm_usd']:.2f} USD.", ""]
     for n in res["ranking"]:
         x, f = t[n], t[n]["facts"]
-        lines += [f"## {x['rank']}. {f['team']} ({x['label']})", "",
+        lines += [f"## {x['rank'] or 'Not graded'}. {f['team']} ({x['label']})", "",
                   f"{f['harness']} on {f['provider']} ({f['tier']} tier, {f['reasoning']} reasoning). "
                   + (f"Delivered at {f['delivered_at'][11:16]} UTC after {f['elapsed_hours']:.2f} h of "
                      f"{f['duration_hours']:g} h." if f["delivered"] else "Did not deliver.")
