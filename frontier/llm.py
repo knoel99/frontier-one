@@ -146,14 +146,17 @@ def _maybe_billed(code: int, t0: float) -> bool:
     return code != 429 and time.time() - t0 > SLOW_FAILURE_S
 
 
-def _post(url: str, headers: dict, body: dict, timeout: float = 600, retries: int = 4) -> dict:
+def _post(url: str, headers: dict, body: dict, timeout: float = 600, retries: int = 4, sse: bool = False):
+    """POST JSON and return the decoded answer, or with `sse` the events of a streamed answer. Retries a refused or
+    failed call with backoff, unless the provider probably ran it (`_maybe_billed`)."""
     data = json.dumps(body).encode()
+    accept = {"Accept": "text/event-stream"} if sse else {}
     for attempt in range(retries + 1):
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **headers})
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **accept, **headers})
         t0 = time.time()
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
-                return json.loads(r.read())
+                return _events(r) if sse else json.loads(r.read())
         except urllib.error.HTTPError as e:
             text = e.read().decode(errors="replace")[:2000]
             if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries and not _maybe_billed(e.code, t0):
@@ -166,40 +169,25 @@ def _post(url: str, headers: dict, body: dict, timeout: float = 600, retries: in
                 continue
             raise LLMError(f"network error on {url}: {e}") from None
     raise LLMError("unreachable")
+
+
+def _events(r) -> list[dict]:
+    """The `data:` JSON of each server-sent event of a response."""
+    events = []
+    for raw in r:
+        line = raw.decode(errors="replace").strip()
+        if line.startswith("data:") and line[5:].strip() not in ("", "[DONE]"):
+            try:
+                events.append(json.loads(line[5:].strip()))
+            except json.JSONDecodeError:
+                continue
+    return events
 
 
 def _post_sse(url: str, headers: dict, body: dict, timeout: float = 600, retries: int = 4) -> list[dict]:
-    """POST a streamed request and return its events (the `data:` JSON of each server-sent event). A long call is
-    streamed so that bytes keep flowing: a proxy that cuts a connection idle for a few minutes (this happened at
-    180 s on 2026-11-15) never sees it idle. Retries as `_post` does, until the stream has started."""
-    data = json.dumps(body).encode()
-    for attempt in range(retries + 1):
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json",
-                                                              "Accept": "text/event-stream", **headers})
-        t0 = time.time()
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                events = []
-                for raw in r:
-                    line = raw.decode(errors="replace").strip()
-                    if line.startswith("data:") and line[5:].strip() not in ("", "[DONE]"):
-                        try:
-                            events.append(json.loads(line[5:].strip()))
-                        except json.JSONDecodeError:
-                            continue
-                return events
-        except urllib.error.HTTPError as e:
-            text = e.read().decode(errors="replace")[:2000]
-            if e.code in (429, 500, 502, 503, 504, 529) and attempt < retries and not _maybe_billed(e.code, t0):
-                time.sleep(min(60, 2 ** (attempt + 1)))
-                continue
-            raise LLMError(f"HTTP {e.code} from {url}: {text}") from None
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
-            if attempt < retries and not _maybe_billed(0, t0):
-                time.sleep(min(60, 2 ** (attempt + 1)))
-                continue
-            raise LLMError(f"network error on {url}: {e}") from None
-    raise LLMError("unreachable")
+    """POST a streamed request and return its events. A long call is streamed so that bytes keep flowing: a proxy that
+    cuts a connection idle for a few minutes (this happened at 180 s on 2026-11-15) never sees it idle."""
+    return _post(url, headers, body, timeout, retries, sse=True)
 
 
 def responses_from_events(events: list[dict]) -> dict:
