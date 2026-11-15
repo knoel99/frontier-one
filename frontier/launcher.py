@@ -406,7 +406,8 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
             if run.alive() and not keep_resources and not dry_run:
                 print("cleanup: " + json.dumps(infra.cleanup(run)))
             st = run.budget.status()
-            (ws / "COSTS.md").write_text(mission.costs_markdown(st, run.budget.resources(), []))
+            pubs = budget_mod.read_json(state / "publications.json", [])
+            (ws / "COSTS.md").write_text(mission.costs_markdown(st, run.budget.resources(), pubs))
             print("not delivered; COSTS.md written")
         else:
             mission.final_costs(run, ws)  # what the harness spent after deliver, finishing its turn
