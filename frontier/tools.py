@@ -115,7 +115,7 @@ def _unmetered(ctx, provider: str, what: str) -> str | None:
 # Raw calls that change, run on or delete an existing billed resource: under a cloud budget, the run's own only (the
 # teams of a race share the accounts). Templates, security groups and the like are not billed and stay open.
 RUNPOD_ID_ARGS = ("id", "podId", "endpointId")
-SCW_BILLED_ID = re.compile(r"/(servers|ips|volumes|snapshots|images|deployments)/([0-9a-fA-F-]{36})")
+SCW_BILLED_ID = re.compile(r"/(servers|ips|volumes|snapshots|images|deployments|job-definitions|job-runs)/([0-9a-fA-F-]{36})")
 
 
 def _foreign(ctx, provider: str, ids: list[str]) -> str | None:
