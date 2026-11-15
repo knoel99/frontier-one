@@ -101,7 +101,8 @@ def t_api_docs(ctx, action: str, query: str = "", id: str = "", doc: str = "") -
 # Raw calls that start something billed: refused under a cloud budget, which only the ready-made functions price and
 # record in the ledger (a raw creation would bill outside the cap, and be left out of the cleanup).
 BILLED_SCALEWAY = re.compile(r":(Create(Server|Ip|Image|Snapshot|Volume|Deployment)|StartJobDefinition)$")
-BILLED_RUNPOD = {"create-pod", "create-endpoint", "create-network-volume", "deploy-hub-repo"}
+BILLED_RUNPOD = {"create-pod", "create-endpoint", "create-network-volume", "deploy-hub-repo", "create-cluster",
+                 "create-global-volume"}  # the live server has more tools than the bundled catalog
 
 
 def _unmetered(ctx, provider: str, what: str) -> str | None:

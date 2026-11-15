@@ -871,6 +871,9 @@ def test_raw_cloud_calls_cannot_create_outside_the_budget(run, monkeypatch):
         assert tools.t_scaleway(ctx, "POST", path, {}).startswith("refused"), path
     assert tools.t_runpod_mcp(ctx, "create-pod", {}).startswith("refused")
     assert tools.t_runpod_mcp(ctx, "deploy-hub-repo", {}).startswith("refused")
+    # level 4 check 2026-11-15: the Runpod MCP server has billed creators beyond the bundled catalog
+    assert tools.t_runpod_mcp(ctx, "create-cluster", {}).startswith("refused")
+    assert tools.t_runpod_mcp(ctx, "create-global-volume", {}).startswith("refused")
     assert len(called) == 1
     s1, p1 = "11111111-1111-1111-1111-111111111111", "p1"  # the run's own server and pod
     run.record({"provider": "scaleway", "kind": "instance", "id": s1, "volumes": [], "ips": []})
