@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import functools
 import json
 import pathlib
 import random
@@ -30,7 +31,7 @@ import sys
 from . import llm
 from .budget import CLOUD_CURRENCY, Budget, parse_time, read_jsonl
 from .config import ROOT, load_config
-from .harnesses import HARNESSES
+from .harnesses import HARNESSES, McpCommand, artifacts
 from . import scoring
 from .mission import report_files
 
@@ -41,6 +42,19 @@ MAX_RESULTS = 120_000  # characters of small result files in a judge's file
 MAX_CODE = 120_000  # characters of delivered code in a judge's file
 HIDDEN = (".agents/", ".claude/", ".codex/", ".gemini/", ".dsh/", ".kimi", ".qwen/", ".vibe/", ".grok/", ".zcode",
           "subject/", "AGENTS.md", "MISSION.md", "TOOLS.md", "CLAUDE.md", "GEMINI.md", "QWEN.md")
+
+
+@functools.cache
+def _generated() -> frozenset[str]:
+    """Every file the framework writes into a workspace for any harness (.mcp.json, opencode.json, role files, ...)."""
+    return frozenset(artifacts(McpCommand()))
+
+
+def _tracked(ws: pathlib.Path) -> list[str]:
+    """The team's own tracked files: what the framework generated is left out. -z keeps non-ASCII names unquoted."""
+    out = subprocess.run(["git", "-C", str(ws), "ls-files", "-z"], capture_output=True, text=True).stdout.split("\0")
+    gen = _generated()
+    return [x for x in out if x and not x.startswith(HIDDEN) and x not in gen]
 
 
 # ---------------------------------------------------------------- anonymity
@@ -106,8 +120,7 @@ CODE_EXT = (".py", ".jl", ".m", ".r", ".R", ".cpp", ".c", ".f90", ".rs", ".go", 
 
 def deliverables(ws: pathlib.Path, state: pathlib.Path) -> dict[str, bool]:
     """The deliverables any mission asks for, whatever the discipline: present or not."""
-    files = subprocess.run(["git", "-C", str(ws), "ls-files"], capture_output=True, text=True).stdout.split("\n")
-    files = [x for x in files if x and not x.startswith(HIDDEN)]
+    files = _tracked(ws)
     reports = report_files(ws) if ws.is_dir() else []
     pubs = json.loads((state / "publications.json").read_text()) if (state / "publications.json").exists() else []
     checklist = (ws / "CHECKLIST.md").exists() or any("checklist" in p.read_text(errors="replace").lower() for p in reports)
@@ -198,13 +211,12 @@ def team_file(ws: pathlib.Path, f: dict, label: str, incidents: str) -> str:
     for name in RECORDS:
         if (ws / name).exists():
             parts += [f"## {name}", "", _clip((ws / name).read_text(errors="replace"), MAX_DOC), ""]
-    files = subprocess.run(["git", "-C", str(ws), "ls-files"], capture_output=True, text=True).stdout.split("\n")
-    files = [x for x in files if x and not x.startswith(HIDDEN) and (ws / x).is_file()]
+    files = [x for x in _tracked(ws) if (ws / x).is_file()]
     parts += ["## Repository listing (path, size)", "", "\n".join(f"{x}  {(ws / x).stat().st_size} B" for x in files[:400]), ""]
     code, used = [], 0
     for x in files:
         p = ws / x
-        if p.suffix in (".py", ".sh", ".jl", ".m", ".cpp", ".c") and used < MAX_CODE:
+        if p.suffix in CODE_EXT and used < MAX_CODE:
             body = _clip(p.read_text(errors="replace"), MAX_CODE - used)
             code.append(f"### {x}\n\n```\n{body}\n```\n")
             used += len(body)
@@ -286,7 +298,7 @@ def run(root: pathlib.Path, subject: str, context: str, out: pathlib.Path, judge
         s = json.loads((st / "mission.json").read_text())
         f = facts(st)
         ws = pathlib.Path(s["workspace"])
-        has_work = any(report_files(ws)) or any((ws / r).exists() for r in RECORDS)
+        has_work = ws.is_dir() and (any(report_files(ws)) or any((ws / r).exists() for r in RECORDS))
         inc = incidents.get(st.name) or incidents.get(f["provider"]) or ""
         text, n = redact(team_file(ws, f, labels[st.name], inc), names) if has_work else ("", 0)
         leak = leaks(text, names)

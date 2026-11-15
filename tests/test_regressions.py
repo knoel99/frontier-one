@@ -807,3 +807,26 @@ def test_red_flag_appends_a_chained_event_the_jury_reads(tmp_path):
     ev = [json.loads(ln) for ln in (tmp_path / "events.jsonl").read_text().splitlines()]
     assert ev[-1]["event"] == "red_flag" and ev[-1]["minutes"] == 27.0
     assert verify_chain(tmp_path / "events.jsonl") is True
+
+
+def test_jury_sees_the_team_files_only_and_all_its_code(tmp_path):
+    """Judges read the team's work: never the harness files the framework wrote, and every file of code it delivered."""
+    import subprocess
+
+    from frontier import jury
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    for name, text in {"résultat.py": "x = 1\n", "model.rs": "fn main() {}\n", "report.md": "# R\n",
+                       ".mcp.json": "{}\n", "opencode.json": "{}\n", ".opencode/agents/reviewer.md": "role\n"}.items():
+        (ws / name).parent.mkdir(parents=True, exist_ok=True)
+        (ws / name).write_text(text)
+    subprocess.run(["git", "init", "-q", str(ws)], check=True)
+    subprocess.run(["git", "-C", str(ws), "add", "-A"], check=True)
+    assert sorted(jury._tracked(ws)) == ["model.rs", "report.md", "résultat.py"]
+    f = {k: 0 for k in ("delivered", "minutes", "neutralised_minutes", "duration_hours", "llm_usd", "llm_cap_usd",
+                        "simulation_usd", "rented_usd", "local_cpu_core_hours", "simulation_cap_usd", "sessions",
+                        "deliverables", "ledgers_intact")}
+    text = jury.team_file(ws, f, "Team A", "")
+    assert "### résultat.py" in text and "### model.rs" in text
+    assert "opencode.json" not in text and ".mcp.json" not in text and "role" not in text
+    assert jury.deliverables(tmp_path / "missing", tmp_path)["code"] is False
