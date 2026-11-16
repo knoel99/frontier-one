@@ -498,6 +498,40 @@ deny = ["github.com", "de.wikipedia.org"]
     assert box.commands[-1][:3] == ["openshell", "provider", "delete"]
 
 
+def test_dashboard_with_a_token_serves_only_the_link_that_holds_it(tmp_path):
+    import threading
+    import urllib.error
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    from frontier import dashboard
+
+    class Handler(dashboard._Handler):
+        root, token = tmp_path, "s3cret-token"
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+
+    def get(path, cookie=""):
+        req = urllib.request.Request(base + path, headers={"Cookie": cookie} if cookie else {})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status, r.headers.get("Set-Cookie", ""), r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, "", e.read()
+
+    try:
+        assert get("/")[0] == 403 and get("/api/state")[0] == 403 and get("/?t=wrong")[0] == 403
+        code, cookie, body = get("/?t=s3cret-token")
+        assert code == 200 and b"<html" in body.lower() and "HttpOnly" in cookie
+        code, _, body = get("/api/state", cookie.split(";")[0])
+        assert code == 200 and json.loads(body)["teams"] == []
+        assert get("/api/state", "frontier_dashboard=wrong")[0] == 403
+    finally:
+        srv.shutdown()
+
+
 def test_dashboard_activities_for_the_gantt():
     from frontier import dashboard
 
