@@ -3,6 +3,9 @@
     python3 -m frontier dashboard [--root DIR] [--port 8800]      # serve http://127.0.0.1:8800, refreshes itself
     python3 -m frontier dashboard --once race.html                 # a static snapshot
 
+With FRONTIER_DASHBOARD_TOKEN set, every request needs that token: `?t=<token>` once (the reply sets a cookie), then
+the cookie. A dashboard reachable from the Internet (tools/race_vm.py) is served this way, behind HTTPS.
+
 Read-only: it reads the framework's ledgers (llm.jsonl, resources.json, events.jsonl, budgets.json, delivery.json)
 and the harness session logs; it writes nothing in the missions.
 """
@@ -10,9 +13,13 @@ and the harness session logs; it writes nothing in the missions.
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
+import os
 import pathlib
 import sys
+import urllib.parse
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .budget import Budget, now, parse_time, read_json, read_jsonl
@@ -262,11 +269,26 @@ PAGE = (pathlib.Path(__file__).with_name("dashboard.html")).read_text()
 
 class _Handler(BaseHTTPRequestHandler):
     root: pathlib.Path = ROOT_DEFAULT
+    token: str = ""
 
     def log_message(self, *a):
         pass
 
+    def _given(self) -> tuple[str, str]:
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("t", [""])[0]
+        cookie = SimpleCookie(self.headers.get("Cookie", "")).get("frontier_dashboard")
+        return query, cookie.value if cookie else ""
+
     def do_GET(self):
+        query, cookie = self._given()
+        if self.token and not any(hmac.compare_digest(x.encode(), self.token.encode()) for x in (query, cookie)):
+            body = b"forbidden: open the dashboard with the link that holds its token (?t=...)\n"
+            self.send_response(403)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path.startswith("/api/state"):
             body, ctype = json.dumps(snapshot(self.root)).encode(), "application/json"
         else:
@@ -274,6 +296,8 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        if self.token and query:  # the page's own api/state calls then carry the cookie
+            self.send_header("Set-Cookie", f"frontier_dashboard={self.token}; Path=/; HttpOnly; SameSite=Strict")
         self.end_headers()
         self.wfile.write(body)
 
@@ -292,6 +316,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"wrote {a.once}")
         return 0
     _Handler.root = root
+    _Handler.token = os.environ.get("FRONTIER_DASHBOARD_TOKEN", "")
     srv = ThreadingHTTPServer((a.host, a.port), _Handler)
     print(f"dashboard on http://{a.host}:{a.port} for {root}", file=sys.stderr)
     srv.serve_forever()
