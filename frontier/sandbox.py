@@ -136,7 +136,7 @@ FROM {base}
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip git curl ca-certificates \\
     && rm -rf /var/lib/apt/lists/*
 {trust}RUN {install or 'true'}
-RUN python3 -m pip install --break-system-packages --no-cache-dir huggingface_hub
+RUN python3 -m pip install --break-system-packages --no-cache-dir huggingface_hub sympy
 RUN useradd -m -s /bin/bash sandbox && mkdir -p /sandbox && chown -R sandbox:sandbox /sandbox
 COPY frontier {IN_ROOT}
 ENV PATH={IN_ROOT}/bin:$PATH

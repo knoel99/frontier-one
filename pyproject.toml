@@ -11,7 +11,8 @@ dependencies = []
 
 [project.optional-dependencies]
 publish = ["huggingface_hub>=1.0"]
-dev = ["pytest", "ruff", "pyyaml"]
+math = ["sympy"]
+dev = ["pytest", "ruff", "pyyaml", "sympy"]
 
 [project.scripts]
 frontier = "frontier.__main__:main"

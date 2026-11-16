@@ -62,6 +62,7 @@ decision, not approved.
 | F29 | Jury: anonymity and leak check | `frontier jury --root --subject --context --out --judge ...` | `jury.py` | two teams whose files name their provider, model and harness: names replaced by `[redacted]`, none left in the judges' files, no judge on its own provider; with redaction off, every file refused with no call made; the jury's ledger under `--cap-usd` (verify_live F29) | 1 |
 | F30 | Scoring v3 and `mission red-flag` | `frontier mission red-flag <state> --minutes --reason` | `scoring.py`, `jury.facts` | `frontier jury` writes `jury.json`: every team's quality, code and data, efficiency and final recomputed independently from the judges' grades; a red flag of 10 min takes 10 min off the counted time; a bad red flag exits 2 (verify_live F29) | 1 |
 | F31 | The fixes of PRs #10 to #16 | — | each fix's regression test | every fix has a regression test that passes, and the live checks that reach it (sub-agents with `tools=[]`, metered jury calls, streamed calls, raw cloud calls refused) pass | 0, 1, 2 |
+| F32 | Symbolic algebra and calculus | `sympy` | `symbolic.py` | an integral, an ODE and an identity computed by a real SymPy; a loop killed at its time limit with the process it started; an answer that begins with "error" not read as a failure; a flood of output stopped; a missing SymPy reported with its fix (`tests/test_frontier.py`) | 0 |
 
 ## Usability: what "usable" means, measured at level 3
 

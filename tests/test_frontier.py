@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+import time
 
 import pytest
 
@@ -417,3 +420,79 @@ def test_a_request_body_never_shares_a_value_with_the_config(cfg):
     body["text"]["verbosity"] = "high"
     body["tags"].append("b")
     assert spec.extra == {"text": {"verbosity": "low"}, "tags": ["a"]}
+
+
+# ---------------------------------------------------------------- symbolic computation
+
+
+@pytest.fixture
+def sympy(tmp_path, monkeypatch):
+    """The `sympy` tool as the MCP server serves it: (code, **arguments) -> (answer, failed)."""
+    pytest.importorskip("sympy")
+    from frontier import mcp
+
+    monkeypatch.setenv("FRONTIER_RUNS", str(tmp_path / "runs"))
+    monkeypatch.setenv("FRONTIER_WORKSPACE", str(tmp_path))
+    srv = mcp.Server()
+    return lambda code, **kw: srv.call("sympy", {"code": code, **kw})
+
+
+def test_sympy_computes_and_prints_the_last_expression(sympy):
+    assert sympy("integrate(exp(-x**2), (x, -oo, oo))") == ("sqrt(pi)\nlatex: \\sqrt{\\pi}", False)
+    assert sympy("dsolve(f(t).diff(t, 2) + 4*f(t), f(t))")[0].startswith("Eq(f(t), C1*sin(2*t) + C2*cos(2*t))")
+    assert sympy("print(solve(x**2 - 2, x))\nprint(sin(2*x).equals(2*sin(x)*cos(x)), sin(x).equals(x))") == \
+        ("[-sqrt(2), sqrt(2)]\nTrue False", False)
+    assert sympy("a = 3")[0].startswith("no output")
+    assert sympy("x.is_positive") == ("None", False)  # None is an answer: what SymPy says when it cannot decide
+    assert sympy("print(1)") == ("1", False) and sympy("[1, 2]") == ("[1, 2]", False)  # no None, no LaTeX of plain values
+    assert sympy("{x**2}")[0].endswith("latex: \\left\\{x^{2}\\right\\}")
+    assert sympy("import warnings\nwarnings.warn('careful')\n1 + 1")[0].startswith("2\n--- stderr\n")
+
+
+def test_sympy_states_its_failures_itself_whatever_the_code_prints_or_names(sympy, tmp_path):
+    assert sympy('print("error bound:", N(pi - Rational(22, 7), 5))') == ("error bound: -0.0012645", False)
+    assert sympy("refused = symbols('refused')\nrefused + 1")[1] is False
+    failed, err = sympy("print('before')\n1/0")
+    assert err and failed.startswith('error: File "<code>", line 2') and "ZeroDivisionError" in failed and failed.endswith("before")
+    assert sympy("x = = 1")[0].startswith('error: File "<code>", line 1')
+    for code in ("latex = 1\nx + 1", "print = 3\nx + 1", "ast = Symbol('ast')\nast - ast + x + 1"):
+        assert sympy(code) == ("x + 1\nlatex: x + 1", False)  # the code's names are not the runner's
+    (tmp_path / "sympy.py").write_text("raise SystemExit('the workspace file was imported')")
+    assert sympy("1 + 1") == ("2", False)  # sympy.py of the workspace does not stand for SymPy
+
+
+def test_sympy_ends_a_run_and_what_it_started_at_the_limit_and_bounds_its_output(sympy, monkeypatch):
+    from frontier import symbolic
+
+    out, err = sympy("import subprocess\nprint(subprocess.Popen(['sleep', '300']).pid, flush=True)\nwhile True: pass", timeout_s=1)
+    assert err and out.startswith("error: no result after 1 s (timeout_s sets the limit)\n--- printed before\n")
+    for _ in range(20):  # the process the code started is gone with it (killed: at most a zombie nobody reaped yet)
+        state = subprocess.run(["ps", "-o", "stat=", "-p", out.splitlines()[-1]], capture_output=True, text=True, check=False).stdout
+        if state.strip()[:1] in ("", "Z"):
+            break
+        time.sleep(0.1)
+    else:
+        pytest.fail(f"still running after the limit: {state!r}")
+    assert sympy("1", timeout_s=-1) == ("1", False)  # not a limit: the default one
+    long, err = sympy("print('a' * 30000 + 'z')")
+    assert not err and len(long) <= 20000 and "chars cut" in long and long.endswith("z")
+    monkeypatch.setattr(symbolic, "OUTPUT_MAX", 10_000)
+    flood, err = sympy("while True: print('step')")
+    assert err and flood.startswith("error: the code printed more than")
+
+
+def test_sympy_missing_names_the_fix(run, tmp_path, monkeypatch):
+    subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(tmp_path / "bare")], check=True)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "bare" / "bin" / "python"))
+    (run.workspace / "sympy.py").write_text("")  # a workspace file of that name does not hide the fix
+    answer = tools.REGISTRY["sympy"].fn(agent_mod.Ctx(run, None), "1 + 1")
+    assert answer.failed and answer.startswith("error: sympy cannot be imported") and answer.endswith("pip install sympy")
+
+
+def test_the_sympy_tool_is_served_as_a_tool_that_runs_code(tmp_path, monkeypatch):
+    from frontier import mcp
+
+    monkeypatch.setenv("FRONTIER_RUNS", str(tmp_path))
+    spec = next(t for t in mcp.Server().tool_specs() if t["name"] == "sympy")
+    assert spec["annotations"]["destructiveHint"] and spec["annotations"]["openWorldHint"]  # it runs any Python code
+    assert "sympy" in tools.all_tools()

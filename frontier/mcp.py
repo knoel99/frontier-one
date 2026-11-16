@@ -11,7 +11,7 @@ Settings (environment of the server, set in the harness's MCP config):
   FRONTIER_WORKSPACE      workspace of the sub-agents (default: current directory)
   FRONTIER_PROVIDER       default provider of sub-agents (default: config default_provider)
   FRONTIER_ALLOW_SPEND=1  allow creating cloud resources (default: read-only)
-  FRONTIER_TOOLS          comma-separated groups or tool names to expose (default: "agents,infra,budget,hf,mission")
+  FRONTIER_TOOLS          comma-separated groups or tool names to expose (default: "agents,infra,budget,hf,math,mission")
   FRONTIER_KEEP_RESOURCES=1  do not delete the session's cloud resources when the server stops
   FRONTIER_SESSION        name of the session directory under runs/ (default: mcp-<date>-<pid>); the ledger
                           (resources.json) of an existing session is reloaded, so a restarted server keeps it
@@ -34,7 +34,7 @@ from . import infra, llm
 from .agent import Agent, Ctx, Run, roles_summary
 from .config import ROOT, load_config
 from .tools import GROUPS as TOOL_GROUPS
-from .tools import REGISTRY
+from .tools import REGISTRY, failed
 
 # Revisions this server answers with the initialize handshake (it also answers server/discover and calls made
 # without a handshake). The stateless 2026-07-28 revision is only partly covered: see docs/STANDARDS.md.
@@ -42,7 +42,8 @@ SUPPORTED = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
 PROTOCOL = SUPPORTED[0]
 INSTRUCTIONS = ("Sub-agents on any model API with a chosen provider, tier, reasoning level and speed mode (spawn_agent); "
                 "cloud compute on Scaleway and Runpod under budgets; budget and time status; Hugging Face publishing; "
-                "mission delivery. TOOLS.md of the workspace lists models, prices, offers and budgets.")
+                "symbolic algebra and calculus (sympy); mission delivery. TOOLS.md of the workspace lists models, prices, "
+                "offers and budgets.")
 # MCP tool annotations (hints for the client: read-only, destructive, idempotent, reaches outside services).
 _READ_LOCAL = {"frontier_plan", "frontier_roles", "api_docs", "budget_status", "mission_status", "infra_resources"}
 _READ_REMOTE = {"scw_offers", "scw_instance", "scw_list_instances", "rp_offers", "rp_pod", "rp_list_pods", "rp_logs", "hf_whoami"}
@@ -130,10 +131,10 @@ class Server:
         if name == "frontier_roles":
             return roles_summary(), False
         try:
-            out = str(REGISTRY[name].fn(Ctx(self.run, self.root), **args))
+            answer = REGISTRY[name].fn(Ctx(self.run, self.root), **args)
         except Exception as e:  # noqa: BLE001 - a failed call is an answer for the harness, and a line in the log
-            out = f"error: {type(e).__name__}: {e}"
-        err = out.startswith(("error", "refused"))
+            answer = f"error: {type(e).__name__}: {e}"
+        out, err = str(answer), failed(answer)
         self.run.log(event="mcp_call", tool=name, arguments=json.dumps(args)[:2000], output=out[:1000], error=err)
         return out, err
 

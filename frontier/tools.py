@@ -14,7 +14,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from . import budget, catalog, hf, infra
+from . import budget, catalog, hf, infra, symbolic
 from .http import mcp_call, request, scw_raw
 
 
@@ -27,6 +27,31 @@ class Tool:
 
     def spec(self) -> dict:
         return {"name": self.name, "description": self.description, "parameters": self.parameters}
+
+
+class Answer(str):
+    """A tool's answer that states whether the call failed. A plain `str` answer failed when it starts with "error" or
+    "refused"; a tool whose answer can start with any text (the caller's own output) returns an Answer."""
+
+    failed: bool
+
+    def __new__(cls, text: str, failed: bool):
+        self = super().__new__(cls, text)
+        self.failed = failed
+        return self
+
+
+def failed(answer) -> bool:
+    return answer.failed if isinstance(answer, Answer) else str(answer).startswith(("error", "refused"))
+
+
+def _truncate(s: str, n: int) -> str:
+    """`s` in at most n characters: its head and its tail around a note of what was cut (an answer cut once is not cut
+    again)."""
+    if len(s) <= n:
+        return s
+    keep = max(n - 40, 0)  # 40: room for the note
+    return s[: keep - keep // 2] + f"\n…[{len(s) - keep} chars cut]…\n" + s[len(s) - keep // 2:]
 
 
 def _obj(props: dict, required: list[str] | tuple = ()) -> dict:
@@ -76,6 +101,12 @@ def t_edit_file(ctx, path: str, old: str, new: str) -> str:
         return f"error: `old` occurs {n} times in {path}; it must occur exactly once"
     p.write_text(s.replace(old, new))
     return f"edited {path}"
+
+
+def t_sympy(ctx, code: str, timeout_s: float = 0) -> Answer:
+    limit = float(timeout_s) if float(timeout_s or 0) >= 1 else float(ctx.limits.get("sympy_timeout_s", 120))
+    text, bad = symbolic.run(code, ctx.workspace, limit)
+    return Answer(_truncate(text, ctx.limits.get("tool_output_chars", 20000)), bad)
 
 
 def t_http_request(ctx, method: str, url: str, headers: dict | None = None, body=None) -> str:
@@ -247,6 +278,14 @@ register("hf_publish", "Create (if needed) a Hugging Face repository (model, dat
          _obj({"repo_name": S, "folder": S, "repo_type": {"type": "string", "enum": ["model", "dataset", "space"]},
                "namespace": S, "commit_message": S, "space_sdk": S}, ["repo_name", "folder"]), hf.hf_publish)
 
+register("sympy", "Symbolic algebra and calculus: run Python code with SymPy (simplify, solve, linear algebra, diff, "
+         "integrate, limit, series, dsolve, exact and arbitrary-precision numbers) in a process of its own, killed with "
+         "the processes it started after timeout_s (default 120, at least 1). Already defined, as in isympy: `from sympy "
+         "import *`, symbols x y z t, integers k m n, functions f g h. Returns what the code prints, then the value of "
+         "a last expression, with its LaTeX form when it is a SymPy object. `a.equals(b)` tests an identity: True, "
+         "False, or None when SymPy cannot decide. A run may print, or write to one file, 10 MB at most.",
+         _obj({"code": S, "timeout_s": I}, ["code"]), t_sympy)
+
 def t_deliver(ctx, summary: str = "", force: bool = False) -> str:
     from .mission import deliver  # late import: mission builds on the agent and harness modules
 
@@ -277,7 +316,7 @@ INFRA_TOOLS = ["scw_offers", "scw_create_instance", "scw_instance", "scw_list_in
                "rp_offers", "rp_create_pod", "rp_pod", "rp_list_pods", "rp_exec", "rp_upload", "rp_logs", "rp_delete_pod",
                "infra_resources", "infra_cleanup", "api_docs", "scaleway", "runpod_mcp"]
 GROUPS = {"base": BASE_TOOLS, "infra": INFRA_TOOLS, "budget": ["mission_status", "budget_status"], "hf": ["hf_whoami", "hf_publish"],
-          "mission": ["deliver"]}
+          "math": ["sympy"], "mission": ["deliver"]}
 
 
 def all_tools() -> list[str]:
