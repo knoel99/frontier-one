@@ -172,7 +172,7 @@ input = 1.5
 output = 4.5
 cache_read = 0.075
 cache_write = 1.875
-source = "https://www.alibabacloud.com/help/en/model-studio/model-pricing (Singapore, International)"
+source = "https://www.qwencloud.com/models/qwen4-max?region=ap-southeast-1"
 date = "2026-11-16"
 manual = true
 
