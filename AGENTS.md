@@ -34,5 +34,6 @@ nothing enforces is the last resort.
 | A JSON file is written with `budget.write_json`; a JSON state file is changed with `budget.update_json`; a lock is taken with `budget.locked` | `tests/test_rules.py` |
 | Every `subprocess.run` states `check`; with `check=False` the code reads the exit status | ruff `PLW1510` |
 | An `except Exception` carries its reason on its line | ruff `BLE` |
+| Parallel model calls never spend more than the cap together, in any order of their steps (`budget.py`: `call`, `Call`, `reserve`, `release`, `_fits`) | `tests/test_call_orders.py` runs every order on the real code |
 | Under a cloud budget, the raw-call lists of `frontier/tools.py` name what is free; the rest is refused | the guard itself; `test_raw_cloud_calls_the_framework_does_not_know_are_refused_under_a_budget` |
 | A harness recipe (`config/harnesses.toml`, `frontier/harnesses.py`) changes only with a live session of that harness behind it; the changed line states the version and the date | nothing: the check needs the vendor's CLI, a key and a paid session |
