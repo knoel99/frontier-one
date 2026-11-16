@@ -1,0 +1,1599 @@
+{
+  "schema_version": 1,
+  "diagram_type": "waterfall",
+  "meta": {
+    "title": "Level 2: the scripts, commands and threads of one launch, on one clock (measured)",
+    "locale": "en",
+    "output": "docs/diagrams/launch-2-timeline.html",
+    "evidence": "measured",
+    "unit": "s",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/knoel99/frontier-one",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "db900a09070221944703e0be8cc9545175d92dc7"
+    }
+  },
+  "spans": [
+    {
+      "id": "start",
+      "name": "python3 -m frontier mission start",
+      "service": "launcher main thread",
+      "start": 0.0,
+      "end": 18.6181,
+      "detail": "The first owner command (sim/run.sh). Its exit is not recorded: the bar ends at the first event of the next command, which run.sh starts after it.",
+      "sources": [
+        {
+          "path": "bin/frontier",
+          "line": 1,
+          "end_line": 5,
+          "label": "python3 -m frontier"
+        },
+        {
+          "path": "frontier/__main__.py",
+          "line": 108,
+          "end_line": 118,
+          "label": "cmd_mission"
+        }
+      ]
+    },
+    {
+      "id": "imports",
+      "name": "interpreter start, imports",
+      "service": "launcher main thread",
+      "start": 0.0,
+      "end": 0.1132,
+      "parent": "start",
+      "detail": "From the trace hook's first event to the call of __main__.main.",
+      "sources": [
+        {
+          "path": "frontier/__main__.py",
+          "line": 3,
+          "end_line": 14,
+          "label": "imports"
+        }
+      ]
+    },
+    {
+      "id": "main",
+      "name": "__main__.main → launcher.start",
+      "service": "launcher main thread",
+      "start": 0.1132,
+      "end": 18.5701,
+      "parent": "start",
+      "detail": "Ends at the thread's last event, the read of delivery.json for the final print.",
+      "sources": [
+        {
+          "path": "frontier/__main__.py",
+          "line": 171,
+          "end_line": 234,
+          "label": "main"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 382,
+          "end_line": 451,
+          "label": "start"
+        }
+      ]
+    },
+    {
+      "id": "prepare",
+      "name": "mission.prepare",
+      "service": "launcher main thread",
+      "start": 0.1321,
+      "end": 12.4429,
+      "parent": "main",
+      "detail": "Writes the workspace and the state before any session.",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 310,
+          "end_line": 384,
+          "label": "prepare"
+        }
+      ]
+    },
+    {
+      "id": "mload",
+      "name": "mission.load (mission.toml)",
+      "service": "launcher main thread",
+      "start": 0.1335,
+      "end": 0.1388,
+      "parent": "prepare",
+      "detail": "harness.name auto: codex for provider openai.",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 42,
+          "end_line": 59,
+          "label": "load"
+        }
+      ]
+    },
+    {
+      "id": "gitinit",
+      "name": "git init -q ws",
+      "service": "subprocess",
+      "start": 0.1431,
+      "end": 0.1477,
+      "parent": "prepare",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 319,
+          "end_line": 320,
+          "label": "git init"
+        }
+      ]
+    },
+    {
+      "id": "copy",
+      "name": "_copy_subject → ws/subject/",
+      "service": "launcher main thread",
+      "start": 0.1477,
+      "end": 0.1482,
+      "parent": "prepare",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 274,
+          "end_line": 290,
+          "label": "_copy_subject"
+        }
+      ]
+    },
+    {
+      "id": "caps",
+      "name": "Budget.set_caps → budgets.json",
+      "service": "launcher main thread",
+      "start": 0.1485,
+      "end": 0.149,
+      "parent": "prepare",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 325,
+          "end_line": 329,
+          "label": "caps"
+        },
+        {
+          "path": "frontier/budget.py",
+          "line": 227,
+          "end_line": 232,
+          "label": "set_caps"
+        }
+      ]
+    },
+    {
+      "id": "cred",
+      "name": "credentials.load",
+      "service": "launcher main thread",
+      "start": 0.149,
+      "end": 0.1495,
+      "parent": "prepare",
+      "detail": "Every key under its standard name; mission.json records where each came from.",
+      "sources": [
+        {
+          "path": "frontier/credentials.py",
+          "line": 105,
+          "end_line": 120,
+          "label": "load"
+        }
+      ]
+    },
+    {
+      "id": "mjson",
+      "name": "write mission.json",
+      "service": "launcher main thread",
+      "start": 0.1501,
+      "end": 0.1503,
+      "parent": "prepare",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 336,
+          "end_line": 348,
+          "label": "settings"
+        }
+      ]
+    },
+    {
+      "id": "ping",
+      "name": "_ping: key check (gpt-6-luna)",
+      "service": "launcher main thread",
+      "start": 0.1505,
+      "end": 1.1942,
+      "parent": "prepare",
+      "detail": "Budget.metered_chat reserves the worst case, then charges the call to llm.jsonl (source launcher).",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 293,
+          "end_line": 301,
+          "label": "_ping"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 353,
+          "end_line": 353,
+          "label": "pings"
+        }
+      ]
+    },
+    {
+      "id": "pchat",
+      "name": "metered_chat → llm.chat POST /responses",
+      "service": "launcher main thread",
+      "start": 0.155,
+      "end": 1.1925,
+      "parent": "ping",
+      "detail": "The HTTPS call to the OpenAI API; it ends when Call.charge runs.",
+      "sources": [
+        {
+          "path": "frontier/budget.py",
+          "line": 313,
+          "end_line": 329,
+          "label": "metered_chat"
+        },
+        {
+          "path": "frontier/llm.py",
+          "line": 475,
+          "end_line": 479,
+          "label": "chat"
+        }
+      ]
+    },
+    {
+      "id": "specs",
+      "name": "mcp.Server(...).tool_specs()",
+      "service": "launcher main thread",
+      "start": 1.1942,
+      "end": 1.1966,
+      "parent": "prepare",
+      "detail": "The tool list that TOOLS.md prints.",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 354,
+          "end_line": 354,
+          "label": "specs"
+        },
+        {
+          "path": "frontier/mcp.py",
+          "line": 108,
+          "end_line": 124,
+          "label": "tool_specs"
+        }
+      ]
+    },
+    {
+      "id": "inv",
+      "name": "tools_inventory → TOOLS.md text",
+      "service": "launcher main thread",
+      "start": 1.1966,
+      "end": 12.4261,
+      "parent": "prepare",
+      "detail": "Nearly all of it is the compute snapshot of _offers_section: 11.23 s of 11.23 s.",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 185,
+          "end_line": 231,
+          "label": "tools_inventory"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 128,
+          "end_line": 151,
+          "label": "_offers_section"
+        }
+      ]
+    },
+    {
+      "id": "scw",
+      "name": "infra.scw_offers(\"all\"): Scaleway",
+      "service": "launcher main thread",
+      "start": 1.1972,
+      "end": 10.5245,
+      "parent": "inv",
+      "detail": "10 zones one after the other, three paged API reads each; 0.67 to 1.46 s per zone.",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 72,
+          "end_line": 107,
+          "label": "scw_offers"
+        },
+        {
+          "path": "frontier/infra.py",
+          "line": 26,
+          "end_line": 26,
+          "label": "SCW_ZONES"
+        }
+      ]
+    },
+    {
+      "id": "z0",
+      "name": "zone fr-par-1",
+      "service": "launcher main thread",
+      "start": 1.1973,
+      "end": 2.5804,
+      "parent": "scw",
+      "detail": "Zone named from the loop order of SCW_ZONES; the trace records the call, not its argument.",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 84,
+          "end_line": 107,
+          "label": "one zone"
+        }
+      ]
+    },
+    {
+      "id": "z1",
+      "name": "zone fr-par-2",
+      "service": "launcher main thread",
+      "start": 2.5804,
+      "end": 3.6168,
+      "parent": "scw",
+      "detail": "Zone named from the loop order of SCW_ZONES; the trace records the call, not its argument.",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 84,
+          "end_line": 107,
+          "label": "one zone"
+        }
+      ]
+    },
+    {
+      "id": "z2",
+      "name": "zone fr-par-3",
+      "service": "launcher main thread",
+      "start": 3.6168,
+      "end": 5.0811,
+      "parent": "scw",
+      "detail": "Zone named from the loop order of SCW_ZONES; the trace records the call, not its argument.",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 84,
+          "end_line": 107,
+          "label": "one zone"
+        }
+      ]
+    },
+    {
+      "id": "z3",
+      "name": "zone nl-ams-1",
+      "service": "launcher main thread",
+      "start": 5.0811,
+      "end": 6.2379,
+      "parent": "scw",
+      "detail": "Zone named from the loop order of SCW_ZONES; the trace records the call, not its argument.",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 84,
+          "end_line": 107,
+          "label": "one zone"
+        }
+      ]
+    },
+    {
+      "id": "z4",
+      "name": "zone nl-ams-2",
+      "service": "launcher main thread",
+      "start": 6.2379,
+      "end": 6.9038,
+      "parent": "scw",
+      "detail": "Zone named from the loop order of SCW_ZONES; the trace records the call, not its argument.",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 84,
+          "end_line": 107,
+          "label": "one zone"
+        }
+      ]
+    },
+    {
+      "id": "z5",
+      "name": "zone nl-ams-3",
+      "service": "launcher main thread",
+      "start": 6.9038,
+      "end": 7.578,
+      "parent": "scw",
+      "detail": "Zone named from the loop order of SCW_ZONES; the trace records the call, not its argument.",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 84,
+          "end_line": 107,
+          "label": "one zone"
+        }
+      ]
+    },
+    {
+      "id": "z6",
+      "name": "zone pl-waw-1",
+      "service": "launcher main thread",
+      "start": 7.578,
+      "end": 8.3109,
+      "parent": "scw",
+      "detail": "Zone named from the loop order of SCW_ZONES; the trace records the call, not its argument.",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 84,
+          "end_line": 107,
+          "label": "one zone"
+        }
+      ]
+    },
+    {
+      "id": "z7",
+      "name": "zone pl-waw-2",
+      "service": "launcher main thread",
+      "start": 8.3109,
+      "end": 9.0685,
+      "parent": "scw",
+      "detail": "Zone named from the loop order of SCW_ZONES; the trace records the call, not its argument.",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 84,
+          "end_line": 107,
+          "label": "one zone"
+        }
+      ]
+    },
+    {
+      "id": "z8",
+      "name": "zone pl-waw-3",
+      "service": "launcher main thread",
+      "start": 9.0685,
+      "end": 9.7968,
+      "parent": "scw",
+      "detail": "Zone named from the loop order of SCW_ZONES; the trace records the call, not its argument.",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 84,
+          "end_line": 107,
+          "label": "one zone"
+        }
+      ]
+    },
+    {
+      "id": "z9",
+      "name": "zone it-mil-1",
+      "service": "launcher main thread",
+      "start": 9.7968,
+      "end": 10.5244,
+      "parent": "scw",
+      "detail": "Zone named from the loop order of SCW_ZONES; the trace records the call, not its argument.",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 84,
+          "end_line": 107,
+          "label": "one zone"
+        }
+      ]
+    },
+    {
+      "id": "rp1",
+      "name": "infra.rp_offers SECURE: Runpod",
+      "service": "launcher main thread",
+      "start": 10.5245,
+      "end": 11.4486,
+      "parent": "inv",
+      "detail": "One list-gpu-types call to Runpod's MCP API.",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 243,
+          "end_line": 260,
+          "label": "rp_offers"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 141,
+          "end_line": 150,
+          "label": "both clouds"
+        }
+      ]
+    },
+    {
+      "id": "rp2",
+      "name": "infra.rp_offers COMMUNITY: Runpod",
+      "service": "launcher main thread",
+      "start": 11.4486,
+      "end": 12.4261,
+      "parent": "inv",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 243,
+          "end_line": 260,
+          "label": "rp_offers"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 141,
+          "end_line": 150,
+          "label": "both clouds"
+        }
+      ]
+    },
+    {
+      "id": "files",
+      "name": "write TOOLS.md, MISSION.md, AGENTS.md, harness files",
+      "service": "launcher main thread",
+      "start": 12.4259,
+      "end": 12.442,
+      "parent": "prepare",
+      "detail": "From the TOOLS.md write to the .gitignore write.",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 356,
+          "end_line": 382,
+          "label": "writes"
+        }
+      ]
+    },
+    {
+      "id": "brief",
+      "name": "mission_brief → MISSION.md",
+      "service": "launcher main thread",
+      "start": 12.4262,
+      "end": 12.4267,
+      "parent": "files",
+      "detail": "Reads prompts/mission.md.",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 242,
+          "end_line": 258,
+          "label": "mission_brief"
+        }
+      ]
+    },
+    {
+      "id": "arts",
+      "name": "artifacts → .codex/, .agents/skills/frontier/SKILL.md",
+      "service": "launcher main thread",
+      "start": 12.4269,
+      "end": 12.4419,
+      "parent": "files",
+      "detail": ".codex/config.toml, .codex/agents/infra.toml and reviewer.toml, the frontier skill.",
+      "sources": [
+        {
+          "path": "frontier/harnesses.py",
+          "line": 170,
+          "end_line": 271,
+          "label": "artifacts"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 371,
+          "end_line": 375,
+          "label": "written"
+        }
+      ]
+    },
+    {
+      "id": "prepared",
+      "name": "events.jsonl: mission_prepared",
+      "service": "launcher main thread",
+      "start": 12.4421,
+      "end": 12.4429,
+      "parent": "prepare",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 383,
+          "end_line": 383,
+          "label": "run.log"
+        }
+      ]
+    },
+    {
+      "id": "hconf",
+      "name": "harness_conf: config/harnesses.toml",
+      "service": "launcher main thread",
+      "start": 12.4429,
+      "end": 12.4466,
+      "parent": "main",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 42,
+          "end_line": 52,
+          "label": "harness_conf"
+        },
+        {
+          "path": "config/harnesses.toml",
+          "line": 32,
+          "end_line": 47,
+          "label": "[codex]"
+        }
+      ]
+    },
+    {
+      "id": "snaps",
+      "name": "write_settings → snapshots.json",
+      "service": "launcher main thread",
+      "start": 12.4511,
+      "end": 12.4531,
+      "parent": "main",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 406,
+          "end_line": 408,
+          "label": "call"
+        },
+        {
+          "path": "frontier/snapshots.py",
+          "line": 46,
+          "end_line": 49,
+          "label": "write_settings"
+        }
+      ]
+    },
+    {
+      "id": "wd",
+      "name": "launcher watchdog thread",
+      "service": "launcher threads",
+      "start": 12.4518,
+      "end": 18.4887,
+      "parent": "main",
+      "detail": "Wakes every 10 s (CPU_SAMPLE_S): no tick fell in this run. Stopped by stop.set() in the 18.27 to 18.49 window; the bar ends at its upper bound.",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 276,
+          "end_line": 296,
+          "label": "_watchdog"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 409,
+          "end_line": 409,
+          "label": "thread"
+        }
+      ]
+    },
+    {
+      "id": "egress",
+      "name": "egress.start: outbound filter",
+      "service": "launcher main thread",
+      "start": 12.4533,
+      "end": 12.4541,
+      "parent": "main",
+      "detail": "Starts its serve_forever thread (standard library, not traced); it lives until the process exits.",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 415,
+          "end_line": 421,
+          "label": "deny list"
+        },
+        {
+          "path": "frontier/egress.py",
+          "line": 140,
+          "end_line": 145,
+          "label": "start"
+        }
+      ]
+    },
+    {
+      "id": "gw",
+      "name": "open_gateway → gateway.serve",
+      "service": "launcher main thread",
+      "start": 12.4542,
+      "end": 12.4645,
+      "parent": "main",
+      "detail": "The metering gateway's serve_forever thread is standard library code, not traced.",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 306,
+          "end_line": 321,
+          "label": "open_gateway"
+        },
+        {
+          "path": "frontier/gateway.py",
+          "line": 329,
+          "end_line": 341,
+          "label": "serve"
+        }
+      ]
+    },
+    {
+      "id": "setup",
+      "name": "harness_setup (recipe setup)",
+      "service": "launcher main thread",
+      "start": 12.4645,
+      "end": 12.5965,
+      "parent": "main",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 324,
+          "end_line": 329,
+          "label": "harness_setup"
+        },
+        {
+          "path": "config/harnesses.toml",
+          "line": 34,
+          "end_line": 34,
+          "label": "setup"
+        }
+      ]
+    },
+    {
+      "id": "bash",
+      "name": "bash -c \"printenv OPENAI_API_KEY | codex login\"",
+      "service": "subprocess",
+      "start": 12.4709,
+      "end": 12.5954,
+      "parent": "setup",
+      "detail": "The key reaches codex login on stdin.",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 327,
+          "end_line": 327,
+          "label": "subprocess.run"
+        }
+      ]
+    },
+    {
+      "id": "login",
+      "name": "codex login --with-api-key (stand-in)",
+      "service": "harness (stand-in)",
+      "start": 12.5019,
+      "end": 12.5858,
+      "parent": "bash",
+      "detail": "Stand-in process: from its first to its last event.",
+      "sources": [
+        {
+          "path": "config/harnesses.toml",
+          "line": 34,
+          "end_line": 34,
+          "label": "setup"
+        }
+      ]
+    },
+    {
+      "id": "stop1",
+      "name": "_stop_reason → \"\" (go)",
+      "service": "launcher main thread",
+      "start": 12.5965,
+      "end": 12.601,
+      "parent": "main",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 474,
+          "end_line": 501,
+          "label": "_stop_reason"
+        }
+      ]
+    },
+    {
+      "id": "run1",
+      "name": "run_one: session 1",
+      "service": "launcher main thread",
+      "start": 12.601,
+      "end": 18.2591,
+      "parent": "main",
+      "detail": "Then the metered check: the gateway charged the session, so no usage report is read.",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 332,
+          "end_line": 360,
+          "label": "run_one"
+        }
+      ]
+    },
+    {
+      "id": "build",
+      "name": "build_session: command and env",
+      "service": "launcher main thread",
+      "start": 12.6055,
+      "end": 12.6115,
+      "parent": "run1",
+      "detail": "Model gpt-6-astra, effort high, base URL on the gateway, HTTPS_PROXY on the egress filter.",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 67,
+          "end_line": 102,
+          "label": "build_session"
+        }
+      ]
+    },
+    {
+      "id": "exec",
+      "name": "session 1: codex exec -m gpt-6-astra (stand-in)",
+      "service": "harness (stand-in)",
+      "start": 12.6131,
+      "end": 18.2574,
+      "parent": "run1",
+      "detail": "From the spawn to the launcher's next event. The stand-in plays the AI in a few steps: a real session lasts as long as the AI works.",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 256,
+          "end_line": 267,
+          "label": "run_until"
+        },
+        {
+          "path": "config/harnesses.toml",
+          "line": 37,
+          "end_line": 43,
+          "label": "command, route_args"
+        }
+      ]
+    },
+    {
+      "id": "hload",
+      "name": "reads .codex/config.toml, AGENTS.md, skill, agents",
+      "service": "harness (stand-in)",
+      "start": 12.764,
+      "end": 12.7664,
+      "parent": "exec",
+      "detail": "The load order Codex documents; the stand-in reads the files and records a step for each.",
+      "sources": [
+        {
+          "path": "docs/HARNESSES.md",
+          "line": 32,
+          "end_line": 32,
+          "label": "Codex row"
+        }
+      ]
+    },
+    {
+      "id": "mcp",
+      "name": "bin/frontier-mcp --state … (MCP server)",
+      "service": "MCP server",
+      "start": 12.7671,
+      "end": 18.2425,
+      "parent": "exec",
+      "detail": "Started because .codex/config.toml names it; ends when the harness's wait returns.",
+      "sources": [
+        {
+          "path": "bin/frontier-mcp",
+          "line": 1,
+          "end_line": 6,
+          "label": "entry"
+        },
+        {
+          "path": "frontier/mcp.py",
+          "line": 217,
+          "end_line": 233,
+          "label": "main"
+        }
+      ]
+    },
+    {
+      "id": "mboot",
+      "name": "interpreter start, imports",
+      "service": "MCP server",
+      "start": 12.7671,
+      "end": 12.9434,
+      "parent": "mcp",
+      "sources": [
+        {
+          "path": "bin/frontier-mcp",
+          "line": 1,
+          "end_line": 6,
+          "label": "exec python3"
+        }
+      ]
+    },
+    {
+      "id": "minit",
+      "name": "Server.__init__: mission.json, Run, root Agent",
+      "service": "MCP server",
+      "start": 12.9481,
+      "end": 12.9569,
+      "parent": "mcp",
+      "sources": [
+        {
+          "path": "frontier/mcp.py",
+          "line": 83,
+          "end_line": 106,
+          "label": "__init__"
+        }
+      ]
+    },
+    {
+      "id": "mwd",
+      "name": "MCP watchdog thread",
+      "service": "MCP server",
+      "start": 12.9568,
+      "end": 18.2113,
+      "parent": "mcp",
+      "detail": "Wakes every 60 s (WATCHDOG_S): no tick fell in this run.",
+      "sources": [
+        {
+          "path": "frontier/mcp.py",
+          "line": 176,
+          "end_line": 182,
+          "label": "_watchdog"
+        }
+      ]
+    },
+    {
+      "id": "stdio",
+      "name": "serve_stdio: a pool thread per JSON-RPC line",
+      "service": "MCP server",
+      "start": 12.9569,
+      "end": 18.2113,
+      "parent": "mcp",
+      "detail": "Ends when the harness closes stdin and the calls in flight are done.",
+      "sources": [
+        {
+          "path": "frontier/mcp.py",
+          "line": 185,
+          "end_line": 214,
+          "label": "serve_stdio"
+        }
+      ]
+    },
+    {
+      "id": "mshut",
+      "name": "Server.shutdown, exit",
+      "service": "MCP server",
+      "start": 18.2113,
+      "end": 18.2425,
+      "parent": "mcp",
+      "sources": [
+        {
+          "path": "frontier/mcp.py",
+          "line": 167,
+          "end_line": 173,
+          "label": "shutdown"
+        }
+      ]
+    },
+    {
+      "id": "hinit",
+      "name": "initialize, tools/list",
+      "service": "harness (stand-in)",
+      "start": 12.7682,
+      "end": 12.9596,
+      "parent": "exec",
+      "detail": "The harness waits here while the MCP server starts.",
+      "sources": [
+        {
+          "path": "frontier/mcp.py",
+          "line": 141,
+          "end_line": 165,
+          "label": "handle"
+        }
+      ]
+    },
+    {
+      "id": "ainit",
+      "name": "answers initialize, tools/list",
+      "service": "MCP server",
+      "start": 12.9574,
+      "end": 12.9596,
+      "parent": "hinit",
+      "detail": "Ends when the harness has read the reply.",
+      "sources": [
+        {
+          "path": "frontier/mcp.py",
+          "line": 145,
+          "end_line": 154,
+          "label": "initialize, tools/list"
+        }
+      ]
+    },
+    {
+      "id": "hmodel",
+      "name": "model call through the gateway",
+      "service": "harness (stand-in)",
+      "start": 12.9609,
+      "end": 17.1034,
+      "parent": "exec",
+      "detail": "One POST /openai/v1/responses to the metering gateway (gpt-6-astra, 66 in / 34 out tokens, 0.00236 USD in llm.jsonl).",
+      "sources": [
+        {
+          "path": "config/harnesses.toml",
+          "line": 43,
+          "end_line": 43,
+          "label": "route_args"
+        }
+      ]
+    },
+    {
+      "id": "proxy",
+      "name": "gateway request thread: _proxy",
+      "service": "launcher threads",
+      "start": 12.9808,
+      "end": 17.1046,
+      "parent": "exec",
+      "detail": "Serves the harness's model call: reserves the worst case (Budget.call), adds the milestone and snapshot notices, forwards, charges; ends at its thread's last event, the release of the reservation, just after the harness has its answer.",
+      "sources": [
+        {
+          "path": "frontier/gateway.py",
+          "line": 196,
+          "end_line": 222,
+          "label": "_proxy"
+        }
+      ]
+    },
+    {
+      "id": "fwd",
+      "name": "_forward → api.openai.com, charge",
+      "service": "launcher threads",
+      "start": 12.9867,
+      "end": 17.1039,
+      "parent": "proxy",
+      "sources": [
+        {
+          "path": "frontier/gateway.py",
+          "line": 224,
+          "end_line": 315,
+          "label": "_forward"
+        }
+      ]
+    },
+    {
+      "id": "hbs",
+      "name": "tools/call budget_status",
+      "service": "harness (stand-in)",
+      "start": 17.1037,
+      "end": 17.1089,
+      "parent": "exec",
+      "sources": [
+        {
+          "path": "frontier/mcp.py",
+          "line": 155,
+          "end_line": 158,
+          "label": "tools/call"
+        }
+      ]
+    },
+    {
+      "id": "mbs",
+      "name": "infra.budget_status",
+      "service": "MCP server",
+      "start": 17.1042,
+      "end": 17.1077,
+      "parent": "hbs",
+      "detail": "infra.enforce, then Budget.status.",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 465,
+          "end_line": 471,
+          "label": "budget_status"
+        }
+      ]
+    },
+    {
+      "id": "hsa",
+      "name": "tools/call spawn_agent",
+      "service": "harness (stand-in)",
+      "start": 17.109,
+      "end": 18.1028,
+      "parent": "exec",
+      "sources": [
+        {
+          "path": "frontier/mcp.py",
+          "line": 155,
+          "end_line": 158,
+          "label": "tools/call"
+        }
+      ]
+    },
+    {
+      "id": "msa",
+      "name": "agent.t_spawn_agent (tier light, low)",
+      "service": "MCP server",
+      "start": 17.1094,
+      "end": 18.1009,
+      "parent": "hsa",
+      "sources": [
+        {
+          "path": "frontier/agent.py",
+          "line": 249,
+          "end_line": 277,
+          "label": "t_spawn_agent"
+        }
+      ]
+    },
+    {
+      "id": "sachat",
+      "name": "run_task → metered_chat → llm.chat",
+      "service": "MCP server",
+      "start": 17.1174,
+      "end": 18.0928,
+      "parent": "msa",
+      "detail": "gpt-6-luna, 229 in / 5 out tokens (llm.jsonl, source spawn_agent); through the egress filter.",
+      "sources": [
+        {
+          "path": "frontier/agent.py",
+          "line": 192,
+          "end_line": 231,
+          "label": "run_task"
+        },
+        {
+          "path": "frontier/budget.py",
+          "line": 313,
+          "end_line": 329,
+          "label": "metered_chat"
+        }
+      ]
+    },
+    {
+      "id": "connect",
+      "name": "egress request thread: CONNECT api.openai.com",
+      "service": "launcher threads",
+      "start": 17.1302,
+      "end": 17.1563,
+      "parent": "sachat",
+      "detail": "Deny check, upstream tunnel, events.jsonl line; ends where the byte relay (_relay) starts. The relay's end is not recorded.",
+      "sources": [
+        {
+          "path": "frontier/egress.py",
+          "line": 73,
+          "end_line": 84,
+          "label": "do_CONNECT"
+        }
+      ]
+    },
+    {
+      "id": "hfiles",
+      "name": "writes DECISIONS.md, COMPLIANCE.md, DELIVERY.md, report.md",
+      "service": "harness (stand-in)",
+      "start": 18.103,
+      "end": 18.1034,
+      "parent": "exec",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 36,
+          "end_line": 36,
+          "label": "REQUIRED"
+        }
+      ]
+    },
+    {
+      "id": "hdl",
+      "name": "tools/call deliver",
+      "service": "harness (stand-in)",
+      "start": 18.1034,
+      "end": 18.2107,
+      "parent": "exec",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 27,
+          "end_line": 29,
+          "label": "FIRST_PROMPT"
+        }
+      ]
+    },
+    {
+      "id": "mdl",
+      "name": "tools.t_deliver → mission.deliver",
+      "service": "MCP server",
+      "start": 18.1038,
+      "end": 18.2095,
+      "parent": "hdl",
+      "detail": "Checks the required files, cleanup, COSTS.md, delivery.json, frozen caps, commit and tag, Hub (none here).",
+      "sources": [
+        {
+          "path": "frontier/tools.py",
+          "line": 289,
+          "end_line": 292,
+          "label": "t_deliver"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 476,
+          "end_line": 513,
+          "label": "deliver"
+        }
+      ]
+    },
+    {
+      "id": "mcommit",
+      "name": "snapshots.commit(\"Delivery…\", tag)",
+      "service": "MCP server",
+      "start": 18.1346,
+      "end": 18.2079,
+      "parent": "mdl",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 507,
+          "end_line": 507,
+          "label": "call"
+        },
+        {
+          "path": "frontier/snapshots.py",
+          "line": 186,
+          "end_line": 203,
+          "label": "commit"
+        }
+      ]
+    },
+    {
+      "id": "madd",
+      "name": "git add -A",
+      "service": "subprocess",
+      "start": 18.1346,
+      "end": 18.1398,
+      "parent": "mcommit",
+      "sources": [
+        {
+          "path": "frontier/snapshots.py",
+          "line": 196,
+          "end_line": 196,
+          "label": "add"
+        }
+      ]
+    },
+    {
+      "id": "mgcommit",
+      "name": "git commit -q -m Delivery",
+      "service": "subprocess",
+      "start": 18.1398,
+      "end": 18.2056,
+      "parent": "mcommit",
+      "sources": [
+        {
+          "path": "frontier/snapshots.py",
+          "line": 198,
+          "end_line": 199,
+          "label": "commit"
+        }
+      ]
+    },
+    {
+      "id": "mtag",
+      "name": "git tag -f delivery",
+      "service": "subprocess",
+      "start": 18.2057,
+      "end": 18.2079,
+      "parent": "mcommit",
+      "sources": [
+        {
+          "path": "frontier/snapshots.py",
+          "line": 203,
+          "end_line": 203,
+          "label": "tag"
+        }
+      ]
+    },
+    {
+      "id": "c1",
+      "name": "snapshots.commit(\"Session 1\")",
+      "service": "launcher main thread",
+      "start": 18.2591,
+      "end": 18.2671,
+      "parent": "main",
+      "detail": "git commit exits non-zero (deliver committed the tree at 18.14), so commit() runs git status.",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 441,
+          "end_line": 441,
+          "label": "call"
+        },
+        {
+          "path": "frontier/snapshots.py",
+          "line": 186,
+          "end_line": 203,
+          "label": "commit"
+        }
+      ]
+    },
+    {
+      "id": "c1add",
+      "name": "git add -A",
+      "service": "subprocess",
+      "start": 18.2591,
+      "end": 18.2618,
+      "parent": "c1",
+      "sources": [
+        {
+          "path": "frontier/snapshots.py",
+          "line": 196,
+          "end_line": 196,
+          "label": "add"
+        }
+      ]
+    },
+    {
+      "id": "c1commit",
+      "name": "git commit -q -m Session 1 (nothing)",
+      "service": "subprocess",
+      "start": 18.2618,
+      "end": 18.2648,
+      "parent": "c1",
+      "sources": [
+        {
+          "path": "frontier/snapshots.py",
+          "line": 198,
+          "end_line": 199,
+          "label": "commit"
+        }
+      ]
+    },
+    {
+      "id": "c1status",
+      "name": "git status --porcelain",
+      "service": "subprocess",
+      "start": 18.2649,
+      "end": 18.2671,
+      "parent": "c1",
+      "sources": [
+        {
+          "path": "frontier/snapshots.py",
+          "line": 200,
+          "end_line": 202,
+          "label": "status"
+        }
+      ]
+    },
+    {
+      "id": "stop2",
+      "name": "_stop_reason → \"delivered\", stop, gw.shutdown",
+      "service": "launcher main thread",
+      "start": 18.2671,
+      "end": 18.4887,
+      "parent": "main",
+      "detail": "No event between _stop_reason and finish: the check returns at once, then stop.set() and gw.shutdown() (standard library, not traced).",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 474,
+          "end_line": 477,
+          "label": "delivered"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 442,
+          "end_line": 445,
+          "label": "finally"
+        }
+      ]
+    },
+    {
+      "id": "finish",
+      "name": "finish",
+      "service": "launcher main thread",
+      "start": 18.4887,
+      "end": 18.5701,
+      "parent": "main",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 454,
+          "end_line": 471,
+          "label": "finish"
+        }
+      ]
+    },
+    {
+      "id": "leftovers",
+      "name": "end_leftovers (scans /proc)",
+      "service": "launcher main thread",
+      "start": 18.4888,
+      "end": 18.4949,
+      "parent": "finish",
+      "detail": "No process left by the harness.",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 214,
+          "end_line": 245,
+          "label": "end_leftovers"
+        }
+      ]
+    },
+    {
+      "id": "final",
+      "name": "final_costs → COSTS.md, delivery.json",
+      "service": "launcher main thread",
+      "start": 18.4951,
+      "end": 18.5001,
+      "parent": "finish",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 516,
+          "end_line": 527,
+          "label": "final_costs"
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "name": "snapshots.commit(\"Delivery\", tag)",
+      "service": "launcher main thread",
+      "start": 18.5001,
+      "end": 18.5701,
+      "parent": "finish",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 465,
+          "end_line": 465,
+          "label": "call"
+        },
+        {
+          "path": "frontier/snapshots.py",
+          "line": 186,
+          "end_line": 203,
+          "label": "commit"
+        }
+      ]
+    },
+    {
+      "id": "c2add",
+      "name": "git add -A",
+      "service": "subprocess",
+      "start": 18.5001,
+      "end": 18.5031,
+      "parent": "c2",
+      "sources": [
+        {
+          "path": "frontier/snapshots.py",
+          "line": 196,
+          "end_line": 196,
+          "label": "add"
+        }
+      ]
+    },
+    {
+      "id": "c2commit",
+      "name": "git commit -q -m Delivery",
+      "service": "subprocess",
+      "start": 18.5031,
+      "end": 18.5677,
+      "parent": "c2",
+      "sources": [
+        {
+          "path": "frontier/snapshots.py",
+          "line": 198,
+          "end_line": 199,
+          "label": "commit"
+        }
+      ]
+    },
+    {
+      "id": "c2tag",
+      "name": "git tag -f delivery",
+      "service": "subprocess",
+      "start": 18.5678,
+      "end": 18.5701,
+      "parent": "c2",
+      "sources": [
+        {
+          "path": "frontier/snapshots.py",
+          "line": 203,
+          "end_line": 203,
+          "label": "tag"
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "name": "python3 -m frontier mission status",
+      "service": "launcher main thread",
+      "start": 18.6181,
+      "status": "incomplete",
+      "detail": "The second owner command, a separate process (launcher.status). Its last recorded event is the trace's last; the print and the exit are not recorded.",
+      "sources": [
+        {
+          "path": "frontier/__main__.py",
+          "line": 108,
+          "end_line": 118,
+          "label": "cmd_mission"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 504,
+          "end_line": 510,
+          "label": "status"
+        }
+      ]
+    },
+    {
+      "id": "simports",
+      "name": "interpreter start, imports",
+      "service": "launcher main thread",
+      "start": 18.6181,
+      "end": 18.7256,
+      "parent": "status",
+      "sources": [
+        {
+          "path": "frontier/__main__.py",
+          "line": 3,
+          "end_line": 14,
+          "label": "imports"
+        }
+      ]
+    },
+    {
+      "id": "sload",
+      "name": "mission.load",
+      "service": "launcher main thread",
+      "start": 18.7455,
+      "end": 18.7509,
+      "parent": "status",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 42,
+          "end_line": 59,
+          "label": "load"
+        }
+      ]
+    },
+    {
+      "id": "sbs",
+      "name": "infra.budget_status → printed",
+      "service": "launcher main thread",
+      "start": 18.7554,
+      "end": 18.7591,
+      "parent": "status",
+      "detail": "Ends at the trace's last event (its JSON rendering); the print that follows is not recorded.",
+      "sources": [
+        {
+          "path": "frontier/infra.py",
+          "line": 465,
+          "end_line": 471,
+          "label": "budget_status"
+        }
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "Where the time went",
+      "items": [
+        "prepare 0.13 to 12.44 s: 12.31 s, of which the compute snapshot (Scaleway 9.33 s, Runpod 1.90 s) is 11.23 s, 91%",
+        "Key check 1.04 s; everything else in prepare 0.04 s",
+        "Session 1 (codex exec) 12.61 to 18.26 s: 5.64 s, of which the model call through the gateway 4.14 s (73%) and spawn_agent 0.99 s",
+        "Setup between prepare and session (watchdog, filter, gateway, codex login): 0.17 s; commit, stop check and finish 18.26 to 18.57 s"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Simulated: the AI's side",
+      "items": [
+        "codex is a stand-in (sim/bin/codex): it reads the files Codex loads, starts the MCP server, makes one model call, calls budget_status, spawn_agent and deliver, writes the four files",
+        "Its own steps take milliseconds: a real session lasts as long as the AI works, and that time is not shown here",
+        "Everything else ran for real: Frontier's code, the OpenAI API (3 calls), the Scaleway and Runpod offer APIs"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "How the bars are timed",
+      "items": [
+        "Seconds since the trace's first event; the hook (sim/hook/sitecustomize.py) records calls, not returns",
+        "A function ends at the next call on its thread at the same or a shallower depth, else at the thread's last event",
+        "A subprocess ends at the next event of the thread that waits for it; a harness span runs from one step to the next",
+        "Not traced: the serve_forever threads of the gateway and the filter, the filter's byte relay, process exits"
+      ]
+    }
+  ]
+}
