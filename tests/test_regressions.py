@@ -673,6 +673,19 @@ def test_deliver_refuses_a_report_that_names_paths(run, tmp_path):
     assert not (run.log_dir / "delivery.json").exists()
 
 
+def test_every_provider_has_brand_names_the_jury_redacts(cfg):
+    """The jury removes the names of `[providers.*] names` from what the judges read. A provider without them is
+    graded under its own name, and nothing fails."""
+    from frontier.jury import identity_names, leaks, redact
+
+    names = identity_names(cfg)
+    for provider, conf in cfg["providers"].items():
+        assert conf.get("names"), provider
+        for brand in conf["names"]:
+            out, n = redact(f"The work was done with {brand} here.", names)
+            assert n and not leaks(out, names), (provider, brand, out)
+
+
 def test_jury_files_are_anonymous():
     from frontier.config import load_config
     from frontier.jury import identity_names, incidents_of, leaks, pseudonyms, redact

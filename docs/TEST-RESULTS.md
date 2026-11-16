@@ -3,6 +3,32 @@
 Plan: [TEST-PLAN.md](TEST-PLAN.md). Two campaigns: 2026-11-15 (the features added since the first one and a second
 pass on the others) and 2026-11-14 (further down). First, a run of the live checks on 2026-11-16.
 
+# What the unit tests check, measured on 2026-11-16
+
+Each of 3,080 small changes of `frontier/` (a comparison flipped, a call dropped, a value returned as None) was run
+against the tests that execute its line, as coverage recorded them. Each of the 311 lines of `config/` and
+`prompts/` that a change could touch was deleted in turn, and the whole suite run.
+
+- **Code**: 77 % of the changes on lines the tests execute are caught. 751 changes (24 %) sit on lines no test
+  executes, mostly in `__main__.py` (the CLI), `jury.py`, `launcher.py`, `dashboard.py` and `hf.py`; the live checks
+  (`tools/verify_live.py`) run these paths through the real commands. Weakest per module: `status.py` (32 %),
+  `dashboard.py`, `jury.py`, `infra.py`, `mission.py` (64 to 69 %); strongest: `credentials.py`, `scoring.py`,
+  `harnesses.py` (92 to 100 %).
+- **No test catches nothing.** Every test that executes `frontier/` catches at least one change; 33 catch none that
+  another test does not, most of them concurrency checks (the change operators do not model a race) and guards of
+  a configuration line.
+- **Configuration and prompts**: the tests notice 10 of the 89 lines of `config/harnesses.toml` (the ones fixed after
+  a live failure), 77 of 122 of `config/providers.toml`, 11 of 16 of `roles/`, 3 of 94 of `prompts/`. The launch
+  recipes (install, command, environment, route, usage report) and the prompts are checked only by live sessions:
+  for the harnesses (F22) and the OpenShell sandbox (F23) those sessions were run by hand and are not scripted in
+  `tools/verify_live.py`.
+
+Changes made from it: four money paths gained an assertion (cache writes, the price of an unknown model, resources
+deleted or of another cloud left out of the commitments, DeepSeek on a Saturday); two configuration rules gained a
+test (every provider's reasoning field, every provider's brand names for the jury); two tests that duplicated a
+stronger check were removed (the harness file sync, which `tools/sync_harnesses.py --check` runs in CI; one order of
+reservation and charge, which `tests/test_call_orders.py` checks with every other order).
+
 # Run of 2026-11-16, after PRs #39 to #41
 
 PRs #39 to #41 changed the metering gateway, the guard of raw cloud calls, the writers of the state files and the
