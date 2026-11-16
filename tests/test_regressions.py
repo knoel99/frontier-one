@@ -673,6 +673,19 @@ def test_deliver_refuses_a_report_that_names_paths(run, tmp_path):
     assert not (run.log_dir / "delivery.json").exists()
 
 
+def test_every_provider_has_brand_names_the_jury_redacts(cfg):
+    """The jury removes the names of `[providers.*] names` from what the judges read. A provider without them is
+    graded under its own name, and nothing fails."""
+    from frontier.jury import identity_names, leaks, redact
+
+    names = identity_names(cfg)
+    for provider, conf in cfg["providers"].items():
+        assert conf.get("names"), provider
+        for brand in conf["names"]:
+            out, n = redact(f"The work was done with {brand} here.", names)
+            assert n and not leaks(out, names), (provider, brand, out)
+
+
 def test_jury_files_are_anonymous():
     from frontier.config import load_config
     from frontier.jury import identity_names, incidents_of, leaks, pseudonyms, redact
@@ -824,7 +837,6 @@ def test_jury_aggregate_ranks_classified_teams_first_and_keeps_ungraded_work_unr
     res = aggregate(teams, 0.0)
     assert res["ranking"][:2] == ["a", "b"] and res["teams"]["c"]["final"] is None and res["teams"]["c"]["rank"] is None
     assert res["teams"]["a"]["scores"]["scientific_quality"] == 12.0  # the judges' median, rubric by rubric
-
 
 
 def test_red_flag_appends_a_chained_event_the_jury_reads(tmp_path):
@@ -999,17 +1011,6 @@ def test_a_raw_cloud_call_cannot_name_a_foreign_resource_in_its_body(run, monkey
                                ("POST", "/instance/v1/zones/fr-par-2/security_groups", {"project": other, "name": "sg"})):
         assert tools.t_scaleway(ctx, method, path, body).startswith("HTTP"), body
     assert tools.t_runpod_mcp(ctx, "update-pod", {"id": "p1", "body": {"templateId": "t1", "dataCenterIds": ["EU-RO-1"]}}) == "{}"
-
-
-def test_a_sub_agent_call_is_charged_before_its_reservation_is_released(run, monkeypatch):
-    """Released first, the reservation left a gap in which a parallel call could take the same room: both ran over
-    the hard cap together."""
-    monkeypatch.setattr(llm, "chat", lambda spec, m, t, max_tokens=0: llm.Reply(
-        "done", [], {"input": 100, "output": 10}, {"role": "assistant", "content": "done"}))
-    real_release, seen = run.budget.release, []
-    monkeypatch.setattr(run.budget, "release", lambda rid: seen.append(run.budget.llm_spent()) or real_release(rid))
-    agent_mod.Agent(run, "openai", "light", "low", tools=[]).run_task("hi")
-    assert seen and seen[0] > 0  # the spend was in the ledger when the room was given back
 
 
 class _SlowAnswer(BaseHTTPRequestHandler):

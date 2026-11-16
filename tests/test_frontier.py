@@ -87,6 +87,23 @@ def test_openai_chat_format(cfg, monkeypatch):
     assert seen["body"]["thinking"] == {"type": "disabled"} and "reasoning_effort" not in seen["body"]
 
 
+def test_every_provider_sends_its_reasoning_level(cfg, monkeypatch):
+    """A provider's reasoning level reaches its API only through `effort_field` (config/providers.toml). Without it the
+    request goes out at the provider's default effort, and nothing fails."""
+    seen = _capture(monkeypatch, {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+                                  "usage": {"prompt_tokens": 1, "completion_tokens": 1}})
+    for name, conf in cfg["providers"].items():
+        spec = llm.resolve(cfg, name, "frontier", "high")
+        assert spec.effort_value is not None and spec.effort_field, name
+        if conf["style"] != "openai-chat":
+            continue  # the other styles have a format test each
+        llm.chat(spec, HIST, [TOOL])
+        value = seen["body"]
+        for key in spec.effort_field.split("."):
+            value = value[key]
+        assert value == spec.effort_value, name
+
+
 def test_responses_format(cfg, monkeypatch):
     out = [{"type": "reasoning", "id": "r1", "encrypted_content": "e", "summary": []},
            {"type": "function_call", "call_id": "k", "name": "echo", "arguments": "{}", "status": "completed"}]
