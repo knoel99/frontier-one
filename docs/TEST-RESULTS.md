@@ -1,7 +1,26 @@
 # Test results
 
-Plan: [TEST-PLAN.md](TEST-PLAN.md). Two campaigns: 2026-11-15 (below, the features added since the first one and a
-second pass on the others) and 2026-11-14 (further down).
+Plan: [TEST-PLAN.md](TEST-PLAN.md). Two campaigns: 2026-11-15 (the features added since the first one and a second
+pass on the others) and 2026-11-14 (further down). First, a run of the live checks on 2026-11-16.
+
+# Run of 2026-11-16, after PRs #39 to #41
+
+PRs #39 to #41 changed the metering gateway, the guard of raw cloud calls, the writers of the state files and the
+ledgers' integrity check. `tools/verify_live.py` (levels 1 and 2) was run on `master` at `a22764b`, with the keys of
+a Claude Code cloud session's proxy and Codex CLI 0.169.0.
+
+- **26 checks, 26 PASS.** Gateway metering, sub-agents on four providers, the LLM cap, both deadline checks (the
+  live one on a Codex session: exit 124, `stopped: deadline`, no process left), a Runpod pod and a Scaleway DEV1-S
+  created, used and deleted, the watchdog and `frontier reap`, the cloud caps under parallel creations, Hugging
+  Face publishing, tamper evidence, milestones, snapshots, the CPU meter and the jury.
+- Two checks did not pass at first for a reason of the session, not of the code: `codex` and `huggingface_hub`
+  were not installed. Both passed once installed.
+- One check was wrong: F28 required a new CPU meter to start from the total of the first one, while the meter
+  writes one event per core-second (3.0 measured, last event at 2.5). The check now allows that core-second.
+- Spend, from the ledgers of the two runs: LLM 0.064 USD (plus the synthetic 0.06 USD entry that F26 writes in each
+  run), Runpod 0.012 USD, Scaleway 0.0002 EUR. Every ledger verifies. Nothing left: the pods answer 404, the
+  Scaleway server answers 404, the Hugging Face test repository is deleted.
+- Not run: the level 3 mission and the level 4 re-check, the OpenShell sandbox, and the harnesses other than Codex.
 
 # Campaign of 2026-11-15
 

@@ -1,11 +1,14 @@
 # Harness compatibility
 
-What each coding harness reads, what `tools/sync_harnesses.py` (this repository) and the mission launcher (a mission
-workspace) generate for it, and how the launcher runs it. Read in each harness's official documentation on
-2026-11-14; UNCONFIRMED marks what the docs leave open. The generator is `frontier/harnesses.py`; launch recipes
-are in `config/harnesses.toml`.
+This page lists what each coding harness reads, what Frontier generates for it, and how the launcher runs it.
 
-## The common layer
+- `frontier/harnesses.py` generates the files. `tools/sync_harnesses.py` writes them into this repository, and the
+  mission launcher writes them into a mission's workspace.
+- `config/harnesses.toml` holds the launch recipes.
+- The file formats come from each harness's official documentation, read on 2026-11-14. UNCONFIRMED marks what
+  the documentation leaves open.
+
+## Three standards cover most harnesses
 
 | Standard | Files | Read by |
 |---|---|---|
@@ -14,10 +17,14 @@ are in `config/harnesses.toml`.
 | Agent Skills | `.agents/skills/frontier/SKILL.md` (and `.claude/skills/` for Claude Code and Grok) | Codex, Antigravity, Gemini CLI, Kimi, Qwen, Vibe, dsh, Copilot, Cursor, OpenCode, Hermes, Goose, Crush, Cline, Zed, OpenHands, Amp, Devin |
 | Sub-agents | `roles/*.md` turned into each harness's format | see the table |
 
-A harness without MCP, or a session whose server is not connected, reaches the same tools from the shell:
-`bin/frontier call <tool> '<json>' [--state <workspace>/.frontier]`.
+A harness without MCP reaches the same tools from the shell, and so does a session whose MCP server is not
+connected:
 
-## Per harness
+```bash
+bin/frontier call <tool> '<json>' [--state <workspace>/.frontier]
+```
+
+## What each harness reads
 
 | Harness | Instructions | Project MCP file (generated) | Sub-agents (generated) | Notes and sources |
 |---|---|---|---|---|
@@ -33,6 +40,7 @@ A harness without MCP, or a session whose server is not connected, reaches the s
 | Copilot CLI | AGENTS.md and others | `.github/mcp.json` and `.mcp.json` | `.github/agents/*.agent.md` (`model`) | docs.github.com/en/copilot/how-tos/copilot-cli |
 | Cursor | AGENTS.md, `.cursor/rules` | `.cursor/mcp.json` | reads `.claude/agents` and `.codex/agents` | cursor.com/docs/context/{rules,mcp,subagents,skills} |
 | OpenCode | AGENTS.md | `opencode.json` `mcp.servers` | `.opencode/agents/*.md` (`model` `provider/model#variant`) | opencode.ai/docs/{rules,mcp-servers,agents,skills} |
+| ZCode (Z.ai) | AGENTS.md (UNCONFIRMED) | user level only: `~/.zcode/cli/config.json` `mcp.servers`; a mission gives ZCode a home of its own | none | github.com/zai-org/ZCode |
 | Hermes Agent | AGENTS.md (unless `.hermes.md`) | user level only: `~/.hermes/config.yaml` `mcp_servers` | none (its `delegate_task` tool) | hermes-agent.nousresearch.com/docs/user-guide |
 | Goose | AGENTS.md, `.goosehints` | user level only: `~/.config/goose/config.yaml` `extensions` | `.agents/agents/*.md` (`model`) | goose-docs.ai/docs/guides |
 | Crush | AGENTS.md and many others | `.crushrc` (`mcp add …`) | none | github.com/charmbracelet/crush |
@@ -45,37 +53,54 @@ A harness without MCP, or a session whose server is not connected, reaches the s
 | OpenHands | AGENTS.md | settings or UI only | none | docs.openhands.dev |
 | Aider | `.aider.conf.yml` `read: [AGENTS.md]` | no MCP client: shell fallback | none | aider.chat/docs |
 
-Roo Code was archived on 2026-05-15 and is not covered.
+Roo Code was archived on 2026-05-15, and this page does not cover it.
 
 ## Sub-agents on the right model and effort
 
-Native sub-agent files can set the model and the reasoning effort only where the harness documents those fields
-(Claude Code, Codex, Cursor, OpenCode's `#variant`); elsewhere a native sub-agent inherits the main model. The
-`spawn_agent` tool of the MCP server works the same in every harness: provider, tier, reasoning level and speed mode
-per call, on the model API, charged to the mission's budget.
+A native sub-agent file can set the model and the reasoning effort only where the harness documents those fields:
+Claude Code, Codex, Cursor, and OpenCode (its `#variant`). In every other harness, a native sub-agent inherits the
+main model.
 
-## Launching (missions)
+The `spawn_agent` tool of the MCP server works the same in every harness. Each call names a provider, a tier, a
+reasoning level, and a speed mode. The call runs on the model API, and the framework charges it to the mission's
+budget.
 
-`config/harnesses.toml` holds for each harness its install and setup commands, its headless command, its
-environment, how its own LLM traffic is routed through the metering gateway, and how it reports usage. The vendor
-commands ran headless on 2026-11-13 in the previous campaign (`old/race/PROVIDERS-TESTED.md` at commit 7223bd6, in git history). A provider without its
-own harness gets OpenCode. Run `mission start --prepare-only` and one short session before relying on a recipe.
+## How the launcher runs a harness
 
-| Harness | Routed through the gateway by | Checked | Fallback when not metered |
+`config/harnesses.toml` holds a launch recipe for twelve harnesses. A recipe gives:
+
+- the install and setup commands
+- the headless command and its environment
+- the route of the harness's own LLM traffic through the metering gateway
+- the usage report that the launcher reads when the traffic is not metered
+
+A provider without its own harness gets OpenCode. The other twelve harnesses get project files only.
+
+Before you rely on a recipe with a new version of a harness, run `mission start --prepare-only` and one short
+session.
+
+Eleven harnesses each delivered a live mission on 2026-11-15, behind the outbound filter, with their calls metered
+by the gateway (`docs/TEST-RESULTS.md`, F22). The table gives the route and the version that ran, where the recipe
+records one. The vendor commands first ran headless on 2026-11-13, in the previous campaign
+(`old/race/PROVIDERS-TESTED.md` at commit 7223bd6, in git history).
+
+| Harness | Routed through the gateway by | Run live | Fallback when not metered |
 |---|---|---|---|
-| Claude Code | `ANTHROPIC_BASE_URL` | docs (code.claude.com llm-gateway) | `total_cost_usd` of `--output-format json` |
-| Codex CLI | a custom provider passed with `-c model_providers.frontier.*` (Codex ignores `OPENAI_BASE_URL`; WebSockets off) | **run 2026-11-14**: a mission session metered, $0.004 | `turn.completed` usage of `--json` |
-| Antigravity CLI | `GOOGLE_GEMINI_BASE_URL` (wire method UNCONFIRMED) | docs | `usage` of `--output-format json` |
-| Gemini CLI | `GOOGLE_GEMINI_BASE_URL` | docs | `stats` of `--output-format json` |
-| Grok Build | not routed: TLS-only connections documented; `GROK_XAI_API_BASE_URL` would be the variable | docs | its JSON report (UNCONFIRMED) |
-| Kimi Code | `KIMI_MODEL_BASE_URL` (`KIMI_MODEL_PROVIDER_TYPE=kimi`) | docs | none documented |
-| Qwen Code | `OPENAI_BASE_URL` | docs | `usage` of the result message |
-| Mistral Vibe | not routed: only `[[providers]] api_base` in `~/.vibe/config.toml`, left to the user | docs | its JSON output |
-| DeepSeek dsh | `DEEPSEEK_BASE_URL` (Anthropic Messages) | docs | none documented |
-| OpenCode | a provider `frontier` in the mission's `opencode.json` (`baseURL`, `transport: http`) | docs, package names UNCONFIRMED | `--format json` |
-| Hermes Agent | `HERMES_HOME` = a mission home whose `config.yaml` puts the model on the gateway and declares the MCP server | docs, flags UNCONFIRMED | none documented |
+| Claude Code | `ANTHROPIC_BASE_URL` | delivered 2026-11-15 | `total_cost_usd` of `--output-format json` |
+| Codex CLI | a custom provider passed with `-c model_providers.frontier.*` (Codex ignores `OPENAI_BASE_URL`; WebSockets off) | delivered 2026-11-14 and 2026-11-15, Codex 0.169.0 | `turn.completed` usage of `--json` |
+| Antigravity CLI | `GOOGLE_GEMINI_BASE_URL` | delivered 2026-11-15 | `usage` of `--output-format json` |
+| Gemini CLI | `GOOGLE_GEMINI_BASE_URL` | delivered 2026-11-15, Gemini CLI 0.68 | `stats` of `--output-format json` |
+| Grok Build | `GROK_XAI_API_BASE_URL` | delivered 2026-11-15, grok 1.0.77: the gateway's charge matched xAI's own `cost_in_usd_ticks` | its JSON report (UNCONFIRMED) |
+| Kimi Code | `KIMI_MODEL_BASE_URL` (`KIMI_MODEL_PROVIDER_TYPE=kimi`) | delivered 2026-11-15 | none documented |
+| Qwen Code | `OPENAI_BASE_URL` | delivered 2026-11-15 | `usage` of the result message |
+| Mistral Vibe | a `[[providers]]` entry on the gateway in the project `.vibe/config.toml`, read with `--trust` | Vibe 3.1.2 reached the gateway on 2026-11-15, then the Mistral account refused the request | its JSON output |
+| DeepSeek dsh | `DEEPSEEK_BASE_URL` (Anthropic Messages) | delivered 2026-11-15 | none documented |
+| OpenCode | a provider `frontier` in the mission's `opencode.json` (`baseURL`, `transport: http`) | delivered 2026-11-15 on DeepSeek and on Cerebras (opencode 1.19.5 on Cerebras) | `--format json` |
+| ZCode | a home of the mission whose `provider_config.json` puts the model on the gateway | delivered 2026-11-15, v0.17.1 on glm-5.3 | its JSON usage report |
+| Hermes Agent | `HERMES_HOME` = a home of the mission whose `config.yaml` puts the model on the gateway and declares the MCP server | delivered 2026-11-15 | none documented |
 
-Traffic that no base URL catches (documented): Claude Code's fast-mode and WebFetch checks, Codex with a ChatGPT
-sign-in, agy and Grok with an account sign-in, dsh's search, fetch and telemetry. Harnesses' own cost figures are
-client-side estimates; the gateway prices calls itself and uses a server-side cost when the API gives one (xAI
-`cost_in_usd_ticks`, OpenRouter `usage.cost`).
+Some traffic passes no base URL, by the harnesses' own documentation: Claude Code's fast-mode and WebFetch checks,
+Codex with a ChatGPT sign-in, agy and Grok with an account sign-in, and dsh's search, fetch, and telemetry.
+
+A harness's own cost figure is a client-side estimate. The gateway prices each call itself, and it uses a
+server-side cost when the API gives one (xAI `cost_in_usd_ticks`, OpenRouter `usage.cost`).

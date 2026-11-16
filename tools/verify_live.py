@@ -533,9 +533,9 @@ def f28(root: pathlib.Path):
         peak = max(peak, meter.record())
         time.sleep(0.5)
     total = meter.record()
-    again = snapshots.CpuMeter(st).record()  # a new launch on the same state adds to what was measured
-    ev = [e for e in budget.read_jsonl(st / "events.jsonl") if e.get("event") == "cpu_usage"]
-    verdict("F28", "local CPU meter", 2.5 <= total <= 4.5 and again >= round(total, 1) and bool(ev),
+    again = snapshots.CpuMeter(st).record()  # a new launch on the same state adds to what was measured: the last
+    ev = [e for e in budget.read_jsonl(st / "events.jsonl") if e.get("event") == "cpu_usage"]  # event, one per core-second
+    verdict("F28", "local CPU meter", 2.5 <= total <= 4.5 and again > total - 1 and bool(ev),
             f"{total:.1f} core-seconds measured for a 3 s burn (peak sample {peak:.1f}); {len(ev)} cpu_usage events; "
             f"a new meter on the same state starts from {again:.1f}")
 
