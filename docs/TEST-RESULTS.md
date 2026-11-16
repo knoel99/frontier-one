@@ -3,6 +3,25 @@
 Plan: [TEST-PLAN.md](TEST-PLAN.md). Two campaigns: 2026-11-15 (the features added since the first one and a second
 pass on the others) and 2026-11-14 (further down). First, a run of the live checks on 2026-11-16.
 
+# OpenShell and Claude Code, scripted, 2026-11-16
+
+`tools/verify_live.py --openshell` is the scripted F23: a Codex mission with `[sandbox] kind = "openshell"`, which
+must deliver from inside the sandbox, have its calls metered by the gateway inside, verify its ledgers back on the
+host, and leave no sandbox, provider or image. It ran on OpenShell 0.1.8 with its Docker driver, the gateway started
+by hand with the host setup listed under the campaign of 2026-11-15. It found two defects, each fixed and re-checked:
+
+| # | Defect | Fix |
+|---|---|---|
+| D17 | Behind a TLS-intercepting proxy, as in a Claude Code cloud session, the sandbox image failed to build at its first HTTPS download (npm `SELF_SIGNED_CERT_IN_CHAIN`): nothing gave the image the proxy's CA | `[sandbox] build_ca_bundle` names it; the Dockerfile adds it to the image's trust store before the harness is installed and points npm and pip at the store |
+| D18 | OpenShell 0.1.8 refuses a sandbox name longer than 19 characters (a DNS label): `frontier-openshell-live` failed, and so would a race team named `team-openai` | `sandbox.sandbox_name` keeps `frontier-<mission>` when it fits, else a short prefix and a hash of the whole name |
+
+Then PASS: delivered, 1 session in the sandbox, 6 calls metered by the gateway inside it (0.034 USD), ledgers intact,
+nothing left in OpenShell or Docker.
+
+Claude Code 2.1.325 passed its harness check (F22) with a short-lived Anthropic key the owner gave for it, set in the
+environment of the check only: delivered, 4 calls metered by the gateway (0.106 USD), nothing left. Afterwards no copy
+of the key, nor its last 20 characters, was found in the run's files, the repository or the home configuration.
+
 # A live mission per harness, 2026-11-16
 
 Every harness install was pinned to the version published when it delivered on 2026-11-15, and
@@ -43,9 +62,9 @@ against the tests that execute its line, as coverage recorded them. Each of the 
   a configuration line.
 - **Configuration and prompts**: the tests notice 10 of the 89 lines of `config/harnesses.toml` (the ones fixed after
   a live failure), 77 of 122 of `config/providers.toml`, 11 of 16 of `roles/`, 3 of 94 of `prompts/`. The launch
-  recipes (install, command, environment, route, usage report) and the prompts are checked only by live sessions:
-  for the harnesses (F22) and the OpenShell sandbox (F23) those sessions were run by hand and are not scripted in
-  `tools/verify_live.py`.
+  recipes (install, command, environment, route, usage report) and the prompts are checked only by live sessions.
+  For the harnesses (F22) and the OpenShell sandbox (F23), those sessions were run by hand on that date; they are
+  scripted in `tools/verify_live.py` since (`--harness`, `--openshell`), see below.
 
 Changes made from it: four money paths gained an assertion (cache writes, the price of an unknown model, resources
 deleted or of another cloud left out of the commitments, DeepSeek on a Saturday); two configuration rules gained a
