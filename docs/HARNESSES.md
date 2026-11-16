@@ -93,7 +93,7 @@ The table gives the route and the result of that check on 2026-11-16, at the pin
 
 | Harness | Routed through the gateway by | Live check | Fallback when not metered |
 |---|---|---|---|
-| Claude Code | `ANTHROPIC_BASE_URL` | BLOCKED 2026-11-16: no Anthropic key in that session; delivered 2026-11-15 | `total_cost_usd` of `--output-format json` |
+| Claude Code | `ANTHROPIC_BASE_URL` | PASS 2026-11-16, Claude Code 2.1.325 | `total_cost_usd` of `--output-format json` |
 | Codex CLI | a custom provider passed with `-c model_providers.frontier.*` (Codex ignores `OPENAI_BASE_URL`; WebSockets off) | PASS 2026-11-16, Codex 0.169.0 | `turn.completed` usage of `--json` |
 | Antigravity CLI | `GOOGLE_GEMINI_BASE_URL` | PASS 2026-11-16, agy 1.5.9 (its installer takes no version) | `usage` of `--output-format json` |
 | Gemini CLI | `GOOGLE_GEMINI_BASE_URL` | PASS 2026-11-16, Gemini CLI 0.68.0 | `stats` of `--output-format json` |
