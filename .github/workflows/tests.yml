@@ -15,3 +15,4 @@ jobs:
       - run: python -m ruff check .
       - run: python -m pytest -q
       - run: python tools/sync_harnesses.py --check
+      - run: python tools/check_model.py

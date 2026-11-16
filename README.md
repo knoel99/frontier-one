@@ -226,7 +226,8 @@ node <archify>/bin/archify.mjs finalize <workflow|architecture|sequence> docs/di
 | `catalog/` | the Scaleway and Runpod API catalog (one signature per operation) and a guide per provider |
 | `prompts/`, `roles/` | the brief, the system prompts, the two role presets |
 | `docs/` | `HARNESSES.md` (what each harness reads and gets), `STANDARDS.md` (industry standards and where Frontier stands), `TEST-PLAN.md`, `TEST-RESULTS.md`, `diagrams/` |
-| `tools/` | `build_catalog.py`, `update_prices.py`, `sync_harnesses.py`, `verify_live.py` (the live checks) |
+| `tools/` | `build_catalog.py`, `update_prices.py`, `sync_harnesses.py`, `verify_live.py` (the live checks), `check_model.py` |
+| `formal/` | the TLA+ model of the LLM reservations and how to check it |
 | `tests/` | the unit tests, the code rules (`test_rules.py`), and every order of parallel model calls (`test_call_orders.py`) |
 | `bin/` | `frontier`, `frontier-mcp`: run from anywhere |
 | harness files | `CLAUDE.md`, `.mcp.json`, `.codex/`, `.agents/`, `.claude/`, `.gemini/`, `.grok/`, `.kimi-code/`, `.qwen/`, `.vibe/`, `.dsh/`, `.github/`, `.cursor/`, `opencode.json`, `.opencode/`, `.crushrc`, `.kilo/`, `.devin/`, `.amp/`, `.continue/`, `.zed/`, `.clinerules/`, `.aider.conf.yml`. `tools/sync_harnesses.py` generates them, so this repository works in any of the 24 harnesses. |
