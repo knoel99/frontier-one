@@ -417,3 +417,41 @@ def test_a_request_body_never_shares_a_value_with_the_config(cfg):
     body["text"]["verbosity"] = "high"
     body["tags"].append("b")
     assert spec.extra == {"text": {"verbosity": "low"}, "tags": ["a"]}
+
+
+# ---------------------------------------------------------------- symbolic computation
+
+
+def test_sympy_computes_and_prints_the_last_expression(run):
+    pytest.importorskip("sympy")
+    ctx = agent_mod.Ctx(run, None)
+    sympy = tools.REGISTRY["sympy"].fn
+    assert sympy(ctx, "integrate(exp(-x**2), (x, -oo, oo))") == "sqrt(pi)\nlatex: \\sqrt{\\pi}"
+    assert sympy(ctx, "dsolve(f(t).diff(t, 2) + 4*f(t), f(t))").startswith("Eq(f(t), C1*sin(2*t) + C2*cos(2*t))")
+    assert sympy(ctx, "print(solve(x**2 - 2, x))\nprint(sin(2*x).equals(2*sin(x)*cos(x)), sin(x).equals(x))") == \
+        "[-sqrt(2), sqrt(2)]\nTrue False"
+    assert sympy(ctx, "a = 3").startswith("no output")
+
+
+def test_sympy_reports_an_error_from_the_callers_code_and_ends_a_computation_at_its_limit(run):
+    pytest.importorskip("sympy")
+    ctx = agent_mod.Ctx(run, None)
+    failed = tools.REGISTRY["sympy"].fn(ctx, "print('before')\n1/0")
+    assert failed.startswith('error: File "<code>", line 2') and "ZeroDivisionError" in failed and failed.endswith("before")
+    assert tools.REGISTRY["sympy"].fn(ctx, "x = = 1").startswith('error: File "<code>", line 1')
+    (run.workspace / "sympy.py").write_text("raise SystemExit('the workspace file was imported')")
+    assert tools.REGISTRY["sympy"].fn(ctx, "1 + 1") == "2"  # sympy.py of the workspace does not stand for SymPy
+    assert tools.REGISTRY["sympy"].fn(ctx, "while True: pass", timeout_s=1) == "error: no result after 1 s (timeout_s sets the limit)"
+
+
+def test_sympy_missing_names_the_fix_and_the_tool_is_served(run, tmp_path, monkeypatch):
+    from frontier import mcp, symbolic
+
+    monkeypatch.setenv("FRONTIER_RUNS", str(tmp_path))
+    srv = mcp.Server()
+    spec = next(t for t in srv.tool_specs() if t["name"] == "sympy")
+    assert spec["annotations"]["openWorldHint"] is False and spec["annotations"]["destructiveHint"] is False
+    assert "sympy" in tools.all_tools()
+    monkeypatch.setattr(symbolic.importlib.util, "find_spec", lambda name: None)
+    out, err = srv.call("sympy", {"code": "1 + 1"})
+    assert err and "pip install sympy" in out

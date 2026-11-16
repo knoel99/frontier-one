@@ -134,8 +134,8 @@ def _md_agent(front: dict, body: str) -> str:
 
 SKILL_DESCRIPTION = ("Frontier tools - sub-agents on any model API with a chosen tier, reasoning level and speed mode; "
                      "Scaleway and Runpod GPU/CPU machines under a budget; budget and time status; Hugging Face "
-                     "publishing; mission delivery. Use it when you need compute, another model, the spend so far, or "
-                     "to publish or deliver.")
+                     "publishing; symbolic algebra and calculus (SymPy); mission delivery. Use it when you need compute, "
+                     "another model, an exact computation, the spend so far, or to publish or deliver.")
 
 
 def skill_text() -> str:

@@ -14,7 +14,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from . import budget, catalog, hf, infra
+from . import budget, catalog, hf, infra, symbolic
 from .http import mcp_call, request, scw_raw
 
 
@@ -247,6 +247,13 @@ register("hf_publish", "Create (if needed) a Hugging Face repository (model, dat
          _obj({"repo_name": S, "folder": S, "repo_type": {"type": "string", "enum": ["model", "dataset", "space"]},
                "namespace": S, "commit_message": S, "space_sdk": S}, ["repo_name", "folder"]), hf.hf_publish)
 
+register("sympy", "Symbolic algebra and calculus: run Python code with SymPy (simplify, solve, linear algebra, diff, "
+         "integrate, limit, series, dsolve, exact and arbitrary-precision numbers) in a process of its own, killed after "
+         "timeout_s (default 120). Already defined, as in isympy: `from sympy import *`, symbols x y z t, integers k m "
+         "n, functions f g h. Returns what the code prints, then the value of a last expression, with its LaTeX form. "
+         "`a.equals(b)` tests an identity: True, False, or None when SymPy cannot decide.",
+         _obj({"code": S, "timeout_s": I}, ["code"]), symbolic.sympy_run)
+
 def t_deliver(ctx, summary: str = "", force: bool = False) -> str:
     from .mission import deliver  # late import: mission builds on the agent and harness modules
 
@@ -277,7 +284,7 @@ INFRA_TOOLS = ["scw_offers", "scw_create_instance", "scw_instance", "scw_list_in
                "rp_offers", "rp_create_pod", "rp_pod", "rp_list_pods", "rp_exec", "rp_upload", "rp_logs", "rp_delete_pod",
                "infra_resources", "infra_cleanup", "api_docs", "scaleway", "runpod_mcp"]
 GROUPS = {"base": BASE_TOOLS, "infra": INFRA_TOOLS, "budget": ["mission_status", "budget_status"], "hf": ["hf_whoami", "hf_publish"],
-          "mission": ["deliver"]}
+          "math": ["sympy"], "mission": ["deliver"]}
 
 
 def all_tools() -> list[str]:

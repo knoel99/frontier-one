@@ -27,8 +27,8 @@ The previous race framework is in git history:
 
 ## Run a mission
 
-Frontier needs Python 3.11 or later and the standard library only. Publishing needs `huggingface_hub`, and
-rebuilding the catalog needs PyYAML.
+Frontier needs Python 3.11 or later and the standard library only. Publishing needs `huggingface_hub`, the `sympy`
+tool needs SymPy (`pip install sympy`), and rebuilding the catalog needs PyYAML.
 
 1. Copy the example. Fill in the harness, the budgets, the subject, and the `[secrets]` sources.
 
@@ -84,7 +84,7 @@ To test a change, run `python3 -m pytest`, `python3 -m ruff check .`, and `pytho
 |---|---|
 | `MISSION.md` | The brief (`prompts/mission.md`): the task, the evaluation, the budgets and the deadline, the deliverables, and the rules. It states that the strategy is the AI's. |
 | `TOOLS.md` | The generated inventory: the harness and its model, every Frontier tool, every model usable through `spawn_agent` with its price per million tokens, its reasoning values and its speed modes, a snapshot of GPU offers with price and stock on Scaleway and Runpod, the billing facts, and the budgets. |
-| the `frontier` MCP server | `spawn_agent` starts a sub-agent on any model API of the mission's providers, with a tier, a reasoning level, a speed mode, and its own instructions and tools. The cloud functions (`scw_*`, `rp_*`) give offers with real prices, create with `max_hours`, run commands, read logs, and delete with leftovers. The server also has `budget_status`, `hf_publish`, `deliver`, the API catalog, and raw calls. |
+| the `frontier` MCP server | `spawn_agent` starts a sub-agent on any model API of the mission's providers, with a tier, a reasoning level, a speed mode, and its own instructions and tools. The cloud functions (`scw_*`, `rp_*`) give offers with real prices, create with `max_hours`, run commands, read logs, and delete with leftovers. The server also has `budget_status`, `hf_publish`, `sympy` (symbolic algebra and calculus), `deliver`, the API catalog, and raw calls. |
 | the harness's own files | Instructions, MCP config, sub-agents, and skills in the format of the chosen harness. |
 
 `roles/` holds two presets only: `infra` (a cloud operator) and `reviewer` (tries to refute a result). The AI can

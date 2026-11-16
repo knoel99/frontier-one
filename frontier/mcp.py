@@ -11,7 +11,7 @@ Settings (environment of the server, set in the harness's MCP config):
   FRONTIER_WORKSPACE      workspace of the sub-agents (default: current directory)
   FRONTIER_PROVIDER       default provider of sub-agents (default: config default_provider)
   FRONTIER_ALLOW_SPEND=1  allow creating cloud resources (default: read-only)
-  FRONTIER_TOOLS          comma-separated groups or tool names to expose (default: "agents,infra,budget,hf,mission")
+  FRONTIER_TOOLS          comma-separated groups or tool names to expose (default: "agents,infra,budget,hf,math,mission")
   FRONTIER_KEEP_RESOURCES=1  do not delete the session's cloud resources when the server stops
   FRONTIER_SESSION        name of the session directory under runs/ (default: mcp-<date>-<pid>); the ledger
                           (resources.json) of an existing session is reloaded, so a restarted server keeps it
@@ -42,12 +42,14 @@ SUPPORTED = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
 PROTOCOL = SUPPORTED[0]
 INSTRUCTIONS = ("Sub-agents on any model API with a chosen provider, tier, reasoning level and speed mode (spawn_agent); "
                 "cloud compute on Scaleway and Runpod under budgets; budget and time status; Hugging Face publishing; "
-                "mission delivery. TOOLS.md of the workspace lists models, prices, offers and budgets.")
+                "symbolic algebra and calculus (sympy); mission delivery. TOOLS.md of the workspace lists models, prices, "
+                "offers and budgets.")
 # MCP tool annotations (hints for the client: read-only, destructive, idempotent, reaches outside services).
 _READ_LOCAL = {"frontier_plan", "frontier_roles", "api_docs", "budget_status", "mission_status", "infra_resources"}
 _READ_REMOTE = {"scw_offers", "scw_instance", "scw_list_instances", "rp_offers", "rp_pod", "rp_list_pods", "rp_logs", "hf_whoami"}
 _DELETE = {"scw_delete_instance", "rp_delete_pod", "infra_cleanup", "deliver"}
 _CREATE = {"scw_create_instance", "rp_create_pod", "hf_publish", "spawn_agent"}
+_COMPUTE = {"sympy"}  # runs the caller's own code on this machine: not read-only, and nothing outside is reached
 
 
 def annotations(name: str) -> dict:
@@ -59,6 +61,8 @@ def annotations(name: str) -> dict:
     if name in _DELETE:
         return {"title": title, "readOnlyHint": False, "destructiveHint": True, "idempotentHint": True,
                 "openWorldHint": name != "deliver"}
+    if name in _COMPUTE:
+        return {"title": title, "readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
     if name in _CREATE:
         return {"title": title, "readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
                 "openWorldHint": True}

@@ -18,8 +18,8 @@ workspace gets its own AGENTS.md from the launcher.)
   decides how to work.
 - The framework's tools are served to this repository's harness by the `frontier` MCP server
   (`python3 -m frontier.mcp`); the shell fallback is `bin/frontier call <tool> '<json>'`.
-- Standard library only at run time (`huggingface_hub` only for publishing). Before committing:
-  `python3 -m ruff check .`, `python3 -m pytest -q`, `python3 tools/sync_harnesses.py --check`.
+- Standard library only at run time (`huggingface_hub` only for publishing, `sympy` only for the `sympy` tool).
+  Before committing: `python3 -m ruff check .`, `python3 -m pytest -q`, `python3 tools/sync_harnesses.py --check`.
 - Write in English.
 
 ## Rules and what enforces them

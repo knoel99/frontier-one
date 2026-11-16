@@ -1,6 +1,6 @@
 ---
 name: frontier
-description: Frontier tools - sub-agents on any model API with a chosen tier, reasoning level and speed mode; Scaleway and Runpod GPU/CPU machines under a budget; budget and time status; Hugging Face publishing; mission delivery. Use it when you need compute, another model, the spend so far, or to publish or deliver.
+description: Frontier tools - sub-agents on any model API with a chosen tier, reasoning level and speed mode; Scaleway and Runpod GPU/CPU machines under a budget; budget and time status; Hugging Face publishing; symbolic algebra and calculus (SymPy); mission delivery. Use it when you need compute, another model, an exact computation, the spend so far, or to publish or deliver.
 ---
 
 # Frontier tools
@@ -31,6 +31,7 @@ frontier call <tool> '<json arguments>'          # bin/frontier of the Frontier 
 - `budget_status`: Budgets and spend so far: LLM (USD, by model and mode, every agent of the run including metered harness traffic), Scaleway (EUR) and Runpod (USD) spent and committed by alive resources, elapsed time and hours left before the deadline.
 - `hf_whoami`: Hugging Face account of the token: user name, organisations, token role.
 - `hf_publish`: Create (if needed) a Hugging Face repository (model, dataset or static space) and upload a workspace folder to it.
+- `sympy`: Symbolic algebra and calculus: run Python code with SymPy (simplify, solve, linear algebra, diff, integrate, limit, series, dsolve, exact and arbitrary-precision numbers) in a process of its own, killed after timeout_s (default 120).
 - `deliver`: End the mission: checks DELIVERY.md, COMPLIANCE.md and DECISIONS.md, deletes the cloud resources still alive, writes COSTS.md from the ledgers, commits and tags the repository, and freezes clock and spend (delivery time is measured here).
 - `api_docs`: Catalog of the Scaleway and Runpod APIs, one compact signature per operation (like a Swagger index): action=list; action=search query='create gpu instance' [doc='scaleway/instance' or 'runpod/mcp']; action=show id='scaleway/instance:CreateServer' (params, body fields, return).
 - `scaleway`: Raw Scaleway API call (https://api.scaleway.com, auth handled).

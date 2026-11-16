@@ -141,7 +141,7 @@ def roles_summary() -> str:
 
 
 def expand_tools(names) -> list[str]:
-    """Tool names, where a group name (base, infra, budget, hf, mission) stands for its tools."""
+    """Tool names, where a group name (base, infra, budget, hf, math, mission) stands for its tools."""
     out: list[str] = []
     for n in names:
         for t in GROUPS.get(n, [n]):
