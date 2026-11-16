@@ -232,6 +232,19 @@ node <archify>/bin/archify.mjs finalize <workflow|architecture|sequence> docs/di
 
 `race` and `run-order` are `workflow` diagrams, `processes` is `architecture`, and `session` is `sequence`.
 
+Four more diagrams show one launch for OpenAI (harness Codex) at four levels of detail. Their numbers come from a
+traced run on 2026-11-16: `docs/diagrams/launch-sim/run.sh` runs `mission start` with the real launcher and Codex
+recipe, and replaces only the `codex` binary with a stand-in. Their boxes link to commit `db900a0`.
+
+5. [The campaign](docs/diagrams/launch-1-campaign.html) ([PNG](docs/diagrams/launch-1-campaign.png)), `workflow`:
+   from the mission file to the jury, one box per stage.
+6. [The timeline](docs/diagrams/launch-2-timeline.html) ([PNG](docs/diagrams/launch-2-timeline.png)), `waterfall`:
+   every command, subprocess and thread on one measured clock.
+7. [Prompts, skills and files](docs/diagrams/launch-3-prompts.html) ([PNG](docs/diagrams/launch-3-prompts.png)),
+   `dataflow`: where each file the AI reads comes from, and the order of the reads.
+8. [One session](docs/diagrams/launch-4-session.html) ([PNG](docs/diagrams/launch-4-session.png)), `sequence`:
+   session 1, function by function, in the order of the trace.
+
 ## Repository layout
 
 | Path | What it holds |
