@@ -7,7 +7,11 @@ export HOME=/root DEBIAN_FRONTEND=noninteractive
 exec >>/var/log/race-vm.log 2>&1
 echo "== boot $(date -u +%FT%TZ)"
 
-apt-get update -q && apt-get install -y -q git python3 curl ca-certificates xz-utils
+apt-get update -q && apt-get install -y -q git python3 curl ca-certificates xz-utils python3-sympy python3-pip
+# the framework's optional modules (pyproject.toml: math, publish), for the system python3 the services run
+pip install -q --break-system-packages "huggingface_hub>=1.0"
+# Ubuntu 24.04 denies user namespaces to non-root users; the harnesses' own sandboxes (Codex: bwrap) need them
+echo kernel.apparmor_restrict_unprivileged_userns=0 > /etc/sysctl.d/60-race-userns.conf && sysctl -q --system
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y -q nodejs
 arch=$(dpkg --print-architecture)
 curl -fsSL "https://github.com/caddyserver/caddy/releases/download/v2.11.9/caddy_2.11.9_linux_${arch}.tar.gz" \

@@ -146,7 +146,8 @@ def up(a) -> int:
 
 
 def teardown(zone: str, server_id: str, ip_id: str, app: str) -> None:
-    """Delete the server with its Block Storage volumes, its flexible IP and the IAM application; each one once."""
+    """Delete the IAM application, then the server with its Block Storage volumes and its flexible IP; a second run
+    after a partial failure finishes the job."""
     vols: list[str] = []
     s = scw("GET", f"/instance/v1/zones/{zone}/servers/{server_id}", ok404=True) if server_id else None
     if s:
@@ -154,6 +155,13 @@ def teardown(zone: str, server_id: str, ip_id: str, app: str) -> None:
         vols = [v["id"] for v in (s.get("volumes") or {}).values() if v.get("volume_type") == "sbs_volume"]
         ip_id = ip_id or next((i["id"] for i in s.get("public_ips") or []), "")
         app = app or next((t.split(":", 1)[1] for t in s.get("tags", []) if t.startswith("iam-app:")), "")
+    # the IAM application first: its id is in the server's tags, lost once the server is gone
+    if app and (application := scw("GET", f"/iam/v1alpha1/applications/{app}", ok404=True)):
+        for p in scw("GET", "/iam/v1alpha1/policies", query={"application_ids": app,
+                                                             "organization_id": application["organization_id"]})["policies"]:
+            scw("DELETE", f"/iam/v1alpha1/policies/{p['id']}")
+        scw("DELETE", f"/iam/v1alpha1/applications/{app}")  # its API keys go with it
+    if s:
         if s["state"] == "stopped":
             scw("DELETE", f"/instance/v1/zones/{zone}/servers/{server_id}")
         else:
@@ -167,11 +175,6 @@ def teardown(zone: str, server_id: str, ip_id: str, app: str) -> None:
             time.sleep(5)
     if ip_id and scw("GET", f"/instance/v1/zones/{zone}/ips/{ip_id}", ok404=True):
         scw("DELETE", f"/instance/v1/zones/{zone}/ips/{ip_id}")
-    if app:
-        for p in scw("GET", "/iam/v1alpha1/policies", query={"application_ids": app})["policies"]:
-            scw("DELETE", f"/iam/v1alpha1/policies/{p['id']}")
-        if scw("GET", f"/iam/v1alpha1/applications/{app}", ok404=True):
-            scw("DELETE", f"/iam/v1alpha1/applications/{app}")  # its API keys go with it
     print(f"deleted: server {server_id or '-'}, volumes {vols or '-'}, ip {ip_id or '-'}, IAM application {app or '-'}")
 
 
