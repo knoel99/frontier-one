@@ -6,6 +6,9 @@
 # Commands and environments of the vendor harnesses were run headless on 2026-11-13 by the previous campaign
 # (old/race/PROVIDERS-TESTED.md at commit 7223bd6, in git history); the others come from the harnesses' docs (docs/HARNESSES.md). Check a new version
 # with `python3 -m frontier mission start <file> --prepare-only` and a short session before a real mission.
+# install: each version is pinned to the latest published when the harness delivered a live mission on 2026-11-15 (read from
+# npm, PyPI and the vendors' installers on 2026-11-16). To move a harness to a new version, change its pin and run its
+# live check in the same change: `python3 tools/verify_live.py --root DIR --harness <name>`.
 #
 # Metering: `route` (environment variables) and `route_args` (arguments inserted before the prompt) send the
 # harness's own LLM traffic through the local gateway that charges the mission's LLM budget, at
@@ -13,7 +16,7 @@
 # gives one, see `usage`).
 
 [claude]
-install = "npm install -g @anthropic-ai/claude-code"
+install = "npm install -g @anthropic-ai/claude-code@2.1.325"
 command = ["claude", "-p", "{prompt}", "--model", "{model}", "--effort", "{effort}", "--permission-mode", "bypassPermissions", "--output-format", "stream-json", "--verbose"]
 effort = "level"
 env = { ANTHROPIC_API_KEY = "{key}", MCP_TOOL_TIMEOUT = "3600000", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1" }
@@ -27,7 +30,7 @@ route = { ANTHROPIC_BASE_URL = "{gateway}/zhipu/api/anthropic" }
 default_base_url = { ANTHROPIC_BASE_URL = "https://api.z.ai/api/anthropic" }
 
 [codex]
-install = "npm install -g @openai/codex"
+install = "npm install -g @openai/codex@0.169.0"
 setup = "printenv OPENAI_API_KEY | codex login --with-api-key"
 # features.plugins=false: Codex 0.169 fetches its plugin catalogue from github.com and api.github.com at start (checked
 # 2026-11-15 behind the outbound filter): blocked hosts the team never chose, which the stewards would count against it.
@@ -44,7 +47,7 @@ usage = "jsonl:turn.completed"
 in_sandbox = { "workspace-write" = "danger-full-access" }
 
 [antigravity]
-install = "curl -fsSL https://antigravity.google/cli/install.sh | bash"  # --skip-aliases refused since (checked 2026-11-14)
+install = "curl -fsSL https://antigravity.google/cli/install.sh | bash"  # no version option: it installs the latest (read 2026-11-16); --skip-aliases refused since 2026-11-14
 setup = "mkdir -p ~/.gemini/antigravity-cli && [ -f ~/.gemini/antigravity-cli/settings.json ] || echo '{\"modelProvider\": \"gemini\"}' > ~/.gemini/antigravity-cli/settings.json"
 command = ["agy", "-p", "{prompt}", "--model", "{model}", "--effort", "{effort}", "--output-format", "json", "--dangerously-skip-permissions"]
 effort = "provider"
@@ -56,7 +59,7 @@ model_map = { "gemini-3.8-flash" = "light" }
 usage = "json-usage"
 
 [gemini]
-install = "npm install -g @google/gemini-cli"
+install = "npm install -g @google/gemini-cli@0.68.0"
 # Gemini CLI 0.68 (checked 2026-11-15): headless, it needs its auth method chosen in ~/.gemini/settings.json (else
 # "Invalid auth method selected", exit 41) and the workspace trusted (else yolo falls back to asking for approval).
 setup = "python3 -c \"import json,pathlib; p=pathlib.Path.home()/'.gemini'/'settings.json'; p.parent.mkdir(exist_ok=True); d=json.loads(p.read_text()) if p.exists() else {}; d.setdefault('security',{}).setdefault('auth',{}).setdefault('selectedType','gemini-api-key'); p.write_text(json.dumps(d,indent=1))\""
@@ -67,7 +70,7 @@ route = { GOOGLE_GEMINI_BASE_URL = "{gateway}/google" }
 usage = "json-usage"
 
 [grok]
-install = "curl -fsSL https://x.ai/cli/install.sh | bash"
+install = "curl -fsSL https://x.ai/cli/install.sh | bash -s 1.0.77"
 command = ["grok", "-p", "{prompt}", "-m", "{model}", "--effort", "{effort}", "--max-turns", "{max_turns}", "--always-approve", "--output-format", "json", "--no-auto-update"]
 effort = "provider"
 env = { XAI_API_KEY = "{key}" }
@@ -79,7 +82,7 @@ model_map = { "grok-4.6" = "frontier" }
 usage = "json-usage"
 
 [kimi]
-install = "npm install -g @moonshot-ai/kimi-code"
+install = "npm install -g @moonshot-ai/kimi-code@2.6.2"
 command = ["kimi", "-p", "{prompt}", "--output-format", "stream-json"]
 effort = "provider"
 env = { KIMI_MODEL_NAME = "{model}", KIMI_MODEL_THINKING_EFFORT = "{effort}", KIMI_MODEL_API_KEY = "{key}", KIMI_MODEL_PROVIDER_TYPE = "kimi", KIMI_CODE_TRUST_WORKSPACE = "1" }
@@ -89,7 +92,7 @@ usage = ""
 goal = "/goal"   # exit codes 0 completed, 3 blocked, 6 paused (kimi-code-cli slash commands)
 
 [qwen]
-install = "npm install -g @qwen-code/qwen-code"
+install = "npm install -g @qwen-code/qwen-code@0.27.4"
 command = ["qwen", "-p", "{prompt}", "-m", "{model}", "--yolo", "-o", "json", "--max-session-turns", "{max_turns}"]
 effort = "provider"
 env = { OPENAI_API_KEY = "{key}", OPENAI_MODEL = "{model}", QWEN_CODE_SUPPRESS_YOLO_WARNING = "1" }
@@ -99,7 +102,7 @@ usage = "json-usage"
 goal = "/goal"   # enforced goalTokenBudget / goalMaxTurns (qwen-code-docs features/goals)
 
 [vibe]
-install = "uv tool install mistral-vibe"
+install = "uv tool install mistral-vibe==3.1.2"
 command = ["vibe", "-p", "{prompt}", "--trust", "--model", "{model}", "--auto-approve", "--max-turns", "{max_turns}", "--output", "json"]  # --trust: else .vibe/ (MCP) is ignored (vibe 3.1.2)
 effort = "provider"
 env = { MISTRAL_API_KEY = "{key}" }
@@ -110,7 +113,7 @@ route = { FRONTIER_GATEWAY = "{gateway}" }
 usage = "json-usage"
 
 [dsh]
-install = "npm install -g @deepseek-ai/dsh@latest"  # prereleases only: npm skips them without a tag (2026-11-14)
+install = "npm install -g @deepseek-ai/dsh@0.2.2-rc.3"  # prereleases only: npm skips them without a tag (2026-11-14)
 command = ["dsh", "--profile", "headless", "--patch", "{workspace}/.dsh/frontier.patch.yml", "--json", "--approval-policy", "never", "{prompt}"]  # launcher flags first (dsh 0.2.2-rc.1)
 effort = "provider"
 env = { DEEPSEEK_API_KEY = "{key}", DSH_MODEL = "{model}", DSH_REASONING_EFFORT = "{effort}" }
@@ -120,7 +123,7 @@ usage = ""
 [opencode]
 # The mission's opencode.json declares a provider `frontier` pointing at the gateway (frontier/harnesses.py).
 # Checked live 2026-11-15 with opencode 1.19.5 on Cerebras through the gateway (see --dir below).
-install = "npm install -g opencode-ai"
+install = "npm install -g opencode-ai@1.19.5"
 command = ["opencode", "run", "--auto", "--dir", "{workspace}", "--format", "json", "-m", "frontier/{model}", "{prompt}"]
 # --dir: launched from another directory (the launcher's), OpenCode took that one as its project, missed the
 # workspace's opencode.json and failed with "Model not found: frontier/<model>" (checked 2026-11-15, 1.19.5).
@@ -133,7 +136,7 @@ usage = "json-usage"
 # Z.ai's Agent CLI, built from github.com/zai-org/ZCode (apps/zcode-cli, pnpm workspace, Node 24) into /opt/zcode-cli.
 # HOME is a home of the mission (state/zcode): MCP in .zcode/cli/config.json, the model in provider_config.json on
 # the gateway. Checked live on 2026-11-15 with v0.17.1 and glm-5.3: MCP tool called, JSON usage report.
-install = "git clone --depth 1 https://github.com/zai-org/ZCode.git /opt/zcode-src && cd /opt/zcode-src && pnpm install --frozen-lockfile --filter '@zcode/cli...' && pnpm --filter '@zcode/cli...' build && cp -r apps/zcode-cli/packages/cli/dist /opt/zcode-cli"
+install = "git clone --depth 1 --branch v3.18.2 https://github.com/zai-org/ZCode.git /opt/zcode-src && cd /opt/zcode-src && pnpm install --frozen-lockfile --filter '@zcode/cli...' && pnpm --filter '@zcode/cli...' build && cp -r apps/zcode-cli/packages/cli/dist /opt/zcode-cli"
 command = ["/opt/node24/bin/node", "/opt/zcode-cli/zcode.cjs", "--prompt", "{prompt}", "--cwd", "{workspace}", "--mode", "yolo", "--disallowed-tools", "AskUserQuestion EnterPlanMode ExitPlanMode", "--json", "--no-color"]
 effort = "provider"
 env = { HOME = "{state}/zcode", ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = "{state}/zcode/provider_config.json" }
@@ -145,7 +148,7 @@ usage = "json-usage"
 [hermes]
 # HERMES_HOME points at a configuration of the mission (state/hermes/config.yaml: model on the gateway, MCP server).
 # Flags from hermes-agent.nousresearch.com/docs (2026-11-14); UNCONFIRMED until a first session.
-install = "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"
+install = "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --commit 3b421578588243f920886e6fe79a6faa87ea026e"  # v0.23.1, the stable release on 2026-11-15
 command = ["hermes", "chat", "-q", "{prompt}", "--yolo", "--api-key", "{key}"]
 effort = "provider"
 env = { HERMES_HOME = "{state}/hermes" }

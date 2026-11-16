@@ -291,6 +291,19 @@ def test_deliver_checks_freezes_and_reports(tmp_path, cfg, monkeypatch):
     assert mission.deliver(ctx).startswith("already delivered")
 
 
+def test_every_harness_install_is_pinned():
+    """An unpinned install takes whatever version the vendor published last: a recipe can then break between two runs
+    with no change here. Seven of the fourteen defects of 2026-11-15 were a harness or OpenShell refusing a recipe."""
+    import re
+
+    conf = tomllib.loads(launcher.HARNESS_CONF.read_text())
+    pinned = re.compile(r"@\d[\w.-]*(\s|\"|$)|==\d|bash -s \d|--branch v\d|--commit [0-9a-f]{40}")
+    for name, h in conf.items():
+        if name == "antigravity":  # its installer has no version option (read 2026-11-16): the live check is the guard
+            continue
+        assert pinned.search(h.get("install", "")), f"{name}: pin the version in `install` (config/harnesses.toml)"
+
+
 def test_harness_choice_and_launch_command(tmp_path, monkeypatch):
     assert mission.load(_mission(tmp_path, provider="anthropic"))["harness"]["name"] == "claude"
     assert mission.load(_mission(tmp_path, provider="zhipu"))["harness"]["name"] == "zcode"  # Z.ai's own Agent CLI

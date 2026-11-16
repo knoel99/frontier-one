@@ -4,6 +4,7 @@ with tiny budgets. Each check prints a verdict (PASS, ISSUES, BLOCKED) and the o
 deletes what it created and reads each deletion back.
 
     python3 tools/verify_live.py --root DIR [--only F10,F12] [--skip-cloud]
+    python3 tools/verify_live.py --root DIR --harness codex,gemini|all [--install]   # F22: a live mission per harness
 
 It spends real money (well under 1 EUR in all): LLM key checks and sub-agents on four providers, one Runpod pod for a
 few minutes, one Scaleway DEV1-S for a few minutes, one private Hugging Face repo (deleted at the end), and a jury of
@@ -424,6 +425,94 @@ def f7_live(root: pathlib.Path):
             f"launcher exit {p.returncode}; session_end {ends[-1] if ends else None}; processes left: {left or 'none'}")
 
 
+HARNESS_PROVIDER = {"opencode": "deepseek", "hermes": "openai"}  # the community harnesses, on the providers they ran on
+HARNESS_SUBJECT = ("# Subject\n\nVerification run of a harness. Write REPORT.md with one sentence saying that the run "
+                   "worked. Write DELIVERY.md, COMPLIANCE.md and DECISIONS.md with one line each. Commit, then call "
+                   "`deliver`. Do nothing else.\n")
+
+
+def _missing(h: dict) -> str:
+    """Why the harness of a recipe cannot run on this machine, or ""."""
+    import shutil
+
+    cmd = h["command"]
+    if not shutil.which(cmd[0]):
+        return f"{cmd[0]} is not installed (install: {h.get('install', 'see docs/HARNESSES.md')})"
+    gone = [a for a in cmd if a.startswith("/") and "{" not in a and not pathlib.Path(a).exists()]
+    return f"{', '.join(gone)} not found (install: {h.get('install')})" if gone else ""
+
+
+@check("F22", "a live mission per harness")
+def f22(root: pathlib.Path, names: list[str], install: bool):
+    """One tiny mission per harness, on its native provider: the harness delivers, its calls are metered, the ledgers
+    verify, no blocked host is tried and no process is left. A harness that is not installed, or whose provider's
+    key does not answer, is BLOCKED."""
+    from frontier.harnesses import HARNESSES
+
+    for name in names:
+        provider = HARNESS_PROVIDER.get(name) or HARNESSES[name].provider
+        label = f"harness {name} on {provider}"
+        try:
+            _f22_one(root, name, provider, label, install)
+        except Exception as e:  # noqa: BLE001 - one harness that fails to run is its verdict, the others still run
+            verdict("F22", label, False, f"{type(e).__name__}: {str(e)[:300]}")
+
+
+def _f22_one(root: pathlib.Path, name: str, provider: str, label: str, install: bool) -> None:
+    h = launcher.harness_conf(name, provider)
+    if (why := _missing(h)) and install and h.get("install"):
+        subprocess.run(["bash", "-c", h["install"]], capture_output=True, text=True, timeout=900, check=False)
+        why = _missing(h)
+    if why:
+        verdict("F22", label, None, why)
+        return
+    key = load_config()["providers"][provider]["key_env"]
+    d = root / "files" / f"harness-{name}"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "subject.md").write_text(HARNESS_SUBJECT)
+    st, ws = root / "missions" / f"harness-{name}", root / "ws" / f"harness-{name}"
+    f = d / "m.toml"
+    f.write_text(f'''[mission]
+name = "harness-{name}"
+subject = "subject.md"
+workspace = "{ws}"
+state = "{st}"
+duration_hours = 0.2
+[harness]
+name = "{name}"
+tier = "standard"
+reasoning = "low"
+max_sessions = 2
+[llm]
+provider = "{provider}"
+budget_usd = 1.0
+[secrets]
+{key} = "proxy"
+''')
+    tools_md = mission.prepare(f, ping=True, offers=False)["workspace"] / "TOOLS.md"
+    if "KEY CHECK FAILED" in tools_md.read_text():
+        verdict("F22", label, None, f"the {provider} key does not answer here (TOOLS.md: KEY CHECK FAILED)")
+        return
+    p = subprocess.run([sys.executable, "-m", "frontier", "mission", "start", str(f), "--no-ping"], cwd=ROOT,
+                       capture_output=True, text=True, timeout=1500, check=False)
+    b = budget.Budget(st)
+    entries = b.llm_entries()
+    metered = [e for e in entries if e["frontier.source"] in ("gateway", "harness-report")]
+    blocked = sorted({e["host"] for e in budget.read_jsonl(st / "events.jsonl") if e.get("event") == "egress"
+                      and not e.get("allowed")})
+    left = subprocess.run(["pgrep", "-af", str(st)], capture_output=True, text=True, check=False).stdout.strip()
+    intact = all(v is True for v in b.verify().values())
+    delivered = (st / "delivery.json").exists()
+    program = [h["command"][0], *[a for a in h["command"][1:2] if a.endswith((".js", ".cjs", ".mjs"))]]  # node <cli>
+    version = subprocess.run([*program, "--version"], capture_output=True, text=True, timeout=60,
+                             check=False).stdout.strip().splitlines()[:1]
+    verdict("F22", label, delivered and bool(metered) and intact and not blocked and not left,
+            f"{version[0] if version else 'version unknown'}; launcher exit {p.returncode}; delivered {delivered}; "
+            f"{len(metered)} calls metered ({sum(e['frontier.cost.usd'] for e in metered):.4f} USD, "
+            f"{metered[0]['frontier.source'] if metered else 'none'}); ledgers intact {intact}; blocked hosts "
+            f"tried {blocked or 'none'}; processes left {left or 'none'}")
+
+
 def _echo(gw_base: str, prompt: str) -> str:
     """One tiny Responses call through the gateway; the answer's text (the model repeats what was added to it)."""
     body = {"model": "gpt-6-luna", "input": prompt, "max_output_tokens": 400, "reasoning": {"effort": "low"}}
@@ -636,12 +725,22 @@ def main() -> int:
     ap.add_argument("--only", default="", help="comma-separated feature ids")
     ap.add_argument("--skip-cloud", action="store_true", help="no Runpod, Scaleway or Hugging Face resource")
     ap.add_argument("--coverage", choices=["on", "off", "report"])
+    ap.add_argument("--harness", default="", help="F22: comma-separated harnesses to run a live mission with, or 'all'; "
+                    "only these checks run")
+    ap.add_argument("--install", action="store_true", help="F22: install a missing harness with its recipe's command")
     a = ap.parse_args()
     root = pathlib.Path(a.root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     if a.coverage:
         return coverage_cmd(a.coverage, root)
     ONLY.update(x for x in a.only.split(",") if x)
+    if a.harness:  # a live mission per harness, and nothing else
+        import tomllib
+
+        names = list(tomllib.loads((ROOT / "config" / "harnesses.toml").read_text())) if a.harness == "all" else a.harness.split(",")
+        f22(root, names, a.install)
+        (root / "verify-report.json").write_text(json.dumps(RESULTS, indent=1) + "\n")
+        return 1 if any(r["verdict"] == "ISSUES" for r in RESULTS) else 0
     try:
         info = f1_f3(root)
         st = info["state"] if info else root / "missions" / "level1"

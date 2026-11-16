@@ -553,6 +553,26 @@ def test_a_refusal_late_in_a_session_does_not_end_the_mission(tmp_path):
     assert "fresh session" in _stop_reason(r)
 
 
+def test_the_launcher_ends_what_a_harness_left_running(tmp_path):
+    """Harness check of 2026-11-16 (Hermes 0.23.1): each session is served by a detached gateway daemon, outside the
+    session's process group, which outlived the mission with the frontier MCP server it had started."""
+    import sys
+
+    state, other = tmp_path / "state", tmp_path / "other"
+    sleep = [sys.executable, "-c", "import time; time.sleep(60)"]
+    daemon = subprocess.Popen(sleep, env={**os.environ, "FRONTIER_STATE": str(state)}, start_new_session=True)
+    server = subprocess.Popen([*sleep, "--state", str(state)], start_new_session=True)
+    theirs = subprocess.Popen(sleep, env={**os.environ, "FRONTIER_STATE": str(other)}, start_new_session=True)
+    try:
+        left = launcher.end_leftovers(state)
+        assert daemon.wait(timeout=5) is not None and server.wait(timeout=5) is not None
+        assert len(left) == 2 and theirs.poll() is None  # another mission's processes are not touched
+    finally:
+        for p in (daemon, server, theirs):
+            p.kill()
+            p.wait()
+
+
 def test_a_harness_failing_at_start_stops_the_mission(tmp_path):
     """Race 2026-11-15: the Google credit ran out and the launcher burned 18 sessions of 1-2 s each."""
     from frontier.budget import append_chained, now
