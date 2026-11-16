@@ -134,9 +134,10 @@ usage = "json-usage"
 
 [zcode]
 # Z.ai's Agent CLI, built from github.com/zai-org/ZCode (apps/zcode-cli, pnpm workspace, Node 24) into /opt/zcode-cli.
+# install brings its own Node 24.22.3 and pnpm 10.33.2 (ZCode's packageManager), read 2026-11-16: a fresh VM has neither.
 # HOME is a home of the mission (state/zcode): MCP in .zcode/cli/config.json, the model in provider_config.json on
 # the gateway. Checked live on 2026-11-15 with v0.17.1 and glm-5.3: MCP tool called, JSON usage report.
-install = "git clone --depth 1 --branch v3.18.2 https://github.com/zai-org/ZCode.git /opt/zcode-src && cd /opt/zcode-src && pnpm install --frozen-lockfile --filter '@zcode/cli...' && pnpm --filter '@zcode/cli...' build && cp -r apps/zcode-cli/packages/cli/dist /opt/zcode-cli"
+install = "mkdir -p /opt/node24 && curl -fsSL https://nodejs.org/dist/v24.22.3/node-v24.22.3-linux-$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/').tar.xz | tar -xJ --strip-components=1 -C /opt/node24 && /opt/node24/bin/npm install -g --prefix /opt/node24 pnpm@10.33.2 && export PATH=/opt/node24/bin:$PATH && git clone --depth 1 --branch v3.18.2 https://github.com/zai-org/ZCode.git /opt/zcode-src && cd /opt/zcode-src && pnpm install --frozen-lockfile --filter '@zcode/cli...' && pnpm --filter '@zcode/cli...' build && cp -r apps/zcode-cli/packages/cli/dist /opt/zcode-cli"
 command = ["/opt/node24/bin/node", "/opt/zcode-cli/zcode.cjs", "--prompt", "{prompt}", "--cwd", "{workspace}", "--mode", "yolo", "--disallowed-tools", "AskUserQuestion EnterPlanMode ExitPlanMode", "--json", "--no-color"]
 effort = "provider"
 env = { HOME = "{state}/zcode", ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = "{state}/zcode/provider_config.json" }
