@@ -1,7 +1,7 @@
 # Test results
 
-Plan: [TEST-PLAN.md](TEST-PLAN.md). Two campaigns: 2026-11-15 (below, the features added since the first one and a
-second pass on the others) and 2026-11-14 (further down).
+Plan: [TEST-PLAN.md](TEST-PLAN.md). Two campaigns: 2026-11-15 (the features added since the first one and a second
+pass on the others) and 2026-11-14 (further down). First, a run of the live checks on 2026-11-16.
 
 # Run of 2026-11-16, after PRs #39 to #41
 
