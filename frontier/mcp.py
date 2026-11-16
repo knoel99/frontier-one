@@ -191,7 +191,7 @@ def serve_stdio(server: Server, inp, out, workers: int = 16) -> None:
         for m in msg if isinstance(msg, list) else [msg]:
             try:
                 r = server.handle(m)
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 - the harness gets a JSON-RPC error, and the server goes on
                 traceback.print_exc()
                 r = {"jsonrpc": "2.0", "id": m.get("id"), "error": {"code": -32603, "message": "internal error"}}
             if r is not None:

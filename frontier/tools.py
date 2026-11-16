@@ -45,9 +45,6 @@ def _path(ctx, p: str) -> pathlib.Path:
     return q
 
 
-# ---------------------------------------------------------------- workspace and HTTP
-
-
 def t_shell(ctx, command: str, timeout_s: int = 0) -> str:
     limit = int(timeout_s or ctx.limits.get("shell_timeout_s", 600))
     try:
@@ -86,10 +83,7 @@ def t_http_request(ctx, method: str, url: str, headers: dict | None = None, body
     return f"HTTP {code}\n{text}"
 
 
-# ---------------------------------------------------------------- catalog and raw API calls
-
-
-def t_api_docs(ctx, action: str, query: str = "", id: str = "", doc: str = "") -> str:  # noqa: A002
+def t_api_docs(ctx, action: str, query: str = "", id: str = "", doc: str = "") -> str:
     if action == "list":
         return catalog.overview()
     if action == "search":
@@ -178,8 +172,6 @@ def t_runpod_mcp(ctx, tool: str, arguments: dict | None = None) -> str:
     return text if ok else "ERROR: " + text
 
 
-# ---------------------------------------------------------------- registry
-
 REGISTRY: dict[str, Tool] = {}
 
 
@@ -197,7 +189,6 @@ register("edit_file", "Replace the unique occurrence of `old` by `new` in a work
 register("http_request", "Generic HTTP request; returns status and body.",
          _obj({"method": S, "url": S, "headers": J, "body": J}, ["method", "url"]), t_http_request)
 
-# Ready-made infrastructure functions: prefer them to raw calls.
 register("scw_offers", "Scaleway Instance types of a zone with real price (EUR/hour, from the Product Catalog), GPU, "
          "memory and stock, cheapest first. zone: one zone (default fr-par-2) or 'all'. GPU types only, available or "
          "scarce only, unless told otherwise.",
@@ -238,7 +229,7 @@ register("rp_delete_pod", "Delete a Runpod pod (stops billing). Only pods of thi
 register("infra_resources", "Cloud resources created by this run (all agents), with state and hourly price.",
          _obj({}), infra.infra_resources)
 register("infra_cleanup", "Delete every resource of this run that is still alive.", _obj({}), infra.infra_cleanup)
-from .status import mission_status  # noqa: E402
+from .status import mission_status
 
 register("mission_status", "Everything the race dashboard shows about this mission, for planning: LLM and cloud budgets "
          "(spent, in flight, cap, left), the rate of spend over the last 10 minutes and the hours until each cap at "
@@ -249,7 +240,6 @@ register("budget_status", "Budgets and spend so far: LLM (USD, by model and mode
          "metered harness traffic), Scaleway (EUR) and Runpod (USD) spent and committed by alive resources, elapsed "
          "time and hours left before the deadline.", _obj({}), infra.budget_status)
 
-# Hugging Face Hub
 register("hf_whoami", "Hugging Face account of the token: user name, organisations, token role.", _obj({}), hf.hf_whoami)
 register("hf_publish", "Create (if needed) a Hugging Face repository (model, dataset or static space) and upload a "
          "workspace folder to it. The folder must hold a card: README.md with YAML metadata (license for models and "
@@ -257,7 +247,6 @@ register("hf_publish", "Create (if needed) a Hugging Face repository (model, dat
          _obj({"repo_name": S, "folder": S, "repo_type": {"type": "string", "enum": ["model", "dataset", "space"]},
                "namespace": S, "commit_message": S, "space_sdk": S}, ["repo_name", "folder"]), hf.hf_publish)
 
-# Mission
 def t_deliver(ctx, summary: str = "", force: bool = False) -> str:
     from .mission import deliver  # late import: mission builds on the agent and harness modules
 
@@ -269,7 +258,6 @@ register("deliver", "End the mission: checks DELIVERY.md, COMPLIANCE.md and DECI
          "(delivery time is measured here). force=true delivers with missing files, recorded as missing.",
          _obj({"summary": S, "force": B}), t_deliver)
 
-# Catalog and raw calls, for anything the functions above do not cover.
 register("api_docs", "Catalog of the Scaleway and Runpod APIs, one compact signature per operation (like a Swagger "
          "index): action=list; action=search query='create gpu instance' [doc='scaleway/instance' or 'runpod/mcp']; "
          "action=show id='scaleway/instance:CreateServer' (params, body fields, return). Guides: id='scaleway/guide', "

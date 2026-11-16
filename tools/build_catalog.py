@@ -24,7 +24,7 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = ROOT / "catalog"
 sys.path.insert(0, str(ROOT))
-from frontier.http import mcp_rpc  # noqa: E402
+from frontier.http import mcp_rpc
 
 SCALEWAY_APIS = {
     "instance": ("instance/v1", "CPU and GPU virtual machines: servers, types, images, volumes, IPs, security groups, user data"),
@@ -170,7 +170,7 @@ def runpod(sources: dict) -> list[dict]:
         try:  # full schema (some listings say "schema on demand")
             full = json.loads(rpc("tools/call", {"name": "describe-tool", "arguments": {"name": t["name"]}})["content"][0]["text"])
             schema = full.get("inputSchema", schema)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - the listing's own schema is kept, and the failure is printed
             print(f"describe-tool {t['name']}: {e}", file=sys.stderr)
         sm = Summarizer(schema)
         ann = t.get("annotations") or {}

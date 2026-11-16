@@ -118,7 +118,6 @@ def resolve(cfg: dict, provider: str, tier: str, reasoning: str, mode: str = "")
     )
 
 
-
 def _set_path(body: dict, dotted: str, value) -> None:
     keys = dotted.split(".")
     d = body
@@ -259,7 +258,7 @@ def responses_from_events(events: list[dict]) -> dict:
             if ev["type"] == "response.failed":
                 raise LLMError(f"response failed: {json.dumps(ev['response'].get('error'))[:500]}")
             return ev["response"]
-    raise LLMError("streamed response ended without a final event", maybe_billed=bool(events))  # it started: it ran
+    raise LLMError("streamed response ended without a final event", maybe_billed=bool(events))
 
 
 def gemini_from_chunks(chunks: list[dict]) -> dict:
@@ -274,9 +273,6 @@ def gemini_from_chunks(chunks: list[dict]) -> dict:
         finish = cand.get("finishReason") or finish
         usage = c.get("usageMetadata") or usage
     return {"candidates": [{"content": {"role": "model", "parts": parts}, "finishReason": finish}], "usageMetadata": usage}
-
-
-# ---------------------------------------------------------------- OpenAI Chat Completions (and compatibles)
 
 
 def _openai_messages(messages: list[dict]) -> list[dict]:
@@ -331,9 +327,6 @@ def _chat_openai(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
     return Reply(content, calls, usage, am, ch.get("finish_reason", ""))
 
 
-# ---------------------------------------------------------------- OpenAI Responses API
-
-
 def _responses_input(messages: list[dict]) -> tuple[str, list[dict]]:
     system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
     items: list[dict] = []
@@ -366,7 +359,7 @@ def _chat_responses(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
     _merge(body, spec.extra)
     if spec.effort_value is not None and spec.effort_field:
         _set_path(body, spec.effort_field, spec.effort_value)
-    body["stream"] = True  # see _post_sse
+    body["stream"] = True
     r = responses_from_events(_post_sse(f"{spec.base_url}/responses", {"Authorization": f"Bearer {_key(spec)}"}, body))
     output = r.get("output") or []
     text, calls = "", []
@@ -383,9 +376,6 @@ def _chat_responses(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
     replay = [{k: v for k, v in it.items() if k not in ("status",)} for it in output]
     am = {"role": "assistant", "content": text, "tool_calls": calls, "_raw": {"output": replay}}
     return Reply(text, calls, usage, am, r.get("status", ""))
-
-
-# ---------------------------------------------------------------- Gemini generateContent
 
 
 def _gemini_schema(s):
@@ -428,7 +418,7 @@ def _chat_gemini(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
         _set_path(body, spec.effort_field, spec.effort_value)
     if "thinkingConfig" in body.get("generationConfig", {}):  # thought summaries stream while the model thinks; without
         body["generationConfig"]["thinkingConfig"]["includeThoughts"] = True  # them nothing comes for minutes (182 s cut)
-    url = f"{spec.base_url}/models/{spec.model}:streamGenerateContent?alt=sse"  # see _post_sse
+    url = f"{spec.base_url}/models/{spec.model}:streamGenerateContent?alt=sse"
     r = gemini_from_chunks(_post_sse(url, {"x-goog-api-key": _key(spec)}, body))
     cand = (r.get("candidates") or [{}])[0]
     parts = (cand.get("content") or {}).get("parts") or []
@@ -438,9 +428,6 @@ def _chat_gemini(spec: ModelSpec, messages, tools, max_tokens) -> Reply:
     usage = _usage(r)
     am = {"role": "assistant", "content": text, "tool_calls": calls, "_raw": {"parts": parts}}
     return Reply(text, calls, usage, am, cand.get("finishReason", ""))
-
-
-# ---------------------------------------------------------------- Anthropic Messages
 
 
 def _chat_anthropic(spec: ModelSpec, messages, tools, max_tokens) -> Reply:

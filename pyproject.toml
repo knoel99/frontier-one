@@ -29,8 +29,9 @@ target-version = "py311"
 
 [tool.ruff.lint]
 # BLE: an `except Exception` says on its line why swallowing is right. PLW1510: a subprocess.run says what a failed
-# command does (check=True raises, check=False means the code reads the exit status).
-select = ["E", "F", "I", "UP", "B", "BLE", "PLW1510"]
+# command does (check=True raises, check=False means the code reads the exit status). RUF100: a `noqa` that suppresses
+# nothing is removed.
+select = ["E", "F", "I", "UP", "B", "BLE", "PLW1510", "RUF100"]
 ignore = ["E402", "E731", "I001", "E741"]
 
 [tool.pytest.ini_options]

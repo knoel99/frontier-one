@@ -146,7 +146,7 @@ class _Upstream(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def do_POST(self):  # noqa: N802
+    def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         self.server.seen.append((self.path, body))
         if body.get("stream"):

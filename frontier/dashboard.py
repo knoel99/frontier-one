@@ -266,7 +266,7 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def do_GET(self):  # noqa: N802
+    def do_GET(self):
         if self.path.startswith("/api/state"):
             body, ctype = json.dumps(snapshot(self.root)).encode(), "application/json"
         else:

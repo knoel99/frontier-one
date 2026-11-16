@@ -30,11 +30,11 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from frontier import budget, credentials, gateway, hf, infra, launcher, mission  # noqa: E402
-from frontier.agent import Ctx, Run  # noqa: E402
-from frontier.config import load_config  # noqa: E402
-from frontier.http import scw_raw  # noqa: E402
-from frontier.mcp import Server  # noqa: E402
+from frontier import budget, credentials, gateway, hf, infra, launcher, mission
+from frontier.agent import Ctx, Run
+from frontier.config import load_config
+from frontier.http import scw_raw
+from frontier.mcp import Server
 
 PROVIDERS = ["openai", "google", "deepseek", "zhipu"]  # two closed-model, two open-weight
 RESULTS: list[dict] = []
@@ -99,9 +99,6 @@ HF_TOKEN = "proxy"
     return f
 
 
-# ---------------------------------------------------------------- level 1
-
-
 @check("F1", "mission preparation")
 def f1_f3(root):
     info = mission.prepare(write_mission(root, "level1"), ping=True, offers=False)
@@ -137,7 +134,7 @@ def f2_sources(root):
     try:
         origin = credentials.load(m, load_config())
         got = {k: os.environ.get(k) for k in ("HF_TOKEN", "RUNPOD_API_KEY", "SCW_SECRET_KEY")}
-    finally:  # the next checks use the proxy again
+    finally:
         for k, v in saved.items():
             os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
     ok = (origin["HF_TOKEN"] == "file" and origin["RUNPOD_API_KEY"] == "env" and origin["SCW_SECRET_KEY"] == "cmd"
@@ -211,7 +208,7 @@ def f12_f15(st: pathlib.Path):
     os.environ["FRONTIER_ALLOW_SPEND"] = "1"
     srv = Server(state=str(st))
     offers = json.loads(srv.call("rp_offers", {})[0])["offers"]
-    offer = next(o for o in offers if o.get("usd_per_gpu_hour"))  # cheapest first
+    offer = next(o for o in offers if o.get("usd_per_gpu_hour"))
     out, err = srv.call("rp_create_pod", {"name": "frontier-verify", "gpu_type_id": offer["gpu_type_id"], "max_hours": 0.03,
                                           "image": "python:3.12-slim", "disk_gb": 10, "command": "sleep infinity"})
     if err:
@@ -219,7 +216,7 @@ def f12_f15(st: pathlib.Path):
     pod = json.loads(out)["id"]
     CREATED.append(("runpod", pod))
     res = ""
-    for _ in range(30):  # the container starts
+    for _ in range(30):
         out, err = srv.call("rp_exec", {"pod_id": pod, "command": "python3 -c 'print(6*7)'", "timeout_s": 15})
         if not err and '"42' in out:
             res = out
@@ -301,15 +298,12 @@ def f16(root: pathlib.Path, st: pathlib.Path):
             f"bad card refused; {repo} created private={info.private} with {len(info.siblings)} files")
 
 
-# ---------------------------------------------------------------- level 2
-
-
 @check("F6", "LLM hard cap")
 def f6(root: pathlib.Path):
     st = root / "missions" / "cap"
     b = budget.Budget(st)
     b.set_caps(llm_usd=0.000001)
-    Run(load_config(), workspace=root, log_dir=st).log(event="session_start", n=1)  # as the launcher does first
+    Run(load_config(), workspace=root, log_dir=st).log(event="session_start", n=1)
     gw = gateway.serve(str(st))
     req = urllib.request.Request(f"http://127.0.0.1:{gw.server_address[1]}/openai/v1/responses",
                                  data=json.dumps({"model": "gpt-6-luna", "input": "hi", "max_output_tokens": 16}).encode(),
@@ -389,7 +383,7 @@ def f14_live(root: pathlib.Path):
     os.environ["FRONTIER_ALLOW_SPEND"] = "1"
     srv = Server(state=str(st))
     offer = next(o for o in json.loads(srv.call("rp_offers", {})[0])["offers"] if o.get("usd_per_gpu_hour"))
-    hours = 0.01  # 36 s
+    hours = 0.01
     budget.Budget(st).set_caps(runpod_usd=offer["usd_per_gpu_hour"] * hours * 1.5)  # room for one, not two
     args = {"name": "frontier-verify-parallel", "gpu_type_id": offer["gpu_type_id"], "max_hours": hours,
             "image": "python:3.12-slim", "disk_gb": 10, "command": "sleep infinity"}
@@ -416,7 +410,7 @@ def f7_live(root: pathlib.Path):
     sub.mkdir(parents=True, exist_ok=True)
     f = write_mission(root, "deadline-live", hours=0.025, llm_usd=0.1,
                       extra='[harness]\nname = "codex"\ntier = "light"\nreasoning = "low"\nmax_sessions = 1\n')
-    text = f.read_text().replace('[harness]\nname = "codex"\n[llm]', '[llm]', 1)  # one [harness] section only
+    text = f.read_text().replace('[harness]\nname = "codex"\n[llm]', '[llm]', 1)
     f.write_text(text)
     (sub / "subject.md").write_text("# Subject\n\nThe experiment is the shell command `sleep 300`: run it first, in the "
                                     "foreground, and wait for it to finish. Then write its exit code in REPORT.md and deliver.\n")
@@ -428,9 +422,6 @@ def f7_live(root: pathlib.Path):
     ok = bool(ends) and ends[-1].get("code") == launcher.DEADLINE_EXIT and ends[-1].get("stopped") == "deadline" and not left
     verdict("F7", "deadline stops a real harness session", ok,
             f"launcher exit {p.returncode}; session_end {ends[-1] if ends else None}; processes left: {left or 'none'}")
-
-
-# ---------------------------------------------------------------- features added since 2026-11-14
 
 
 def _echo(gw_base: str, prompt: str) -> str:
@@ -489,12 +480,12 @@ def f27(root: pathlib.Path, st0: pathlib.Path):
     watchdog = snapshots.Snapshots(b)
     watchdog.notice()
     first = watchdog.take(ws)  # the 5-minute milestone is before notice_from_minutes: silent, taken at once
-    b.set_caps(start=(budget.now() - budget.dt.timedelta(minutes=16)).isoformat())  # ten minutes later
-    watchdog.notice()  # the watchdog ticks first, as it does every 10 s
+    b.set_caps(start=(budget.now() - budget.dt.timedelta(minutes=16)).isoformat())
+    watchdog.notice()
     gw = gateway.serve(str(st))
     answer = _echo(f"http://127.0.0.1:{gw.server_address[1]}", ECHO)
     gw.shutdown()
-    early = watchdog.take(ws)  # within the grace: nothing yet
+    early = watchdog.take(ws)
     time.sleep(16)  # the 15-minute one has a grace of 15 s
     second = watchdog.take(ws)
     notices = [(e["label"], e["silent"]) for e in budget.read_jsonl(st / "events.jsonl") if e.get("event") == "snapshot_notice"]
@@ -595,9 +586,6 @@ def f29(root: pathlib.Path):
             f"{budget.Budget(root / 'jury-leak').llm_spent()}")
 
 
-# ---------------------------------------------------------------- cleanup
-
-
 def cleanup() -> None:
     for kind, rid in CREATED:
         try:
@@ -619,11 +607,8 @@ def cleanup() -> None:
                     print(f"cleanup hf {rid}: STILL THERE")
                 except Exception:  # noqa: BLE001 - not found is the expected answer
                     print(f"cleanup hf {rid}: gone")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - one cleanup that failed is printed, and the others still run
             print(f"cleanup {kind} {rid}: {e}")
-
-
-# ---------------------------------------------------------------- coverage across processes
 
 
 def coverage_cmd(action: str, root: pathlib.Path) -> int:

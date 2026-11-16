@@ -69,9 +69,6 @@ def _paged(path: str, key: str, query: dict, size_param: str, size: int = 100) -
         page += 1
 
 
-# ---------------------------------------------------------------- Scaleway
-
-
 def scw_offers(ctx, zone: str = "", min_gpu_memory_gb: float = 0, gpu_only: bool = True, include_unavailable: bool = False) -> str:
     """Instance types of a zone (or every zone with zone="all") with their real price (Product Catalog) and stock."""
     if zone == "all":
@@ -243,9 +240,6 @@ def scw_delete_instance(ctx, server_id: str, zone: str = "", not_created_by_this
     return _j(_delete_scw_instance(ctx.run, server_id, zone))
 
 
-# ---------------------------------------------------------------- Runpod (through the MCP server)
-
-
 def rp_offers(ctx, min_memory_gb: float = 0, cloud: str = "SECURE", gpu_count: int = 1, include_unavailable: bool = False) -> str:
     """GPU types with $/hour per GPU and stock for pods."""
     gpus = mcp_json("list-gpu-types", {"include": ["AVAILABILITY"], "product": ["POD"], "cloud": cloud, "count": gpu_count})
@@ -400,9 +394,6 @@ def rp_delete_pod(ctx, pod_id: str, not_created_by_this_run: bool = False) -> st
     if g := _not_owned(ctx, pod_id, "pod", not_created_by_this_run):
         return g
     return _j(_delete_rp_pod(ctx.run, pod_id))
-
-
-# ---------------------------------------------------------------- ledger
 
 
 def infra_resources(ctx) -> str:

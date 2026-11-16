@@ -21,9 +21,6 @@ PROMPTS = ROOT / "prompts"
 ROLES = ROOT / "roles"
 
 
-# ---------------------------------------------------------------- run: shared budget and ledger
-
-
 @dataclass
 class Run:
     """An agent tree, or a whole mission: limits, budgets, cloud ledger and logs, kept in `log_dir` on disk so that
@@ -63,7 +60,6 @@ class Run:
         ok, why = self.budget.llm_allowed()
         return "" if ok else why
 
-    # resources.json: the ledger of the cloud resources created by any agent of the run, shared between processes
     @property
     def resources(self) -> list[dict]:
         return self.budget.resources()
@@ -118,9 +114,6 @@ class Ctx:
         return self.run.allow_spend
 
 
-# ---------------------------------------------------------------- roles
-
-
 def load_role(name: str) -> dict:
     """roles/<name>.md: a header between '---' lines (key: value), then the role's instructions."""
     p = ROLES / f"{name}.md"
@@ -157,9 +150,6 @@ def expand_tools(names) -> list[str]:
     return out
 
 
-# ---------------------------------------------------------------- agent
-
-
 def _fill(template: str, **kw) -> str:
     for k, v in kw.items():
         template = template.replace("{{" + k + "}}", str(v))
@@ -180,7 +170,7 @@ class Agent:
         self.parent = parent
         self.id = f"{name}-{uuid.uuid4().hex[:6]}"
         self.max_turns = min(int(max_turns or 10**9), run.limits.get("max_turns", 40))
-        names = expand_tools(all_tools() if tools is None else tools)  # [] is a request for no tools
+        names = expand_tools(all_tools() if tools is None else tools)
         if depth >= run.limits.get("max_depth", 2):
             names = [n for n in names if n != "spawn_agent"]
         self.tools: dict[str, Tool] = {n: REGISTRY[n] for n in names if n in REGISTRY}
@@ -258,9 +248,6 @@ class Agent:
         self.run.log(event="tool_call", agent=self.id, tool=call["name"], arguments=json.dumps(call["arguments"])[:2000],
                      seconds=round(time.time() - t0, 2), output=out[:1000])
         return out
-
-
-# ---------------------------------------------------------------- spawn_agent
 
 
 def t_spawn_agent(ctx: Ctx, task: str, tier: str = "", reasoning: str = "", provider: str = "", role: str = "",
