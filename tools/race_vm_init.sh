@@ -11,7 +11,8 @@ report() { tail -c 60000 /var/log/race-vm.log | curl -s --local-port 1-1023 -X P
   --data-binary @- http://169.254.42.42/user_data/race-log >/dev/null || true; }
 trap 'echo "== FAILED at line $LINENO: $BASH_COMMAND"; report' ERR
 
-apt-get update -q && apt-get install -y -q git python3 curl ca-certificates xz-utils python3-sympy python3-pip
+apt-get update -q && apt-get install -y -q git python3 curl ca-certificates xz-utils python3-sympy python3-pip \
+  pandoc texlive-latex-recommended texlive-fonts-recommended lmodern  # the snapshots' PDF report (frontier/snapshots.py)
 # the framework's optional modules (pyproject.toml: math, publish), for the system python3 the services run
 pip install -q --break-system-packages --ignore-installed "huggingface_hub>=1.0"  # beside Debian's own packages
 # Ubuntu 24.04 denies user namespaces to non-root users; the harnesses' own sandboxes (Codex: bwrap) need them

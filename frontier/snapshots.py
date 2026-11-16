@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 
 from .budget import CLOUD_CURRENCY, append_chained, locked, now, parse_time, read_jsonl, write_json
@@ -147,17 +148,39 @@ class Snapshots:
         if not due:
             return None
         labels = [e["label"] for e in due]
+        llm, sim = spend(self.b, self.price)
+        minutes = self._minutes()
+        pdf = {lab: write_report(ws, lab, minutes, llm, sim, core_seconds(self.b.dir)) for lab in labels}
         if not commit(ws, "Snapshot " + ", ".join(labels), tuple(f"snapshot-{lab}" for lab in labels), allow_empty=True):
             return None  # git busy (the harness or the launcher committing): the next tick tries again
         head = subprocess.run(["git", "-C", str(ws), "rev-parse", "HEAD"], capture_output=True, text=True, check=False).stdout.strip()
-        llm, sim = spend(self.b, self.price)
-        minutes = self._minutes()
         ev = {"t": now().isoformat(timespec="seconds"), "event": "snapshot", "labels": labels, "commit": head,
               "minutes": round(minutes, 2) if minutes is not None else None,
               "llm_usd": round(llm, 4), "simulation_usd": round(sim, 4),
-              "core_seconds": round(core_seconds(self.b.dir), 1)}
+              "core_seconds": round(core_seconds(self.b.dir), 1),
+              "pdf": pdf}  # per label: "ok" or why there is no PDF
         append_chained(self.b.dir / "events.jsonl", ev)
         return ev
+
+
+def write_report(ws: pathlib.Path, lab: str, minutes: float | None, llm: float, sim: float, cores: float) -> str:
+    """Write snapshots/<lab>.md (time and cost at the milestone, then the agent's report as it stands) and, when pandoc
+    and a LaTeX engine are installed, snapshots/<lab>.pdf. Returns "ok" or the reason there is no PDF."""
+    out = ws / "snapshots"
+    out.mkdir(exist_ok=True)
+    report = next((p for p in sorted(ws.glob("[Rr][Ee][Pp][Oo][Rr][Tt]*.md"))), None)
+    head = (f"# Snapshot {lab}\n\n| | |\n|---|---|\n| Elapsed | {minutes or 0:.1f} min |\n| Model calls | {llm:.2f} USD |\n"
+            f"| Simulations | {sim:.2f} USD |\n| Local CPU | {cores:.0f} core-s |\n\n")
+    body = report.read_text(errors="replace") if report else "_No report file (report*.md) in the workspace yet._\n"
+    (out / f"{lab}.md").write_text(head + "---\n\n" + body)
+    if not shutil.which("pandoc"):
+        return "pandoc not installed"
+    try:
+        p = subprocess.run(["pandoc", f"{lab}.md", "-o", f"{lab}.pdf", "--resource-path=..:."], cwd=out,
+                           capture_output=True, text=True, check=False, timeout=180)
+    except subprocess.TimeoutExpired:
+        return "pandoc timed out"
+    return "ok" if p.returncode == 0 else (p.stderr.strip().splitlines() or ["pandoc failed"])[-1][:200]
 
 
 def commit(ws: pathlib.Path, message: str, tags: tuple[str, ...] = (), allow_empty: bool = False) -> bool:
