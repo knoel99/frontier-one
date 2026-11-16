@@ -155,9 +155,11 @@ inside an OpenShell 0.1.8 sandbox and delivered on 2026-11-15.
   `openshell sandbox exec … frontier mission session`. After each session it downloads the workspace and the
   ledgers, which the host's dashboard, watchdog, and commits read. At the end it deletes the sandbox and the
   providers. `mission start <file> --dry-run` prints every command without running it.
-- **Check the host before a real mission.** Run one short session on the race host.
-  `docs/TEST-RESULTS.md` lists the host setup that the live run needed. The policy's `binaries` globs must match
-  the image's real paths: add a harness's native binary with `sandbox_binaries` in `config/harnesses.toml`.
+- **Check the host before a real mission.** Run `python3 tools/verify_live.py --root <dir> --openshell`: one Codex
+  mission inside a sandbox, which must deliver and leave nothing. `docs/TEST-RESULTS.md` lists the host setup the
+  live runs needed. Behind a TLS-intercepting proxy, give its CA with `[sandbox] build_ca_bundle`, or the image does
+  not build. The policy's `binaries` globs must match the image's real paths: add a harness's native binary with
+  `sandbox_binaries` in `config/harnesses.toml`.
 
 Without a sandbox, an outbound filter (`frontier/egress.py`) refuses the hosts of `[network] deny`. It refuses a
 host whole, because it cannot see paths inside TLS. `config/providers.toml` adds the organizer's own deny list to
@@ -183,8 +185,10 @@ the tier that the response says was served: a request for a fast tier can be ser
 `docs/TEST-RESULTS.md` holds the verdict of each feature with its evidence, the defects found and fixed, and what
 stays open. `docs/TEST-PLAN.md` holds the method. The live checks are in `tools/verify_live.py`.
 
-- Eleven harnesses each delivered a live mission through the gateway on 2026-11-15: Claude Code, Codex, Gemini
-  CLI, Antigravity, Grok Build, Kimi Code, Qwen Code, dsh, OpenCode, ZCode, and Hermes.
+- Each harness installs a pinned version, and `tools/verify_live.py --harness <name>` runs one live mission on it.
+  On 2026-11-16, eleven harnesses passed: Claude Code, Codex, Gemini CLI, Antigravity, Grok Build, Kimi Code, Qwen
+  Code, dsh, OpenCode, ZCode, and Hermes. A Codex mission also passed inside an OpenShell 0.1.8 sandbox
+  (`--openshell`).
 - Mistral Vibe reaches the gateway, then its Mistral account refuses the request.
 - The other twelve harnesses get project files only, with no launch recipe (`docs/HARNESSES.md`).
 - With every key left to the session's proxy, key checks, `spawn_agent`, and gateway-metered calls ran on

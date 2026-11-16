@@ -553,6 +553,26 @@ def test_a_refusal_late_in_a_session_does_not_end_the_mission(tmp_path):
     assert "fresh session" in _stop_reason(r)
 
 
+def test_the_launcher_ends_what_a_harness_left_running(tmp_path):
+    """Harness check of 2026-11-16 (Hermes 0.23.1): each session is served by a detached gateway daemon, outside the
+    session's process group, which outlived the mission with the frontier MCP server it had started."""
+    import sys
+
+    state, other = tmp_path / "state", tmp_path / "other"
+    sleep = [sys.executable, "-c", "import time; time.sleep(60)"]
+    daemon = subprocess.Popen(sleep, env={**os.environ, "FRONTIER_STATE": str(state)}, start_new_session=True)
+    server = subprocess.Popen([*sleep, "--state", str(state)], start_new_session=True)
+    theirs = subprocess.Popen(sleep, env={**os.environ, "FRONTIER_STATE": str(other)}, start_new_session=True)
+    try:
+        left = launcher.end_leftovers(state)
+        assert daemon.wait(timeout=5) is not None and server.wait(timeout=5) is not None
+        assert len(left) == 2 and theirs.poll() is None  # another mission's processes are not touched
+    finally:
+        for p in (daemon, server, theirs):
+            p.kill()
+            p.wait()
+
+
 def test_a_harness_failing_at_start_stops_the_mission(tmp_path):
     """Race 2026-11-15: the Google credit ran out and the launcher burned 18 sessions of 1-2 s each."""
     from frontier.budget import append_chained, now
@@ -1404,6 +1424,32 @@ def test_the_sandbox_image_has_the_policy_user():
     pol, _ = sandbox.policy({}, [])
     user = pol["process"]["run_as_user"]
     assert f"useradd -m -s /bin/bash {user}" in text and f"chown -R {user}:{user} /sandbox" in text
+
+
+def test_sandbox_names_fit_openshell(tmp_path):
+    """Live check of 2026-11-16: OpenShell 0.1.8 refused `frontier-openshell-live`, "name exceeds maximum length
+    (23 > 19)"; the name of a race team such as `team-openai` gave 20."""
+    import re
+
+    names = [sandbox.sandbox_name(n) for n in ("team-openai", "team-openai-2", "openshell-live", "t", "Équipe  DeepSeek")]
+    assert all(len(n) <= sandbox.MAX_SANDBOX_NAME and re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?", n) for n in names)
+    assert len(set(names)) == len(names) and sandbox.sandbox_name("t") == "frontier-t"
+
+
+def test_the_sandbox_image_trusts_the_proxy_ca_it_is_given(tmp_path):
+    """Live check of 2026-11-16: behind a TLS-intercepting proxy the image build failed at its first HTTPS download
+    (npm SELF_SIGNED_CERT_IN_CHAIN). `[sandbox] build_ca_bundle` puts that CA in the image's trust store first."""
+    ca = tmp_path / "proxy-ca.pem"
+    ca.write_text("-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n")
+    f = _mission(tmp_path, harness="codex")
+    f.write_text(f.read_text() + f'\n[sandbox]\nkind = "openshell"\nbuild_ca_bundle = "{ca}"\n')
+    info = mission.prepare(f, ping=False, offers=False)
+    box = sandbox.OpenShell(info, launcher.harness_conf("codex", "openai"), dry_run=True)
+    box.write_files()
+    text = (box.dir / "image" / "Dockerfile").read_text()
+    assert (box.dir / "image" / sandbox.BUILD_CA).read_text() == ca.read_text()
+    assert text.index("update-ca-certificates") < text.index("npm install") and "NODE_EXTRA_CA_CERTS" in text
+    assert "update-ca-certificates" not in sandbox.dockerfile(launcher.harness_conf("codex", "openai"), "node:22-bookworm")
 
 
 def test_openshell_push_puts_the_workspace_and_state_at_their_paths(tmp_path):

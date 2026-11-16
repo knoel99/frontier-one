@@ -166,13 +166,15 @@ source = "https://platform.kimi.ai/docs/pricing/chat"
 date = "2026-11-14"
 manual = true
 
-[models."qwen3.8-max-0902"]
+[models."qwen4-max"]
 provider = "alibaba"
-input = 2.0
-output = 6.0
-cache_read = 0.25
-source = "openrouter:qwen/qwen3.8-max-0902"
-date = "2026-11-14"
+input = 1.5
+output = 4.5
+cache_read = 0.075
+cache_write = 1.875
+source = "https://www.qwencloud.com/models/qwen4-max?region=ap-southeast-1"
+date = "2026-11-16"
+manual = true
 
 [models."qwen3.8-flash"]
 provider = "alibaba"
