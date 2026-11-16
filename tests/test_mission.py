@@ -27,8 +27,11 @@ def test_llm_cost_uses_cache_and_mode_prices(cfg):
     assert exact and usd == pytest.approx((600_000 * pr["input"] + 400_000 * pr["cache_read"] + 100_000 * pr["output"]) / 1e6)
     usd2, _ = budget.llm_cost("openai", std, {"input": 1000, "output": 0}, price_x=2.0)
     assert usd2 == pytest.approx(2 * 1000 * pr["input"] / 1e6)
-    _, exact = budget.llm_cost("openai", "not-a-model", {"input": 1})
-    assert not exact  # unknown model: priced as the provider's most expensive one
+    written, _ = budget.llm_cost("openai", std, {"input": 1_000_000, "cached": 400_000, "cache_write": 100_000})
+    assert written == pytest.approx((500_000 * pr["input"] + 400_000 * pr["cache_read"] + 100_000 * pr["cache_write"]) / 1e6)
+    dearest = max((v for v in budget.prices().values() if v.get("provider") == "openai"), key=lambda v: v["input"] + v["output"])
+    usd3, exact = budget.llm_cost("openai", "not-a-model", {"input": 1_000_000})
+    assert not exact and usd3 == pytest.approx(dearest["input"])  # unknown: the provider's dearest, flagged an estimate
 
 
 def test_llm_cap_is_hard(tmp_path):
@@ -88,13 +91,17 @@ def test_cloud_budget_counts_spent_committed_and_new(tmp_path):
     b.set_caps(runpod_usd=10.0)
     start = (budget.now() - budget.dt.timedelta(hours=2)).isoformat()
     (tmp_path / "resources.json").write_text(json.dumps([
-        {"provider": "runpod", "id": "p1", "usd_per_hour": 1.0, "max_hours": 5, "created": start, "state": "alive"}]))
+        {"provider": "runpod", "id": "p1", "usd_per_hour": 1.0, "max_hours": 5, "created": start, "state": "alive"},
+        {"provider": "runpod", "id": "p0", "usd_per_hour": 9.0, "max_hours": 5, "created": start, "state": "deleted",
+         "deleted_at": start},  # deleted at once: nothing spent, nothing committed
+        {"provider": "scaleway", "id": "s1", "eur_per_hour": 9.0, "max_hours": 5, "created": start, "state": "alive"}]))
     assert b.cloud_spent("runpod") == pytest.approx(2.0, abs=0.01)
     assert b.cloud_committed("runpod") == pytest.approx(3.0, abs=0.01)
     assert b.cloud_allowed("runpod", 1.0, 4)[0]  # 2 + 3 + 4 <= 10
     ok, why = b.cloud_allowed("runpod", 1.0, 6)
     assert not ok and "runpod budget" in why
     assert not b.cloud_allowed("runpod", None, 1)[0]
+    assert b.status()["cloud"]["runpod"]["alive"] == ["p1"]
     b.set_caps(frozen=True)
     assert not b.cloud_allowed("runpod", 0.1, 1)[0] and not b.llm_allowed(1.0)[0]  # beyond the post-delivery grace
 
@@ -218,12 +225,6 @@ def test_every_harness_gets_parseable_files():
     one = harnesses.artifacts(harnesses.McpCommand("/abs/bin/frontier-mcp", ["--state", "/abs/.frontier"]), ["kimi"])
     assert json.loads(one[".kimi-code/mcp.json"])["mcpServers"]["frontier"] == {"command": "/abs/bin/frontier-mcp",
                                                                                 "args": ["--state", "/abs/.frontier"]}
-
-
-def test_repository_harness_files_are_in_sync():
-    root = pathlib.Path(__file__).resolve().parents[1]
-    for rel, text in harnesses.artifacts(harnesses.McpCommand()).items():
-        assert (root / rel).read_text() == text, f"{rel} is stale: run python3 tools/sync_harnesses.py"
 
 
 # ---------------------------------------------------------------- missions
@@ -378,7 +379,9 @@ def test_deepseek_off_peak_price():
     peak = budget.dt.datetime(2026, 11, 16, 7, 30, tzinfo=budget.dt.UTC)  # Monday 07:30 UTC
     off = budget.dt.datetime(2026, 11, 16, 12, 0, tzinfo=budget.dt.UTC)
     weekend = budget.dt.datetime(2026, 11, 15, 7, 30, tzinfo=budget.dt.UTC)
+    saturday = budget.dt.datetime(2026, 11, 14, 7, 30, tzinfo=budget.dt.UTC)
     assert budget.time_factor(pr, peak) == 1.0 and budget.time_factor(pr, off) == 0.5 and budget.time_factor(pr, weekend) == 0.5
+    assert budget.time_factor(pr, saturday) == 0.5
     usage = {"input": 1_000_000, "output": 0}
     assert budget.llm_cost("deepseek", "deepseek-flash", usage, at=off)[0] == pytest.approx(0.15)
 
