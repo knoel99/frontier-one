@@ -2,6 +2,7 @@
 """Run a mission on a Scaleway VM of its own and get the link to its live dashboard.
 
     python3 tools/race_vm.py up MISSION.toml [--zone nl-ams-1] [--type BASIC2-A4C-8G] [--branch master] [--wait]
+    python3 tools/race_vm.py log SERVER_ID [--zone nl-ams-1]     # the tail of the VM's first-boot log
     python3 tools/race_vm.py down SERVER_ID [--zone nl-ams-1]
 
 `up` creates, for this race only: an IAM application whose API key expires a day after the mission's end and may
@@ -32,7 +33,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from frontier.budget import parse_time
-from frontier.http import scw, scw_defaults
+from frontier.http import scw, scw_defaults, scw_raw
 
 INIT = ROOT / "tools" / "race_vm_init.sh"
 SECRET, SECRET_REGION = "frontier-keys", "fr-par"
@@ -139,7 +140,7 @@ def up(a) -> int:
         return 1
     url = f"https://{host}/?t={token}"
     print(f"server {server['id']} ({a.type}, {zone}, {ip['address']})\ndashboard {url}\n"
-          f"delete it with: python3 tools/race_vm.py down {server['id']} --zone {zone}")
+          f"delete it with: python3 tools/race_vm.py down {server['id']} --zone {zone}", flush=True)
     if a.wait:
         print("dashboard answering" if wait_ready(url, 30) else "dashboard not answering after 30 min", flush=True)
     return 0
@@ -187,12 +188,19 @@ def main() -> int:
     u.add_argument("--type", default="BASIC2-A4C-8G")
     u.add_argument("--branch", default="master", help="branch of the framework the VM clones")
     u.add_argument("--wait", action="store_true", help="wait until the dashboard answers (up to 30 min)")
+    lg = sub.add_parser("log", help="print the tail of the VM's first-boot log (written at the end or on a failure)")
+    lg.add_argument("server_id")
+    lg.add_argument("--zone", default="nl-ams-1")
     d = sub.add_parser("down", help="delete the race VM, its volumes, its IP and its IAM application")
     d.add_argument("server_id")
     d.add_argument("--zone", default="nl-ams-1")
     a = ap.parse_args()
     if a.cmd == "up":
         return up(a)
+    if a.cmd == "log":
+        code, text = scw_raw("GET", f"/instance/v1/zones/{a.zone}/servers/{a.server_id}/user_data/race-log")
+        print(text if code == 200 else f"no log yet (HTTP {code}): the VM writes it when its first boot ends or fails")
+        return 0 if code == 200 else 1
     teardown(a.zone, a.server_id, "", "")
     return 0
 

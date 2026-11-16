@@ -6,12 +6,17 @@ set -eu
 export HOME=/root DEBIAN_FRONTEND=noninteractive
 exec >>/var/log/race-vm.log 2>&1
 echo "== boot $(date -u +%FT%TZ)"
+# The log's tail goes to this server's own user data (key race-log), read by `tools/race_vm.py log`: no SSH needed.
+report() { tail -c 60000 /var/log/race-vm.log | curl -s --local-port 1-1023 -X PATCH -H 'Content-Type: text/plain' \
+  --data-binary @- http://169.254.42.42/user_data/race-log >/dev/null || true; }
+trap 'echo "== FAILED at line $LINENO: $BASH_COMMAND"; report' ERR
 
 apt-get update -q && apt-get install -y -q git python3 curl ca-certificates xz-utils python3-sympy python3-pip
 # the framework's optional modules (pyproject.toml: math, publish), for the system python3 the services run
 pip install -q --break-system-packages "huggingface_hub>=1.0"
 # Ubuntu 24.04 denies user namespaces to non-root users; the harnesses' own sandboxes (Codex: bwrap) need them
-echo kernel.apparmor_restrict_unprivileged_userns=0 > /etc/sysctl.d/60-race-userns.conf && sysctl -q --system
+echo kernel.apparmor_restrict_unprivileged_userns=0 > /etc/sysctl.d/60-race-userns.conf
+sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y -q nodejs
 arch=$(dpkg --print-architecture)
 curl -fsSL "https://github.com/caddyserver/caddy/releases/download/v2.11.9/caddy_2.11.9_linux_${arch}.tar.gz" \
@@ -61,3 +66,4 @@ unit race-caddy root "/usr/local/bin/caddy run --config /etc/caddy/Caddyfile"
 touch /var/log/race-dashboard.log /var/log/race-mission.log && chown frontier: /var/log/race-dashboard.log /var/log/race-mission.log
 systemctl daemon-reload && systemctl enable --now race-caddy race-dashboard race-mission
 echo "== ready https://__HOST__/ $(date -u +%FT%TZ)"
+report
