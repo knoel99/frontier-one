@@ -601,6 +601,23 @@ def test_the_operator_session_variables_do_not_reach_the_harness(monkeypatch, tm
     assert env["HTTPS_PROXY"] == "http://127.0.0.1:2"
 
 
+def test_the_harness_reaches_the_local_gateway_directly_on_a_host_without_no_proxy(monkeypatch, tmp_path):
+    """VM run 2026-11-16: with no NO_PROXY on the host, Vibe sent its gateway calls through the egress filter, which
+    answered 404 `unknown route /http:`; every session ended with no model call."""
+    import urllib.request
+
+    from frontier.launcher import build_session
+    for k in ("NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    info = {"settings": {"provider": "mistral", "tier": "standard", "reasoning": "low"}, "workspace": str(tmp_path),
+            "state": str(tmp_path), "egress": "http://127.0.0.1:2"}
+    _, env = build_session(info, {"command": ["true"]}, "go", "http://127.0.0.1:3")
+    for k in ("NO_PROXY", "no_proxy"):
+        assert urllib.request.proxy_bypass_environment("127.0.0.1", {"no": env[k]})
+        assert urllib.request.proxy_bypass_environment("localhost", {"no": env[k]})
+        assert not urllib.request.proxy_bypass_environment("api.mistral.ai", {"no": env[k]})
+
+
 def test_hub_calls_survive_a_bracketed_ipv6_no_proxy(monkeypatch):
     """Race 2026-11-15: Kimi Code's NO_PROXY held "[::1]" and httpx refused every Hub call, so no delivery copy."""
     from frontier import hf
