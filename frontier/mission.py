@@ -427,9 +427,14 @@ def _hermes_home(state: pathlib.Path, target: dict, mcp: McpCommand) -> None:
     home = state / "hermes"
     home.mkdir(parents=True, exist_ok=True)
     args = ", ".join(json.dumps(a) for a in mcp.args)
+    # Hermes 0.23 ignores `model.api_mode` for a plain custom endpoint that is not OpenAI's own host, so on the
+    # gateway it fell back to Chat Completions, where OpenAI refuses tools with a reasoning level (checked 2026-11-16).
+    # A named custom provider keeps its api_mode. Its detached gateway retires soon after its last client.
     (home / "config.yaml").write_text(
-        "model:\n  provider: custom\n"
-        f"  default: {target['model']}\n  base_url: {target['base_url']}\n  api_mode: {api_mode}\n"
+        f"model:\n  provider: custom:frontier\n  default: {target['model']}\n"
+        f"custom_providers:\n  - name: frontier\n    base_url: {target['base_url']}\n    api_mode: {api_mode}\n"
+        f"    model: {target['model']}\n"
+        "gateway:\n  unmanaged_idle_exit_seconds: 5\n"
         f"mcp_servers:\n  frontier:\n    command: {json.dumps(mcp.command)}\n    args: [{args}]\n    timeout: 3600\n"
         # no update check and no model catalogue: they ask api.github.com, raw.githubusercontent.com and a github.io
         # page, hosts the race blocks, which the stewards would count against the team (checked 2026-11-15)

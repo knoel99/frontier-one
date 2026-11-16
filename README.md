@@ -183,8 +183,10 @@ the tier that the response says was served: a request for a fast tier can be ser
 `docs/TEST-RESULTS.md` holds the verdict of each feature with its evidence, the defects found and fixed, and what
 stays open. `docs/TEST-PLAN.md` holds the method. The live checks are in `tools/verify_live.py`.
 
-- Eleven harnesses each delivered a live mission through the gateway on 2026-11-15: Claude Code, Codex, Gemini
-  CLI, Antigravity, Grok Build, Kimi Code, Qwen Code, dsh, OpenCode, ZCode, and Hermes.
+- Each harness installs a pinned version, and `tools/verify_live.py --harness <name>` runs one live mission on it.
+  On 2026-11-16, ten harnesses passed: Codex, Gemini CLI, Antigravity, Grok Build, Kimi Code, Qwen Code, dsh,
+  OpenCode, ZCode, and Hermes. Claude Code was BLOCKED (no Anthropic key in that session); it delivered on
+  2026-11-15.
 - Mistral Vibe reaches the gateway, then its Mistral account refuses the request.
 - The other twelve harnesses get project files only, with no launch recipe (`docs/HARNESSES.md`).
 - With every key left to the session's proxy, key checks, `spawn_agent`, and gateway-metered calls ran on

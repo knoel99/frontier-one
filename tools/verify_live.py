@@ -503,7 +503,8 @@ budget_usd = 1.0
     left = subprocess.run(["pgrep", "-af", str(st)], capture_output=True, text=True, check=False).stdout.strip()
     intact = all(v is True for v in b.verify().values())
     delivered = (st / "delivery.json").exists()
-    version = subprocess.run([h["command"][0], "--version"], capture_output=True, text=True, timeout=60,
+    program = [h["command"][0], *[a for a in h["command"][1:2] if a.endswith((".js", ".cjs", ".mjs"))]]  # node <cli>
+    version = subprocess.run([*program, "--version"], capture_output=True, text=True, timeout=60,
                              check=False).stdout.strip().splitlines()[:1]
     verdict("F22", label, delivered and bool(metered) and intact and not blocked and not left,
             f"{version[0] if version else 'version unknown'}; launcher exit {p.returncode}; delivered {delivered}; "

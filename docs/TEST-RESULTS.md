@@ -3,6 +3,30 @@
 Plan: [TEST-PLAN.md](TEST-PLAN.md). Two campaigns: 2026-11-15 (the features added since the first one and a second
 pass on the others) and 2026-11-14 (further down). First, a run of the live checks on 2026-11-16.
 
+# A live mission per harness, 2026-11-16
+
+Every harness install was pinned to the version published when it delivered on 2026-11-15, and
+`tools/verify_live.py --harness all --install` ran one tiny mission per harness on its native provider, tier
+`standard`, reasoning `low`, with a cap of 1 USD.
+
+| Verdict | Harnesses |
+|---|---|
+| PASS | Codex 0.169.0, Gemini CLI 0.68.0, Antigravity 1.5.9, Grok 1.0.77, Kimi Code 2.6.2, Qwen Code 0.27.4, dsh 0.2.2-rc.3, OpenCode 1.19.5 (DeepSeek), ZCode v3.18.2, Hermes 0.23.1 |
+| BLOCKED | Claude Code: no Anthropic key in this session |
+| ISSUES | Mistral Vibe 3.1.2: the gateway forwards its calls and the Mistral account answers 429, as on 2026-11-15 |
+
+Each PASS delivered, had every call metered by the gateway, verified ledgers, tried no blocked host, and left no
+process. The check found two defects of the Hermes recipe, which the hand-run of 2026-11-15 did not show:
+
+| # | Defect | Fix |
+|---|---|---|
+| D15 | Hermes 0.23.1 ignores `model.api_mode` for a plain custom endpoint that is not OpenAI's own host, so on the gateway it fell back to Chat Completions, where OpenAI refuses tools with a reasoning level (HTTP 400): no call made | the mission's `config.yaml` declares the gateway as a named custom provider, whose `api_mode` it keeps; re-checked: delivered, 6 calls metered |
+| D16 | Hermes serves each session from a detached gateway daemon, outside the session's process group: it outlived the mission and restarted the frontier MCP server for at least 5 minutes | the launcher ends, at the end of a mission, every process that carries `FRONTIER_STATE=<state>` or runs with `--state <state>`, and logs `leftover_processes_ended`; the recipe sets the daemon's idle exit to 5 s; re-checked: nothing left |
+
+The first run had two faults of the check itself: Gemini CLI's provider was looked up among the providers' own
+harnesses, and a cap of 0.30 USD was below the worst case of one Antigravity call (0.34 USD), which the gateway
+refused as it should. Spend of all the runs, from the ledgers: LLM 1.01 USD, of which Antigravity 0.54 USD.
+
 # What the unit tests check, measured on 2026-11-16
 
 Each of 3,080 small changes of `frontier/` (a comparison flipped, a call dropped, a value returned as None) was run

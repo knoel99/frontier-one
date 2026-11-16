@@ -76,28 +76,35 @@ budget.
 
 A provider without its own harness gets OpenCode. The other twelve harnesses get project files only.
 
-Before you rely on a recipe with a new version of a harness, run `mission start --prepare-only` and one short
-session.
+Each recipe installs a pinned version. To move a harness to a new version, change its pin and run its live
+mission in the same change:
 
-Eleven harnesses each delivered a live mission on 2026-11-15, behind the outbound filter, with their calls metered
-by the gateway (`docs/TEST-RESULTS.md`, F22). The table gives the route and the version that ran, where the recipe
-records one. The vendor commands first ran headless on 2026-11-13, in the previous campaign
+```bash
+python3 tools/verify_live.py --root <dir> --harness <name> --install
+```
+
+The check runs one tiny mission on the harness's native provider. It passes when the harness delivers, its calls
+are metered, the ledgers verify, no blocked host is tried, and no process is left. It is BLOCKED when the CLI is not
+installed or the provider's key does not answer. `--harness all` runs every recipe.
+
+The table gives the route and the result of that check on 2026-11-16, at the pinned version
+(`docs/TEST-RESULTS.md`). The vendor commands first ran headless on 2026-11-13, in the previous campaign
 (`old/race/PROVIDERS-TESTED.md` at commit 7223bd6, in git history).
 
-| Harness | Routed through the gateway by | Run live | Fallback when not metered |
+| Harness | Routed through the gateway by | Live check | Fallback when not metered |
 |---|---|---|---|
-| Claude Code | `ANTHROPIC_BASE_URL` | delivered 2026-11-15 | `total_cost_usd` of `--output-format json` |
-| Codex CLI | a custom provider passed with `-c model_providers.frontier.*` (Codex ignores `OPENAI_BASE_URL`; WebSockets off) | delivered 2026-11-14 and 2026-11-15, Codex 0.169.0 | `turn.completed` usage of `--json` |
-| Antigravity CLI | `GOOGLE_GEMINI_BASE_URL` | delivered 2026-11-15 | `usage` of `--output-format json` |
-| Gemini CLI | `GOOGLE_GEMINI_BASE_URL` | delivered 2026-11-15, Gemini CLI 0.68 | `stats` of `--output-format json` |
-| Grok Build | `GROK_XAI_API_BASE_URL` | delivered 2026-11-15, grok 1.0.77: the gateway's charge matched xAI's own `cost_in_usd_ticks` | its JSON report (UNCONFIRMED) |
-| Kimi Code | `KIMI_MODEL_BASE_URL` (`KIMI_MODEL_PROVIDER_TYPE=kimi`) | delivered 2026-11-15 | none documented |
-| Qwen Code | `OPENAI_BASE_URL` | delivered 2026-11-15 | `usage` of the result message |
-| Mistral Vibe | a `[[providers]]` entry on the gateway in the project `.vibe/config.toml`, read with `--trust` | Vibe 3.1.2 reached the gateway on 2026-11-15, then the Mistral account refused the request | its JSON output |
-| DeepSeek dsh | `DEEPSEEK_BASE_URL` (Anthropic Messages) | delivered 2026-11-15 | none documented |
-| OpenCode | a provider `frontier` in the mission's `opencode.json` (`baseURL`, `transport: http`) | delivered 2026-11-15 on DeepSeek and on Cerebras (opencode 1.19.5 on Cerebras) | `--format json` |
-| ZCode | a home of the mission whose `provider_config.json` puts the model on the gateway | delivered 2026-11-15, v0.17.1 on glm-5.3 | its JSON usage report |
-| Hermes Agent | `HERMES_HOME` = a home of the mission whose `config.yaml` puts the model on the gateway and declares the MCP server | delivered 2026-11-15 | none documented |
+| Claude Code | `ANTHROPIC_BASE_URL` | BLOCKED 2026-11-16: no Anthropic key in that session; delivered 2026-11-15 | `total_cost_usd` of `--output-format json` |
+| Codex CLI | a custom provider passed with `-c model_providers.frontier.*` (Codex ignores `OPENAI_BASE_URL`; WebSockets off) | PASS 2026-11-16, Codex 0.169.0 | `turn.completed` usage of `--json` |
+| Antigravity CLI | `GOOGLE_GEMINI_BASE_URL` | PASS 2026-11-16, agy 1.5.9 (its installer takes no version) | `usage` of `--output-format json` |
+| Gemini CLI | `GOOGLE_GEMINI_BASE_URL` | PASS 2026-11-16, Gemini CLI 0.68.0 | `stats` of `--output-format json` |
+| Grok Build | `GROK_XAI_API_BASE_URL` | PASS 2026-11-16, grok 1.0.77; on 2026-11-15 the gateway's charge matched xAI's own `cost_in_usd_ticks` | its JSON report (UNCONFIRMED) |
+| Kimi Code | `KIMI_MODEL_BASE_URL` (`KIMI_MODEL_PROVIDER_TYPE=kimi`) | PASS 2026-11-16, Kimi Code 2.6.2 | none documented |
+| Qwen Code | `OPENAI_BASE_URL` | PASS 2026-11-16, Qwen Code 0.27.4 | `usage` of the result message |
+| Mistral Vibe | a `[[providers]]` entry on the gateway in the project `.vibe/config.toml`, read with `--trust` | ISSUES 2026-11-16, Vibe 3.1.2: the gateway forwards its calls, then the Mistral account answers 429 | its JSON output |
+| DeepSeek dsh | `DEEPSEEK_BASE_URL` (Anthropic Messages) | PASS 2026-11-16, dsh 0.2.2-rc.3 | none documented |
+| OpenCode | a provider `frontier` in the mission's `opencode.json` (`baseURL`, `transport: http`) | PASS 2026-11-16 on DeepSeek, opencode 1.19.5 | `--format json` |
+| ZCode | a home of the mission whose `provider_config.json` puts the model on the gateway | PASS 2026-11-16, ZCode v3.18.2 | its JSON usage report |
+| Hermes Agent | `HERMES_HOME` = a home of the mission whose `config.yaml` declares the gateway as a named provider and the MCP server | PASS 2026-11-16, Hermes 0.23.1, after two recipe fixes (see `docs/TEST-RESULTS.md`) | none documented |
 
 Some traffic passes no base URL, by the harnesses' own documentation: Claude Code's fast-mode and WebFetch checks,
 Codex with a ChatGPT sign-in, agy and Grok with an account sign-in, and dsh's search, fetch, and telemetry.

@@ -209,6 +209,48 @@ def _end_group(p: subprocess.Popen) -> None:
     p.wait()
 
 
+def end_leftovers(state: pathlib.Path) -> list[str]:
+    """End the processes a harness left behind after the mission: a daemon of its own, started outside the session's
+    process group (Hermes 0.23 serves each session from a detached gateway that outlives it, checked 2026-11-16), and
+    what it runs. They carry FRONTIER_STATE=<state> or run with `--state <state>`. Returns their command lines."""
+    marker, arg = f"FRONTIER_STATE={state}".encode(), b"--state\0" + str(state).encode() + b"\0"
+    mine, pid = set(), os.getpid()
+    while pid > 1:  # this launcher and the processes above it are never ended
+        mine.add(pid)
+        try:
+            pid = int((pathlib.Path("/proc") / str(pid) / "stat").read_text().rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+    found: dict[int, str] = {}
+    for d in pathlib.Path("/proc").iterdir():
+        if not d.name.isdigit() or int(d.name) in mine:
+            continue
+        try:
+            env, cmd = (d / "environ").read_bytes(), (d / "cmdline").read_bytes() + b"\0"
+        except OSError:
+            continue
+        if marker in env.split(b"\0") or arg in cmd:
+            found[int(d.name)] = cmd.replace(b"\0", b" ").decode(errors="replace").strip()[:200]
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        for p in list(found):
+            try:
+                os.kill(p, sig)
+            except ProcessLookupError:
+                pass
+        deadline = time.time() + (KILL_GRACE_S if sig == signal.SIGTERM else 0)
+        while time.time() < deadline and any(_running(p) for p in found):
+            time.sleep(0.2)
+    return list(found.values())
+
+
+def _running(pid: int) -> bool:
+    """Alive and not a zombie waiting for its parent to read its exit status."""
+    try:
+        return (pathlib.Path("/proc") / str(pid) / "stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    except (OSError, IndexError):
+        return False
+
+
 def run_until(cmd: list[str], seconds: float | None, **kw) -> int:
     """Run `cmd` in its own process group; at `seconds` (None: no limit) end the whole group. The group does not get
     the terminal's Ctrl-C, so any interruption of the launcher ends it here before going up."""
@@ -411,6 +453,9 @@ def finish(run: Run, ws: pathlib.Path, keep_resources: bool = False) -> None:
     """The launcher's last step: delete what is still alive (after a delivery too: its cleanup may have left a deletion
     unconfirmed or a volume attached, still billing), then write the final COSTS.md."""
     state = run.log_dir
+    if left := end_leftovers(state):
+        run.log(event="leftover_processes_ended", commands=left)
+        print(f"ended {len(left)} process(es) the harness left: {left}")
     if run.alive() and not keep_resources:
         print("cleanup: " + json.dumps(infra.cleanup(run)))
     if (state / "delivery.json").exists():
