@@ -133,7 +133,9 @@ style = "openai-chat"
 base_url = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
 key_env = "DASHSCOPE_API_KEY"
 effort_field = "reasoning_effort"
-tiers = { frontier = "qwen3.8-max-0902", standard = "qwen3.8-flash", light = "qwen3.8-27b" }
+# qwen4-max (released 2026-11-16): not yet in /models that day, but it answers; `frontier ping` passed at low,
+# medium, high and max on 2026-11-16. It replaces qwen3.8-max-0902 as the frontier tier.
+tiers = { frontier = "qwen4-max", standard = "qwen3.8-flash", light = "qwen3.8-27b" }
 reasoning = { low = "low", medium = "medium", high = "high", max = "xhigh" }
 
 [providers.cerebras]
