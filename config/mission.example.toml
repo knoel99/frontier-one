@@ -34,6 +34,7 @@ visibility = "private"   # private or public: who can see what the AI publishes
 kind = "none"            # none, or openshell: the harness runs in an NVIDIA OpenShell sandbox (deny-by-default network,
                          # keys injected by OpenShell's proxy and never visible inside; see frontier/sandbox.py)
 base_image = "node:22-bookworm"
+# build_ca_bundle = "/path/to/ca.pem"   # a host behind a TLS-intercepting proxy: its CA, trusted while the image builds
 # cpu = 4
 # memory = "8Gi"
 

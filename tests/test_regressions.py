@@ -1426,6 +1426,22 @@ def test_the_sandbox_image_has_the_policy_user():
     assert f"useradd -m -s /bin/bash {user}" in text and f"chown -R {user}:{user} /sandbox" in text
 
 
+def test_the_sandbox_image_trusts_the_proxy_ca_it_is_given(tmp_path):
+    """Live check of 2026-11-16: behind a TLS-intercepting proxy the image build failed at its first HTTPS download
+    (npm SELF_SIGNED_CERT_IN_CHAIN). `[sandbox] build_ca_bundle` puts that CA in the image's trust store first."""
+    ca = tmp_path / "proxy-ca.pem"
+    ca.write_text("-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n")
+    f = _mission(tmp_path, harness="codex")
+    f.write_text(f.read_text() + f'\n[sandbox]\nkind = "openshell"\nbuild_ca_bundle = "{ca}"\n')
+    info = mission.prepare(f, ping=False, offers=False)
+    box = sandbox.OpenShell(info, launcher.harness_conf("codex", "openai"), dry_run=True)
+    box.write_files()
+    text = (box.dir / "image" / "Dockerfile").read_text()
+    assert (box.dir / "image" / sandbox.BUILD_CA).read_text() == ca.read_text()
+    assert text.index("update-ca-certificates") < text.index("npm install") and "NODE_EXTRA_CA_CERTS" in text
+    assert "update-ca-certificates" not in sandbox.dockerfile(launcher.harness_conf("codex", "openai"), "node:22-bookworm")
+
+
 def test_openshell_push_puts_the_workspace_and_state_at_their_paths(tmp_path):
     """First live run with OpenShell 0.1.8 (2026-11-15): `sandbox upload <dir> <dest>` always writes <dest>/<dir name>,
     so the state landed in /sandbox/state/<mission> and the session found no /sandbox/state/mission.json. Each directory

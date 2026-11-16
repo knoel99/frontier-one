@@ -448,6 +448,8 @@ def f23(root: pathlib.Path):
         return verdict("F23", "OpenShell sandbox", None, "no Docker daemon")
     os.environ.setdefault("OPENAI_API_KEY", credentials.PLACEHOLDER)  # behind the session proxy: it replaces the value
     name = "openshell-live"
+    ca = next((v for k in ("REQUESTS_CA_BUNDLE", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS") if (v := os.environ.get(k))), "")
+    ca_line = f'build_ca_bundle = "{ca}"\n' if ca else ""  # a host behind a TLS-intercepting proxy, as this session
     d = root / "files" / name
     d.mkdir(parents=True, exist_ok=True)
     (d / "subject.md").write_text(HARNESS_SUBJECT)
@@ -469,7 +471,7 @@ provider = "openai"
 budget_usd = 1.0
 [sandbox]
 kind = "openshell"
-[secrets]
+{ca_line}[secrets]
 OPENAI_API_KEY = "env:OPENAI_API_KEY"
 ''')
     p = subprocess.run([sys.executable, "-m", "frontier", "mission", "start", str(f), "--no-ping"], cwd=ROOT,
