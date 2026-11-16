@@ -5,6 +5,7 @@ deletes what it created and reads each deletion back.
 
     python3 tools/verify_live.py --root DIR [--only F10,F12] [--skip-cloud]
     python3 tools/verify_live.py --root DIR --harness codex,gemini|all [--install]   # F22: a live mission per harness
+    python3 tools/verify_live.py --root DIR --openshell                              # F23: a mission in OpenShell
 
 It spends real money (well under 1 EUR in all): LLM key checks and sub-agents on four providers, one Runpod pod for a
 few minutes, one Scaleway DEV1-S for a few minutes, one private Hugging Face repo (deleted at the end), and a jury of
@@ -431,6 +432,65 @@ HARNESS_SUBJECT = ("# Subject\n\nVerification run of a harness. Write REPORT.md 
                    "`deliver`. Do nothing else.\n")
 
 
+@check("F23", "a mission inside an OpenShell sandbox")
+def f23(root: pathlib.Path):
+    """A Codex mission with `[sandbox] kind = "openshell"`: the session runs inside the sandbox and delivers, its calls
+    are metered by the gateway inside it, the ledgers verify once back on the host, and the sandbox, its providers and
+    its image are gone at the end. BLOCKED without Docker or a running OpenShell gateway."""
+    import shutil
+
+    gw = subprocess.run(["openshell", "status"], capture_output=True, text=True, timeout=60, check=False) \
+        if shutil.which("openshell") else None
+    if not gw or "Connected" not in gw.stdout:
+        return verdict("F23", "OpenShell sandbox", None, "no OpenShell gateway connected (`openshell status`); "
+                       "docs/TEST-RESULTS.md lists the host setup it needs")
+    if subprocess.run(["docker", "info"], capture_output=True, timeout=60, check=False).returncode != 0:
+        return verdict("F23", "OpenShell sandbox", None, "no Docker daemon")
+    os.environ.setdefault("OPENAI_API_KEY", credentials.PLACEHOLDER)  # behind the session proxy: it replaces the value
+    name = "openshell-live"
+    d = root / "files" / name
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "subject.md").write_text(HARNESS_SUBJECT)
+    st, ws = root / "missions" / name, root / "ws" / name
+    f = d / "m.toml"
+    f.write_text(f'''[mission]
+name = "{name}"
+subject = "subject.md"
+workspace = "{ws}"
+state = "{st}"
+duration_hours = 0.4
+[harness]
+name = "codex"
+tier = "standard"
+reasoning = "low"
+max_sessions = 2
+[llm]
+provider = "openai"
+budget_usd = 1.0
+[sandbox]
+kind = "openshell"
+[secrets]
+OPENAI_API_KEY = "env:OPENAI_API_KEY"
+''')
+    p = subprocess.run([sys.executable, "-m", "frontier", "mission", "start", str(f), "--no-ping"], cwd=ROOT,
+                       capture_output=True, text=True, timeout=3000, check=False)
+    (root / f"{name}.log").write_text(p.stdout + p.stderr)
+    b = budget.Budget(st)
+    metered = [e for e in b.llm_entries() if e["frontier.source"] == "gateway"]
+    box = f"frontier-{name}"
+    listed = " ".join(subprocess.run(["openshell", *what, "list"], capture_output=True, text=True, timeout=60,
+                                     check=False).stdout for what in (["sandbox"], ["provider"]))
+    images = subprocess.run(["docker", "images", "--format", "{{.Repository}}"], capture_output=True, text=True,
+                            timeout=60, check=False).stdout.split()
+    left = [x for x in [box if box in listed else "", *[i for i in images if box in i]] if x]
+    delivered, intact = (st / "delivery.json").exists(), all(v is True for v in b.verify().values())
+    sessions = [e for e in budget.read_jsonl(st / "events.jsonl") if e.get("event") == "session_end"]
+    verdict("F23", "OpenShell sandbox", delivered and bool(metered) and intact and not left,
+            f"launcher exit {p.returncode}; delivered {delivered}; {len(sessions)} session(s) in the sandbox; "
+            f"{len(metered)} calls metered by the gateway inside ({sum(e['frontier.cost.usd'] for e in metered):.4f} "
+            f"USD); ledgers intact {intact}; left in OpenShell or Docker: {left or 'nothing'}")
+
+
 def _missing(h: dict) -> str:
     """Why the harness of a recipe cannot run on this machine, or ""."""
     import shutil
@@ -467,6 +527,7 @@ def _f22_one(root: pathlib.Path, name: str, provider: str, label: str, install: 
         verdict("F22", label, None, why)
         return
     key = load_config()["providers"][provider]["key_env"]
+    source = "env:" + key if os.environ.get(key, credentials.PLACEHOLDER) != credentials.PLACEHOLDER else "proxy"
     d = root / "files" / f"harness-{name}"
     d.mkdir(parents=True, exist_ok=True)
     (d / "subject.md").write_text(HARNESS_SUBJECT)
@@ -487,7 +548,7 @@ max_sessions = 2
 provider = "{provider}"
 budget_usd = 1.0
 [secrets]
-{key} = "proxy"
+{key} = "{source}"
 ''')
     tools_md = mission.prepare(f, ping=True, offers=False)["workspace"] / "TOOLS.md"
     if "KEY CHECK FAILED" in tools_md.read_text():
@@ -728,12 +789,17 @@ def main() -> int:
     ap.add_argument("--harness", default="", help="F22: comma-separated harnesses to run a live mission with, or 'all'; "
                     "only these checks run")
     ap.add_argument("--install", action="store_true", help="F22: install a missing harness with its recipe's command")
+    ap.add_argument("--openshell", action="store_true", help="F23: a mission inside an OpenShell sandbox, and nothing else")
     a = ap.parse_args()
     root = pathlib.Path(a.root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     if a.coverage:
         return coverage_cmd(a.coverage, root)
     ONLY.update(x for x in a.only.split(",") if x)
+    if a.openshell:
+        f23(root)
+        (root / "verify-report.json").write_text(json.dumps(RESULTS, indent=1) + "\n")
+        return 1 if any(r["verdict"] == "ISSUES" for r in RESULTS) else 0
     if a.harness:  # a live mission per harness, and nothing else
         import tomllib
 
