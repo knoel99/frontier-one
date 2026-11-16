@@ -78,6 +78,17 @@ tool needs SymPy (`pip install sympy`), and rebuilding the catalog needs PyYAML.
 
 To test a change, run `python3 -m pytest`, `python3 -m ruff check .`, and `python3 tools/sync_harnesses.py --check`.
 
+### A race on its own VM
+
+`python3 tools/race_vm.py up mission.toml` runs a mission on a new Scaleway VM and prints the link to its live
+dashboard, `https://<ip>.sslip.io/?t=<token>`. The dashboard is served over HTTPS, and any request without the
+token gets a 403. The keys come from the Key-value secret `frontier-keys` (Secret Manager, Paris, path `/`), one
+field per variable name (`OPENAI_API_KEY`, `HF_TOKEN`, …). The VM reads them with an IAM key made for this race,
+which expires a day after the mission ends. The mission and its harness run as a non-root user. Claude Code refuses
+to skip permissions as root. `python3 tools/race_vm.py log <id>` prints the VM's first-boot log, and
+`python3 tools/race_vm.py down <id>` deletes the VM, its volume, its IP, and its IAM key. A live Codex race on
+2026-11-16 delivered this way, and the dashboard was ready 1 min 40 s after boot.
+
 ## What the AI gets
 
 | | |
