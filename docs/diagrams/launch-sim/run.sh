@@ -2,7 +2,7 @@
 # The simulated launch behind docs/diagrams/launch-*.html: `frontier mission start` for provider openai with the real
 # launcher and the real Codex recipe of config/harnesses.toml; only the `codex` binary is replaced by ./codex. The trace
 # hook (./sitecustomize.py) records every frontier/ call, file and subprocess of every process to OUT/trace.jsonl.
-# It spends real money: three tiny OpenAI calls (0.0026 USD on 2026-11-16), and it reads Scaleway and Runpod offers.
+# It spends real money: three tiny OpenAI calls (0.0024 USD on 2026-11-16), and it reads Scaleway and Runpod offers.
 #   docs/diagrams/launch-sim/run.sh [OUT]        OUT defaults to /tmp/frontier-launch-sim
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)

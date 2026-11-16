@@ -1,0 +1,662 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Level 1: a campaign for one AI provider, from the mission file to the jury",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/launch-1-campaign.html",
+    "repository": {
+      "url": "https://github.com/knoel99/frontier-one",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "db900a09070221944703e0be8cc9545175d92dc7"
+    },
+    "legend": {
+      "entries": {
+        "external": {
+          "label": "Owner: a file or a command"
+        },
+        "backend": {
+          "label": "Frontier code that runs"
+        },
+        "frontend": {
+          "label": "Harness CLI: a stand-in for codex in this run"
+        },
+        "security": {
+          "label": "Delivery, stop check, end"
+        },
+        "cloud": {
+          "label": "Outside service (HTTPS)"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "owner",
+      "label": "Owner (human)"
+    },
+    {
+      "id": "launcher",
+      "label": "Launcher (host): launcher.py, mission.py"
+    },
+    {
+      "id": "ai",
+      "label": "AI team: harness + frontier MCP server"
+    },
+    {
+      "id": "outside",
+      "label": "Outside services"
+    },
+    {
+      "id": "after",
+      "label": "After the race"
+    }
+  ],
+  "phases": [
+    {
+      "id": "setup",
+      "label": "Setup, once: 0 to 12.60 s",
+      "fromCol": 0,
+      "toCol": 2
+    },
+    {
+      "id": "sessions",
+      "label": "Sessions, up to max_sessions",
+      "fromCol": 3,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "end",
+      "label": "End and after",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "groups": [
+    {
+      "id": "session_one",
+      "label": "Session 1: 12.61 to 18.24 s",
+      "lane": "ai",
+      "fromCol": 3,
+      "toCol": 4,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "mission_file",
+    "start_cmd",
+    "prepare",
+    "guards",
+    "session",
+    "codex",
+    "deliver",
+    "stop",
+    "finish",
+    "after"
+  ],
+  "nodes": [
+    {
+      "id": "mission_file",
+      "lane": "owner",
+      "col": 0,
+      "yOffset": 40,
+      "type": "external",
+      "icon": "person",
+      "label": "Write mission.toml",
+      "sublabel": "copy of mission.example.toml",
+      "tag": "auto = codex for openai",
+      "sources": [
+        {
+          "path": "config/mission.example.toml",
+          "line": 1,
+          "end_line": 27,
+          "label": "copy and fill: mission, harness, llm"
+        },
+        {
+          "path": "config/mission.example.toml",
+          "line": 62,
+          "end_line": 74,
+          "label": "[secrets]: where each key comes from"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 37,
+          "end_line": 54,
+          "label": "NATIVE_HARNESS, auto resolved in load()"
+        }
+      ]
+    },
+    {
+      "id": "race_vm",
+      "lane": "owner",
+      "col": 1,
+      "yOffset": -76,
+      "type": "external",
+      "icon": "cloud",
+      "label": "race_vm.py up",
+      "sublabel": "optional: Scaleway VM, dashboard",
+      "tag": "not simulated",
+      "sources": [
+        {
+          "path": "tools/race_vm.py",
+          "line": 98,
+          "end_line": 146,
+          "label": "up(): IAM key, IP, VM, dashboard link"
+        },
+        {
+          "path": "tools/race_vm_init.sh",
+          "line": 52,
+          "end_line": 69,
+          "label": "first boot: harness, mission, dashboard"
+        }
+      ]
+    },
+    {
+      "id": "start_cmd",
+      "lane": "owner",
+      "col": 1,
+      "yOffset": 40,
+      "type": "external",
+      "icon": "start",
+      "label": "frontier mission start",
+      "sublabel": "bin/frontier, cmd_mission",
+      "tag": "t = 0 s",
+      "sources": [
+        {
+          "path": "bin/frontier",
+          "line": 1,
+          "end_line": 5,
+          "label": "python3 -m frontier"
+        },
+        {
+          "path": "frontier/__main__.py",
+          "line": 108,
+          "end_line": 113,
+          "label": "cmd_mission -> launcher.start"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 382,
+          "end_line": 389,
+          "label": "start(): prepare first"
+        }
+      ]
+    },
+    {
+      "id": "prepare",
+      "lane": "launcher",
+      "col": 1,
+      "type": "backend",
+      "label": "mission.prepare",
+      "sublabel": "12.3 s: files, key check, offers",
+      "tag": "--prepare-only stops here",
+      "sources": [
+        {
+          "path": "frontier/mission.py",
+          "line": 310,
+          "end_line": 384,
+          "label": "prepare(): state, key check, MD files"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 128,
+          "end_line": 151,
+          "label": "compute snapshot for TOOLS.md"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 399,
+          "end_line": 401,
+          "label": "--prepare-only returns here"
+        }
+      ]
+    },
+    {
+      "id": "guards",
+      "lane": "launcher",
+      "col": 2,
+      "type": "backend",
+      "icon": "clock",
+      "label": "Guards, then setup",
+      "sublabel": "watchdog, egress filter, gateway",
+      "tag": "codex login: 12.45-12.60 s",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 402,
+          "end_line": 423,
+          "label": "watchdog thread, egress, gateway, setup"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 306,
+          "end_line": 329,
+          "label": "open_gateway(), harness_setup()"
+        },
+        {
+          "path": "config/harnesses.toml",
+          "line": 32,
+          "end_line": 34,
+          "label": "codex setup: codex login"
+        }
+      ]
+    },
+    {
+      "id": "session",
+      "lane": "launcher",
+      "col": 3,
+      "type": "backend",
+      "icon": "active",
+      "label": "Session loop: run_one",
+      "sublabel": "up to max_sessions (2 here)",
+      "tag": "FIRST_PROMPT, then NEXT_PROMPT",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 424,
+          "end_line": 441,
+          "label": "the loop over sessions"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 332,
+          "end_line": 360,
+          "label": "run_one(): prompt, command, log"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 27,
+          "end_line": 39,
+          "label": "FIRST_PROMPT, NEXT_PROMPT"
+        }
+      ]
+    },
+    {
+      "id": "codex",
+      "lane": "ai",
+      "col": 3,
+      "type": "frontend",
+      "label": "codex exec, headless",
+      "sublabel": "5.6 s: MCP tools, model calls",
+      "tag": "stand-in binary in this run",
+      "sources": [
+        {
+          "path": "config/harnesses.toml",
+          "line": 37,
+          "end_line": 43,
+          "label": "codex exec recipe, gateway route"
+        },
+        {
+          "path": "frontier/mcp.py",
+          "line": 217,
+          "end_line": 233,
+          "label": "frontier MCP server, stdio"
+        },
+        {
+          "path": "frontier/agent.py",
+          "line": 249,
+          "end_line": 277,
+          "label": "spawn_agent: a sub-agent"
+        }
+      ]
+    },
+    {
+      "id": "deliver",
+      "lane": "ai",
+      "col": 4,
+      "type": "security",
+      "icon": "flag",
+      "label": "deliver (MCP tool)",
+      "sublabel": "0.11 s: checks, COSTS.md, freeze",
+      "tag": "commit + tag delivery",
+      "sources": [
+        {
+          "path": "frontier/tools.py",
+          "line": 289,
+          "end_line": 298,
+          "label": "t_deliver, tool description"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 476,
+          "end_line": 513,
+          "label": "deliver(): checks, cleanup, freeze"
+        },
+        {
+          "path": "frontier/snapshots.py",
+          "line": 186,
+          "end_line": 203,
+          "label": "commit(): add, commit, tag"
+        }
+      ]
+    },
+    {
+      "id": "stop",
+      "lane": "launcher",
+      "col": 4,
+      "type": "security",
+      "icon": "decision",
+      "label": "Commit, _stop_reason",
+      "sublabel": "commit Session n, then 5 checks",
+      "tag": "here: delivered, 18.27 s",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 440,
+          "end_line": 441,
+          "label": "commit(ws, Session n)"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 474,
+          "end_line": 501,
+          "label": "_stop_reason(): five conditions"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 424,
+          "end_line": 428,
+          "label": "checked before every session"
+        }
+      ]
+    },
+    {
+      "id": "finish",
+      "lane": "launcher",
+      "col": 5,
+      "type": "security",
+      "icon": "flag",
+      "label": "finish",
+      "sublabel": "leftovers, cleanup, COSTS.md",
+      "tag": "commit + tag: 18.49-18.57 s",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 442,
+          "end_line": 450,
+          "label": "finally: stop guards, finish()"
+        },
+        {
+          "path": "frontier/launcher.py",
+          "line": 454,
+          "end_line": 471,
+          "label": "finish()"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 516,
+          "end_line": 527,
+          "label": "final_costs(): final COSTS.md"
+        }
+      ]
+    },
+    {
+      "id": "after",
+      "lane": "after",
+      "col": 5,
+      "type": "backend",
+      "label": "status, dashboard, jury",
+      "sublabel": "reap from cron; jury out of 100",
+      "tag": "only status ran: 0.14 s",
+      "sources": [
+        {
+          "path": "frontier/launcher.py",
+          "line": 504,
+          "end_line": 510,
+          "label": "mission status"
+        },
+        {
+          "path": "frontier/__main__.py",
+          "line": 214,
+          "end_line": 234,
+          "label": "dashboard, jury, reap commands"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 1,
+          "end_line": 16,
+          "label": "jury: prompts/jury.md, scoring.py"
+        }
+      ]
+    },
+    {
+      "id": "offers",
+      "lane": "outside",
+      "col": 0,
+      "type": "cloud",
+      "label": "Scaleway, Runpod APIs",
+      "sublabel": "offers read: 1.20-12.43 s",
+      "tag": "nothing created",
+      "sources": [
+        {
+          "path": "frontier/http.py",
+          "line": 46,
+          "end_line": 55,
+          "label": "api.scaleway.com"
+        },
+        {
+          "path": "frontier/http.py",
+          "line": 68,
+          "end_line": 74,
+          "label": "mcp.runpod.io"
+        },
+        {
+          "path": "config/providers.toml",
+          "line": 168,
+          "end_line": 177,
+          "label": "service keys and hosts"
+        }
+      ]
+    },
+    {
+      "id": "openai",
+      "lane": "outside",
+      "col": 1,
+      "type": "cloud",
+      "label": "OpenAI API",
+      "sublabel": "3 calls, 0.002388 USD",
+      "tag": "api.openai.com",
+      "sources": [
+        {
+          "path": "config/providers.toml",
+          "line": 26,
+          "end_line": 32,
+          "label": "base_url, key_env, tiers"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 293,
+          "end_line": 301,
+          "label": "_ping(): the key check"
+        },
+        {
+          "path": "frontier/gateway.py",
+          "line": 196,
+          "end_line": 233,
+          "label": "gateway: charge, forward upstream"
+        }
+      ]
+    },
+    {
+      "id": "hf",
+      "lane": "outside",
+      "col": 4,
+      "type": "cloud",
+      "label": "Hugging Face Hub",
+      "sublabel": "not used: no [huggingface]",
+      "tag": "race: delivery dataset",
+      "sources": [
+        {
+          "path": "frontier/hf.py",
+          "line": 143,
+          "end_line": 152,
+          "label": "publish_delivery(): skipped here"
+        },
+        {
+          "path": "config/providers.toml",
+          "line": 179,
+          "end_line": 181,
+          "label": "HF_TOKEN, huggingface.co"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-file-start",
+      "from": "mission_file",
+      "to": "start_cmd",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-file-vm",
+      "from": "mission_file",
+      "to": "race_vm",
+      "label": "or on its own VM",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "e-vm-start",
+      "from": "race_vm",
+      "to": "start_cmd",
+      "label": "first boot runs it",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "e-start-prepare",
+      "from": "start_cmd",
+      "to": "prepare",
+      "label": "launcher.start",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-prepare-openai",
+      "from": "prepare",
+      "to": "openai",
+      "label": "key check, 1.0 s",
+      "variant": "dashed",
+      "role": "branch",
+      "toSide": "top"
+    },
+    {
+      "id": "e-prepare-offers",
+      "from": "prepare",
+      "to": "offers",
+      "label": "offers, 11.2 s",
+      "role": "branch"
+    },
+    {
+      "id": "e-prepare-guards",
+      "from": "prepare",
+      "to": "guards",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-guards-session",
+      "from": "guards",
+      "to": "session",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-session-codex",
+      "from": "session",
+      "to": "codex",
+      "label": "spawns",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-codex-openai",
+      "from": "codex",
+      "to": "openai",
+      "label": "via gateway; spawn_agent",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "right"
+    },
+    {
+      "id": "e-codex-deliver",
+      "from": "codex",
+      "to": "deliver",
+      "label": "calls deliver",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-deliver-hf",
+      "from": "deliver",
+      "to": "hf",
+      "label": "Hub copy, race only",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "e-deliver-stop",
+      "from": "deliver",
+      "to": "stop",
+      "label": "session ends",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-stop-session",
+      "from": "stop",
+      "to": "session",
+      "label": "none met: n+1",
+      "role": "return"
+    },
+    {
+      "id": "e-stop-finish",
+      "from": "stop",
+      "to": "finish",
+      "label": "one met",
+      "variant": "security"
+    },
+    {
+      "id": "e-finish-after",
+      "from": "finish",
+      "to": "after",
+      "label": "owner, later",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Measured in the simulated run (2026-11-16)",
+      "items": [
+        "18.76 s in all: mission start 0 to 18.57 s, then mission status 18.62 to 18.76 s",
+        "prepare 12.3 s: key check 1.0 s, Scaleway offers 9.3 s, Runpod offers 1.9 s",
+        "LLM 0.002388 USD over 3 calls: gateway 0.00236 (gpt-6-astra, the harness), spawn_agent 0.000025 and launcher key check 0.000003 (gpt-6-luna)",
+        "Scaleway 0 EUR, Runpod 0 USD: offers read, nothing created, nothing to clean up",
+        "1 session of the 2 allowed; stop reason: delivered; both ledgers intact"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "What was simulated, what was not run",
+      "items": [
+        "Simulated: only the codex binary, a stand-in called with the real codex recipe of config/harnesses.toml",
+        "The stand-in loads .codex/config.toml, AGENTS.md, the skill and the sub-agents, starts the MCP server, makes one model call through the gateway, calls budget_status, spawn_agent and deliver",
+        "Real: the launcher, the MCP server, the OpenAI API, the Scaleway and Runpod offer APIs",
+        "Not run: race_vm.py, the dashboard, reap and the jury"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Stop checks, before every session",
+      "items": [
+        "delivery.json exists: the AI called deliver",
+        "the deadline passed, or the LLM budget is spent",
+        "the gateway refused the first calls of a fresh session",
+        "three sessions in a row failed within 15 s",
+        "Here, commit Session 1 found nothing new: deliver had already committed and tagged"
+      ]
+    }
+  ]
+}
