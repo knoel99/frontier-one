@@ -479,7 +479,9 @@ OPENAI_API_KEY = "env:OPENAI_API_KEY"
     (root / f"{name}.log").write_text(p.stdout + p.stderr)
     b = budget.Budget(st)
     metered = [e for e in b.llm_entries() if e["frontier.source"] == "gateway"]
-    box = f"frontier-{name}"
+    from frontier.sandbox import sandbox_name
+
+    box = sandbox_name(name)
     listed = " ".join(subprocess.run(["openshell", *what, "list"], capture_output=True, text=True, timeout=60,
                                      check=False).stdout for what in (["sandbox"], ["provider"]))
     images = subprocess.run(["docker", "images", "--format", "{{.Repository}}"], capture_output=True, text=True,

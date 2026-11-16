@@ -1426,6 +1426,16 @@ def test_the_sandbox_image_has_the_policy_user():
     assert f"useradd -m -s /bin/bash {user}" in text and f"chown -R {user}:{user} /sandbox" in text
 
 
+def test_sandbox_names_fit_openshell(tmp_path):
+    """Live check of 2026-11-16: OpenShell 0.1.8 refused `frontier-openshell-live`, "name exceeds maximum length
+    (23 > 19)"; the name of a race team such as `team-openai` gave 20."""
+    import re
+
+    names = [sandbox.sandbox_name(n) for n in ("team-openai", "team-openai-2", "openshell-live", "t", "Équipe  DeepSeek")]
+    assert all(len(n) <= sandbox.MAX_SANDBOX_NAME and re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?", n) for n in names)
+    assert len(set(names)) == len(names) and sandbox.sandbox_name("t") == "frontier-t"
+
+
 def test_the_sandbox_image_trusts_the_proxy_ca_it_is_given(tmp_path):
     """Live check of 2026-11-16: behind a TLS-intercepting proxy the image build failed at its first HTTPS download
     (npm SELF_SIGNED_CERT_IN_CHAIN). `[sandbox] build_ca_bundle` puts that CA in the image's trust store first."""

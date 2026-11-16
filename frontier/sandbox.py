@@ -20,9 +20,11 @@ Run live on 2026-11-15 with OpenShell 0.1.8 and its Docker compute driver.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 
@@ -108,6 +110,16 @@ def policy(m: dict, binaries: list[str]) -> tuple[dict, list[str]]:
 
 
 BUILD_CA = "frontier-build-ca.crt"
+MAX_SANDBOX_NAME = 19  # OpenShell 0.1.8: a sandbox name is a DNS label of at most 19 characters (read 2026-11-16)
+
+
+def sandbox_name(mission: str) -> str:
+    """`frontier-<mission>` when it fits; else a short prefix of the mission and a hash of its whole name, so that two
+    teams whose names share a prefix still get two sandboxes."""
+    slug = re.sub(r"[^a-z0-9]+", "-", mission.lower()).strip("-") or "mission"
+    if len(name := f"frontier-{slug}") <= MAX_SANDBOX_NAME:
+        return name
+    return f"f-{slug[:10].strip('-')}-{hashlib.sha1(slug.encode()).hexdigest()[:6]}"
 
 
 def dockerfile(h: dict, base: str, build_ca: bool = False) -> str:
@@ -137,7 +149,7 @@ class OpenShell:
     def __init__(self, info: dict, h: dict, dry_run: bool = False):
         self.info, self.h, self.dry_run = info, h, dry_run
         self.m, self.s = info["mission"], info["settings"]
-        self.name = "frontier-" + "".join(c if c.isalnum() else "-" for c in self.s["name"].lower())[:40]
+        self.name = sandbox_name(self.s["name"])
         self.dir = pathlib.Path(info["state"]) / "openshell"
         self.binaries = BINARIES + list(h.get("sandbox_binaries", []))
         self.commands: list[list[str]] = []
