@@ -1,0 +1,727 @@
+{
+ "schema_version": 1,
+ "diagram_type": "sequence",
+ "meta": {
+  "title": "Level 4: one session, function by function",
+  "locale": "en",
+  "quality_profile": "showcase",
+  "output": "docs/diagrams/launch-4-session.html",
+  "legend": {
+   "entries": {
+    "emphasis": {
+     "label": "main call"
+    },
+    "return": {
+     "label": "reply"
+    },
+    "security": {
+     "label": "budget check, reservation or cap"
+    },
+    "dashed": {
+     "label": "append to a ledger"
+    },
+    "default": {
+     "label": "file read or write, other call"
+    }
+   }
+  },
+  "repository": {
+   "url": "https://github.com/knoel99/frontier-one",
+   "provider": "github",
+   "link_mode": "web",
+   "revision": "db900a09070221944703e0be8cc9545175d92dc7"
+  }
+ },
+ "participants": [
+  {
+   "id": "launcher",
+   "type": "backend",
+   "label": "Launcher",
+   "sublabel": "main thread",
+   "sources": [
+    {
+     "path": "frontier/launcher.py",
+     "line": 332,
+     "end_line": 360,
+     "label": "run_one"
+    },
+    {
+     "path": "frontier/launcher.py",
+     "line": 424,
+     "end_line": 450,
+     "label": "session loop, commit, finally"
+    },
+    {
+     "path": "frontier/launcher.py",
+     "line": 454,
+     "end_line": 501,
+     "label": "finish, _stop_reason"
+    }
+   ]
+  },
+  {
+   "id": "harness",
+   "type": "frontend",
+   "label": "Harness stand-in",
+   "sublabel": "codex exec (simulated)",
+   "sources": [
+    {
+     "path": "config/harnesses.toml",
+     "line": 37,
+     "end_line": 43,
+     "label": "codex command, route_args"
+    },
+    {
+     "path": "frontier/launcher.py",
+     "line": 27,
+     "end_line": 29,
+     "label": "FIRST_PROMPT"
+    },
+    {
+     "path": "frontier/harnesses.py",
+     "line": 187,
+     "end_line": 192,
+     "label": ".codex/config.toml: MCP server"
+    }
+   ]
+  },
+  {
+   "id": "workspace",
+   "type": "database",
+   "label": "Workspace",
+   "sublabel": "ws/ files, git",
+   "sources": [
+    {
+     "path": "frontier/mission.py",
+     "line": 36,
+     "end_line": 36,
+     "label": "REQUIRED files"
+    },
+    {
+     "path": "frontier/mission.py",
+     "line": 451,
+     "end_line": 473,
+     "label": "report_files, report_paths"
+    },
+    {
+     "path": "frontier/snapshots.py",
+     "line": 186,
+     "end_line": 203,
+     "label": "commit: add, commit, tag"
+    }
+   ]
+  },
+  {
+   "id": "mcp",
+   "type": "backend",
+   "label": "MCP server",
+   "sublabel": "pool threads",
+   "sources": [
+    {
+     "path": "frontier/mcp.py",
+     "line": 82,
+     "end_line": 233,
+     "label": "Server, serve_stdio, main"
+    },
+    {
+     "path": "frontier/agent.py",
+     "line": 159,
+     "end_line": 277,
+     "label": "Agent, run_task, t_spawn_agent"
+    },
+    {
+     "path": "frontier/mission.py",
+     "line": 476,
+     "end_line": 513,
+     "label": "deliver"
+    }
+   ]
+  },
+  {
+   "id": "budget",
+   "type": "security",
+   "label": "Budget, ledgers",
+   "sublabel": "budget.py, state/",
+   "sources": [
+    {
+     "path": "frontier/budget.py",
+     "line": 54,
+     "end_line": 73,
+     "label": "append_chained"
+    },
+    {
+     "path": "frontier/budget.py",
+     "line": 180,
+     "end_line": 214,
+     "label": "Call: charge, release on exit"
+    },
+    {
+     "path": "frontier/budget.py",
+     "line": 237,
+     "end_line": 337,
+     "label": "charge_llm, reserve, call, verify"
+    }
+   ]
+  },
+  {
+   "id": "gateway",
+   "type": "backend",
+   "label": "Gateway",
+   "sublabel": "launcher thread",
+   "sources": [
+    {
+     "path": "frontier/gateway.py",
+     "line": 83,
+     "end_line": 141,
+     "label": "worst_case, remap, strip_fields"
+    },
+    {
+     "path": "frontier/gateway.py",
+     "line": 196,
+     "end_line": 222,
+     "label": "_proxy"
+    },
+    {
+     "path": "frontier/gateway.py",
+     "line": 224,
+     "end_line": 315,
+     "label": "_forward"
+    }
+   ]
+  },
+  {
+   "id": "egress",
+   "type": "security",
+   "label": "Outbound filter",
+   "sublabel": "launcher thread",
+   "sources": [
+    {
+     "path": "frontier/egress.py",
+     "line": 25,
+     "end_line": 33,
+     "label": "denied"
+    },
+    {
+     "path": "frontier/egress.py",
+     "line": 42,
+     "end_line": 84,
+     "label": "_log, _upstream, do_CONNECT"
+    },
+    {
+     "path": "frontier/egress.py",
+     "line": 108,
+     "end_line": 123,
+     "label": "_relay"
+    }
+   ]
+  },
+  {
+   "id": "openai",
+   "type": "cloud",
+   "label": "OpenAI API",
+   "sublabel": "api.openai.com",
+   "sources": [
+    {
+     "path": "config/providers.toml",
+     "line": 26,
+     "end_line": 33,
+     "label": "base_url, tiers"
+    },
+    {
+     "path": "frontier/llm.py",
+     "line": 208,
+     "end_line": 251,
+     "label": "_post, _post_sse"
+    }
+   ]
+  }
+ ],
+ "segments": [
+  {
+   "from": 160,
+   "to": 572,
+   "label": "Session start, 12.60 to 12.96 s"
+  },
+  {
+   "from": 596,
+   "to": 1043,
+   "label": "Model call through the gateway, 12.96 to 17.10 s (4.1 s)"
+  },
+  {
+   "from": 1067,
+   "to": 1308,
+   "label": "budget_status, 17.10 to 17.11 s"
+  },
+  {
+   "from": 1332,
+   "to": 1922,
+   "label": "spawn_agent, 17.11 to 18.10 s (1.0 s)"
+  },
+  {
+   "from": 1946,
+   "to": 2415,
+   "label": "deliver, 18.10 to 18.21 s"
+  },
+  {
+   "from": 2439,
+   "to": 2878,
+   "label": "Session end and finish, 18.21 to 18.57 s"
+  }
+ ],
+ "messages": [
+  {
+   "id": "m01",
+   "from": "launcher",
+   "to": "budget",
+   "y": 186,
+   "label": "Run.log session_start",
+   "variant": "dashed",
+   "note": "12.61 s, after build_session"
+  },
+  {
+   "id": "m02",
+   "from": "launcher",
+   "to": "harness",
+   "y": 241,
+   "label": "run_until(codex exec ...)",
+   "variant": "emphasis",
+   "note": "FIRST_PROMPT; stdout to sessions/01.log"
+  },
+  {
+   "id": "m03",
+   "from": "harness",
+   "to": "workspace",
+   "y": 307,
+   "label": "read .codex/config.toml, AGENTS.md",
+   "variant": "default",
+   "note": "12.76 s; then the skill, .codex/agents/*.toml"
+  },
+  {
+   "id": "m04",
+   "from": "harness",
+   "to": "mcp",
+   "y": 373,
+   "label": "spawn bin/frontier-mcp --state",
+   "variant": "emphasis",
+   "note": "12.77 s; JSON-RPC over stdio"
+  },
+  {
+   "id": "m05",
+   "from": "mcp",
+   "to": "budget",
+   "y": 428,
+   "label": "Server.__init__: mission.json",
+   "variant": "default",
+   "note": "12.95 s; Agent._system reads prompts/*.md, roles/*.md"
+  },
+  {
+   "id": "m06",
+   "from": "harness",
+   "to": "mcp",
+   "y": 505,
+   "label": "initialize, tools/list",
+   "variant": "emphasis",
+   "note": "12.96 s; one pool thread per line"
+  },
+  {
+   "id": "m07",
+   "from": "mcp",
+   "to": "harness",
+   "y": 560,
+   "label": "tool_specs: 27 tools",
+   "variant": "return"
+  },
+  {
+   "id": "m08",
+   "from": "harness",
+   "to": "gateway",
+   "y": 622,
+   "label": "POST /openai/v1/responses",
+   "variant": "emphasis",
+   "note": "12.96 s; 127.0.0.1 is in NO_PROXY"
+  },
+  {
+   "id": "m09",
+   "from": "gateway",
+   "to": "budget",
+   "y": 677,
+   "label": "Budget.call: reserve worst case",
+   "variant": "security",
+   "note": "after remap, strip_fields, is_generation, worst_case"
+  },
+  {
+   "id": "m10",
+   "from": "gateway",
+   "to": "budget",
+   "y": 754,
+   "label": "Milestones.notice, Snapshots.notice",
+   "variant": "default",
+   "note": "none due: inject keeps the body"
+  },
+  {
+   "id": "m11",
+   "from": "gateway",
+   "to": "openai",
+   "y": 809,
+   "label": "_forward: POST /v1/responses",
+   "variant": "emphasis",
+   "note": "12.99 s; answered at 17.10 s: 4.1 s"
+  },
+  {
+   "id": "m12",
+   "from": "openai",
+   "to": "gateway",
+   "y": 875,
+   "label": "response, 66 in / 34 out tokens",
+   "variant": "return"
+  },
+  {
+   "id": "m13",
+   "from": "gateway",
+   "to": "harness",
+   "y": 905,
+   "label": "response",
+   "variant": "return",
+   "note": "17.10 s"
+  },
+  {
+   "id": "m14",
+   "from": "gateway",
+   "to": "budget",
+   "y": 949,
+   "label": "Call.charge: charge_llm",
+   "variant": "dashed",
+   "note": "usage_of; llm.jsonl, 0.00236 USD"
+  },
+  {
+   "id": "m15",
+   "from": "gateway",
+   "to": "budget",
+   "y": 1004,
+   "label": "Call.__exit__: release",
+   "variant": "security",
+   "note": "after the charge is written"
+  },
+  {
+   "id": "m16",
+   "from": "harness",
+   "to": "workspace",
+   "y": 1093,
+   "label": "read MISSION.md, TOOLS.md",
+   "variant": "default",
+   "note": "17.10 s; the stand-in's shell step"
+  },
+  {
+   "id": "m17",
+   "from": "harness",
+   "to": "mcp",
+   "y": 1148,
+   "label": "tools/call budget_status",
+   "variant": "emphasis",
+   "note": "Server.call: infra.budget_status"
+  },
+  {
+   "id": "m18",
+   "from": "mcp",
+   "to": "budget",
+   "y": 1203,
+   "label": "enforce, Budget.status, verify",
+   "variant": "security",
+   "note": "nothing alive; both ledger chains intact"
+  },
+  {
+   "id": "m19",
+   "from": "mcp",
+   "to": "harness",
+   "y": 1269,
+   "label": "status: 0.002363 USD spent",
+   "variant": "return",
+   "note": "mcp_call in events.jsonl"
+  },
+  {
+   "id": "m20",
+   "from": "harness",
+   "to": "mcp",
+   "y": 1358,
+   "label": "tools/call spawn_agent",
+   "variant": "emphasis",
+   "note": "light, low, tools [], max_turns 1"
+  },
+  {
+   "id": "m21",
+   "from": "mcp",
+   "to": "budget",
+   "y": 1413,
+   "label": "run_task: over_budget, llm_allowed",
+   "variant": "security",
+   "note": "after take_agent_slot, Agent.__init__, _system; agent_start logged"
+  },
+  {
+   "id": "m22",
+   "from": "mcp",
+   "to": "budget",
+   "y": 1490,
+   "label": "metered_chat: Budget.call, reserve",
+   "variant": "security",
+   "note": "worst case priced from config/prices.toml"
+  },
+  {
+   "id": "m23",
+   "from": "mcp",
+   "to": "egress",
+   "y": 1556,
+   "label": "llm.chat: CONNECT api.openai.com",
+   "variant": "emphasis",
+   "note": "17.13 s; _chat_responses, _post_sse"
+  },
+  {
+   "id": "m24",
+   "from": "egress",
+   "to": "budget",
+   "y": 1622,
+   "label": "_log: egress event",
+   "variant": "dashed",
+   "note": "denied() false, _upstream; first time for the host"
+  },
+  {
+   "id": "m25",
+   "from": "egress",
+   "to": "openai",
+   "y": 1688,
+   "label": "_relay: TLS tunnel",
+   "variant": "emphasis"
+  },
+  {
+   "id": "m26",
+   "from": "openai",
+   "to": "mcp",
+   "y": 1718,
+   "label": "SSE stream, 229 in / 5 out tokens",
+   "variant": "return",
+   "note": "through the tunnel; ends 18.09 s"
+  },
+  {
+   "id": "m27",
+   "from": "mcp",
+   "to": "budget",
+   "y": 1773,
+   "label": "Call.charge: charge_llm",
+   "variant": "dashed",
+   "note": "llm.jsonl, 2.5e-05 USD"
+  },
+  {
+   "id": "m28",
+   "from": "mcp",
+   "to": "budget",
+   "y": 1828,
+   "label": "Call.__exit__: release",
+   "variant": "security",
+   "note": "then model_call, agent_end logged"
+  },
+  {
+   "id": "m29",
+   "from": "mcp",
+   "to": "harness",
+   "y": 1883,
+   "label": "OK, sub-agent usage line",
+   "variant": "return",
+   "note": "18.10 s; mcp_call logged"
+  },
+  {
+   "id": "m30",
+   "from": "harness",
+   "to": "workspace",
+   "y": 1972,
+   "label": "write 4 files",
+   "variant": "default",
+   "note": "DECISIONS.md, COMPLIANCE.md, DELIVERY.md, report.md at 18.10 s"
+  },
+  {
+   "id": "m31",
+   "from": "harness",
+   "to": "mcp",
+   "y": 2049,
+   "label": "tools/call deliver",
+   "variant": "emphasis",
+   "note": "t_deliver: mission.deliver"
+  },
+  {
+   "id": "m32",
+   "from": "mcp",
+   "to": "workspace",
+   "y": 2104,
+   "label": "report_files, report_paths",
+   "variant": "default",
+   "note": "required files present; reads report.md"
+  },
+  {
+   "id": "m33",
+   "from": "mcp",
+   "to": "budget",
+   "y": 2170,
+   "label": "infra.cleanup, Budget.status",
+   "variant": "security",
+   "note": "nothing alive to delete"
+  },
+  {
+   "id": "m34",
+   "from": "mcp",
+   "to": "workspace",
+   "y": 2225,
+   "label": "costs_markdown: write COSTS.md",
+   "variant": "default"
+  },
+  {
+   "id": "m35",
+   "from": "mcp",
+   "to": "budget",
+   "y": 2255,
+   "label": "delivery.json; set_caps(frozen=True)",
+   "variant": "security",
+   "note": "frozen_llm_usd 0.002388"
+  },
+  {
+   "id": "m36",
+   "from": "mcp",
+   "to": "workspace",
+   "y": 2310,
+   "label": "snapshots.commit: add, commit, tag",
+   "variant": "default",
+   "note": "18.14 to 18.21 s; tag delivery"
+  },
+  {
+   "id": "m37",
+   "from": "mcp",
+   "to": "harness",
+   "y": 2365,
+   "label": "delivery record",
+   "variant": "return",
+   "note": "publish_delivery: {} (hf_prefix empty)"
+  },
+  {
+   "id": "m38",
+   "from": "harness",
+   "to": "mcp",
+   "y": 2465,
+   "label": "close stdin",
+   "variant": "default",
+   "note": "18.21 s; serve_stdio ends; Server.shutdown"
+  },
+  {
+   "id": "m39",
+   "from": "harness",
+   "to": "launcher",
+   "y": 2531,
+   "label": "exit 0",
+   "variant": "return",
+   "note": "18.24 s"
+  },
+  {
+   "id": "m40",
+   "from": "launcher",
+   "to": "budget",
+   "y": 2575,
+   "label": "llm_entries; Run.log session_end",
+   "variant": "dashed",
+   "note": "metered by the gateway; 5.6 s"
+  },
+  {
+   "id": "m41",
+   "from": "launcher",
+   "to": "workspace",
+   "y": 2630,
+   "label": "commit(\"Session 1\")",
+   "variant": "default",
+   "note": "18.26 s; nothing new, no commit"
+  },
+  {
+   "id": "m42",
+   "from": "launcher",
+   "to": "budget",
+   "y": 2685,
+   "label": "_stop_reason: delivered",
+   "variant": "security",
+   "note": "delivery.json exists; loop ends"
+  },
+  {
+   "id": "m43",
+   "from": "launcher",
+   "to": "gateway",
+   "y": 2740,
+   "label": "finally: gw.shutdown()",
+   "variant": "default",
+   "note": "standard library: not in the trace"
+  },
+  {
+   "id": "m44",
+   "from": "launcher",
+   "to": "budget",
+   "y": 2795,
+   "label": "finish: end_leftovers, final_costs",
+   "variant": "default",
+   "note": "18.49 s; delivery.json rewritten"
+  },
+  {
+   "id": "m45",
+   "from": "launcher",
+   "to": "workspace",
+   "y": 2850,
+   "label": "COSTS.md; commit Delivery, tag",
+   "variant": "default",
+   "note": "18.50 to 18.57 s"
+  }
+ ],
+ "cards": [
+  {
+   "dot": "slate",
+   "title": "What is simulated, and the clock",
+   "items": [
+    "The Harness lane is a stand-in for the codex binary (sim/bin/codex, outside the repository), launched with the real recipe of config/harnesses.toml: it loads the files Codex loads, makes one model call, then budget_status, spawn_agent, the four files and deliver",
+    "The other lanes are Frontier's own code at db900a0, its workspace files and the real OpenAI API: gpt-6-astra through the gateway, gpt-6-luna for the sub-agent",
+    "Times are seconds since the first event of trace.jsonl, from its call events per process and thread"
+   ]
+  },
+  {
+   "dot": "cyan",
+   "title": "Launcher: frontier/launcher.py",
+   "items": [
+    "run_one 332-360: build_session 338, session_start 339, run_until 346, metered check 348-356 (gateway entry found, so no usage_from_report), session_end 357-358",
+    "build_session 67-102: HTTPS_PROXY to the filter and 127.0.0.1 in NO_PROXY (84-87), FRONTIER_STATE (94), route_args point codex at the gateway (99-101)",
+    "run_until 256-267: codex in its own process group, timeout seconds_left (270-273)",
+    "session loop 424-441: _stop_reason 425 (474-501; delivered at 476-477), run_one 440, commit Session n 441; finally 442-450: stop.set, gw.shutdown, finish",
+    "finish 454-471: end_leftovers 458 (214-245), final_costs 464 (mission.py 516-527: COSTS.md, delivery.json), commit Delivery and tag 465 (snapshots.py 186-203)"
+   ]
+  },
+  {
+   "dot": "violet",
+   "title": "MCP server",
+   "items": [
+    "frontier/mcp.py: main 217-233, Server.__init__ 83-106 (Run, Budget, root Agent with every tool), tool_specs 108-124, call 126-139 (logs mcp_call), handle 141-165, serve_stdio 185-214, shutdown 167-173 (a mission keeps its resources)",
+    "frontier/agent.py: Agent.__init__ 160-174, _system 176-190 (system.md; cloud.md with infra tools; subagents.md and roles/*.md with spawn_agent: the sub-agent, with no tools, reads system.md only), run_task 192-231, t_spawn_agent 249-277, take_agent_slot 89-94, over_budget 56-61, Run.log 51-54",
+    "frontier/infra.py: budget_status 465-471, enforce 427-445, cleanup 418-420",
+    "tools.py t_deliver 289-292; mission.py deliver 476-513 (REQUIRED 36), report_files 451-457, report_paths 460-473, costs_markdown 530-557; hf.py publish_delivery 143-191 returns {} at 150-152 when hf_prefix or allow_publish is unset",
+    "frontier/llm.py: chat 475-479, _chat_responses 350-378, _post_sse 248-251, _post 208-233, usage_of 146-191; harnesses.py 34-45 and 187-192: env_vars hand the MCP server HTTPS_PROXY"
+   ]
+  },
+  {
+   "dot": "emerald",
+   "title": "Gateway, outbound filter, budget",
+   "items": [
+    "frontier/gateway.py: do_POST 187-188, _proxy 196-222, worst_case 83-93, is_generation 110-112, remap 115-129, strip_fields 132-141, _with_stream_usage 317-326, _forward 224-315",
+    "milestones.py Milestones.notice 36-58, inject 61-97; snapshots.py Snapshots.notice 101-129",
+    "frontier/budget.py: Budget.call 306-311, reserve 275-284, release 286-288, metered_chat 313-329, llm_allowed 331-333, verify 335-337, status 387-424, set_caps 227-232, charge_llm 237-251, Call 180-214, append_chained 54-73",
+    "frontier/egress.py: do_CONNECT 73-84, denied 25-33, _upstream 55-71, _log 42-49, _relay 108-123"
+   ]
+  },
+  {
+   "dot": "amber",
+   "title": "Folded or not drawn",
+   "items": [
+    "Budget internals (_reservations, _fits, llm_spent, locked, write_json, _digest) are folded into the reserve, charge and release messages",
+    "commit(\"Session 1\") ran git add, git commit and git status, but made no commit: deliver had committed everything, and the workspace history holds two Delivery commits",
+    "Watchdog threads: the launcher's (every 10 s) started at 12.45 s, the MCP server's (every 60 s, mcp.py 176-182) at 12.96 s; neither ticks during the session",
+    "After deliver returns, mission.deliver also rewrites delivery.json and logs delivered in events.jsonl (mission.py 511-512)"
+   ]
+  }
+ ]
+}
