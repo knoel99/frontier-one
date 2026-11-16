@@ -32,7 +32,7 @@ class _NoUsage(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def do_POST(self):  # noqa: N802
+    def do_POST(self):
         self.rfile.read(int(self.headers["Content-Length"]))
         data = b'{"output": "hi"}'
         self.send_response(200)
@@ -66,7 +66,7 @@ class _CutStream(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def do_POST(self):  # noqa: N802
+    def do_POST(self):
         self.rfile.read(int(self.headers["Content-Length"]))
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -811,7 +811,7 @@ def test_scoring_log_scales_and_relative_efficiency():
 
 def test_jury_aggregate_ranks_classified_teams_first_and_keeps_ungraded_work_unranked():
     from frontier.jury import aggregate
-    rub = lambda q, a: {"scientific_quality": {"rubrics": {k: {"score": q} for k in ("soundness", "significance",  # noqa: E731
+    rub = lambda q, a: {"scientific_quality": {"rubrics": {k: {"score": q} for k in ("soundness", "significance",
                                                                                      "positioning", "clarity")},
                                                "adequacy": "on_subject"},
                         "artifacts": {"rubrics": {k: {"score": a} for k in ("reproducibility", "code", "data", "traceability")}}}
@@ -1018,7 +1018,7 @@ class _SlowAnswer(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def do_POST(self):  # noqa: N802
+    def do_POST(self):
         self.rfile.read(int(self.headers["Content-Length"]))
         time.sleep(0.5)
         data = b'{"model": "glm-5.3", "usage": {"prompt_tokens": 1000, "completion_tokens": 100}}' + b" " * 300_000

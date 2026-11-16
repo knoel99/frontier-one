@@ -248,7 +248,7 @@ def _watchdog(run: Run, stop: threading.Event, ws: pathlib.Path) -> None:
                     print(f"snapshot {', '.join(ev['labels'])}: {ev['commit'][:10]}")
             if tick % max(1, 60 // CPU_SAMPLE_S) == 0:
                 infra.enforce(run)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - a tick that failed is printed, and the watchdog goes on
             print(f"watchdog: {e}", file=sys.stderr)
 
 

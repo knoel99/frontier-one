@@ -36,9 +36,6 @@ class APIError(RuntimeError):
     pass
 
 
-# ---------------------------------------------------------------- Scaleway
-
-
 def scw_defaults() -> dict:
     zone = os.environ.get("SCW_DEFAULT_ZONE", "fr-par-2")
     return {"zone": zone, "region": os.environ.get("SCW_DEFAULT_REGION", zone.rsplit("-", 1)[0]),
@@ -66,9 +63,6 @@ def scw(method: str, path: str, body=None, query: dict | None = None, content_ty
     if not 200 <= code < 300:
         raise APIError(f"Scaleway {method} {path}: HTTP {code} {text[:800]}")
     return json.loads(text) if text.strip() else {}
-
-
-# ---------------------------------------------------------------- Runpod MCP
 
 
 def mcp_rpc(method: str, params: dict | None = None, timeout: float = 180) -> dict:

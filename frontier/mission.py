@@ -88,9 +88,6 @@ def providers_of(m: dict) -> list[str]:
     return [p for p in [llm_sec.get("provider"), *llm_sec.get("other_providers", [])] if p]
 
 
-# ---------------------------------------------------------------- inventory (TOOLS.md)
-
-
 def _models_section(cfg: dict, providers: list[str], pings: dict) -> str:
     prices = budget_mod.prices()
     out = []
@@ -138,7 +135,7 @@ def _offers_section(ctx) -> str:
                   "| type | zone | GPU | GPU memory GB | vCPU | RAM GB | stock | EUR/h |", "|---|---|---|---:|---:|---:|---|---:|"]
         lines += [f"| {o['type']} | {o['zone']} | {o['gpus']}× {o['gpu']} | {o['gpu_memory_gb']} | {o['vcpus']} | "
                   f"{o['ram_gb']} | {o['availability']} | {o['eur_per_hour']} |" for o in scw[:25]]
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001 - the inventory is written without these offers, and says so
         lines.append(f"Scaleway offers unavailable at preparation time: {e}")
     lines.append("")
     for cloud in ("SECURE", "COMMUNITY"):
@@ -148,7 +145,7 @@ def _offers_section(ctx) -> str:
                       "| GPU type id | memory GB | stock | USD/h | max count |", "|---|---:|---|---:|---:|"]
             lines += [f"| `{o['gpu_type_id']}` | {o['memory_gb']} | {o['availability']} | {o['usd_per_gpu_hour']} | "
                       f"{o['max_count']} |" for o in rp[:25]]
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - the inventory is written without these offers, and says so
             lines.append(f"Runpod offers ({cloud}) unavailable at preparation time: {e}")
         lines.append("")
     return "\n".join(lines)
@@ -272,9 +269,6 @@ deliverables) and `TOOLS.md` (every tool, model, price and compute offer availab
   `{frontier} call <tool> '<json>' --state {state}`.
 - Record your strategy and decisions in `DECISIONS.md` as you go; finish with the `deliver` tool.
 """
-
-
-# ---------------------------------------------------------------- preparation
 
 
 def _copy_subject(src: str, dest_dir: pathlib.Path, base: pathlib.Path) -> str:
@@ -442,9 +436,6 @@ def _hermes_home(state: pathlib.Path, target: dict, mcp: McpCommand) -> None:
         "updates:\n  check: false\nmodel_catalog:\n  enabled: false\n")
 
 
-# ---------------------------------------------------------------- delivery (a tool of the mission)
-
-
 FILE_EXT = ("py", "ipynb", "json", "jsonl", "csv", "tsv", "npz", "npy", "pt", "pth", "ckpt", "safetensors", "h5", "md",
             "txt", "yml", "yaml", "toml", "cfg", "sh", "png", "pdf", "svg", "jpg", "tex", "bib", "log", "pkl")
 _EXT = "|".join(FILE_EXT)
@@ -475,7 +466,6 @@ def report_paths(text: str) -> list[str]:
     bare = re.sub(r"`[^`\n]*`|https?://\S+|\]\([^)]*\)", " ", text)
     found += re.findall(rf"(?<![\w/.@-])(?:[\w-]+/)*[\w-][\w.-]*\.(?:{_EXT})\b(?![\w/])", bare)
     return list(dict.fromkeys(f.strip("()[],;:'\"") for f in found if f.strip("()[],;:'\"")))
-
 
 
 def deliver(ctx, summary: str = "", force: bool = False) -> str:

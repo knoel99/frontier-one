@@ -70,7 +70,7 @@ class _Handler(BaseHTTPRequestHandler):
             raise OSError(f"upstream proxy refused {host}:{port}: {status.decode(errors='replace')}")
         return s
 
-    def do_CONNECT(self):  # noqa: N802
+    def do_CONNECT(self):
         host, _, port = self.path.rpartition(":")
         if denied(host, self.server.deny):
             return self._refuse(host)
@@ -102,7 +102,7 @@ class _Handler(BaseHTTPRequestHandler):
         _relay(self.connection, remote)
         self.close_connection = True
 
-    do_GET = do_POST = do_PUT = do_DELETE = do_HEAD = do_PATCH = do_OPTIONS = _plain  # noqa: N815
+    do_GET = do_POST = do_PUT = do_DELETE = do_HEAD = do_PATCH = do_OPTIONS = _plain
 
 
 def _relay(a: socket.socket, b: socket.socket) -> None:

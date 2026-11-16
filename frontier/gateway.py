@@ -52,9 +52,6 @@ def base_url_for(port: int, provider: str, cfg: dict) -> str:
     return f"http://127.0.0.1:{port}/{provider}{path}"
 
 
-# ---------------------------------------------------------------- usage extraction
-
-
 def merge(total: dict, part: dict) -> None:
     """Stream events repeat or accumulate counts: keep the largest value of each field (the last text value)."""
     for k, v in part.items():
@@ -153,9 +150,6 @@ def model_of(req_body: bytes, path: str, resp_obj: dict | None) -> str:
     return m or "unknown"
 
 
-# ---------------------------------------------------------------- server
-
-
 class Gateway(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -176,7 +170,7 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server: Gateway
 
-    def log_message(self, fmt, *args):  # quiet
+    def log_message(self, fmt, *args):
         pass
 
     def _send_json(self, code: int, obj: dict) -> None:
@@ -187,16 +181,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def do_GET(self):  # noqa: N802
+    def do_GET(self):
         self._proxy()
 
-    def do_POST(self):  # noqa: N802
+    def do_POST(self):
         self._proxy()
 
-    def do_PUT(self):  # noqa: N802
+    def do_PUT(self):
         self._proxy()
 
-    def do_DELETE(self):  # noqa: N802
+    def do_DELETE(self):
         self._proxy()
 
     def _proxy(self) -> None:
@@ -222,8 +216,8 @@ class Handler(BaseHTTPRequestHandler):
                 "t": now().isoformat(timespec="seconds"), "event": "llm_refused", "agent": self.server.agent, "why": why})
             return self._send_json(402, {"error": {"type": "budget_exhausted", "code": "budget_exhausted", "message": why}})
         with call:
-            body = inject(rest, body, self.server.milestones.notice())  # 10, 25, 50, 80, 95, 98 % of a budget
-            if self.server.snapshots:  # time and spend milestones: bring the report up to date for a snapshot
+            body = inject(rest, body, self.server.milestones.notice())
+            if self.server.snapshots:
                 body = inject(rest, body, self.server.snapshots.notice())
             self._forward(origin, rest, self._with_stream_usage(rest, body), provider, call)
 

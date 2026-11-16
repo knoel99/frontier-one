@@ -128,14 +128,14 @@ def _file_in_race(api, settings: dict, repo_id: str, repo_type: str) -> dict:
         tags = list(dict.fromkeys([*own, *tags]))
         metadata_update(repo_id, {"tags": tags}, repo_type=repo_type, overwrite=True, token=_token())
         out["tags"] = tags
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001 - the publication stands without its tags: the error goes in the record
         out["tags_error"] = f"{type(e).__name__}: {str(e)[:200]}"
     try:
         title = settings.get("hf_collection") or settings["hf_prefix"]
         col = api.create_collection(title, namespace=repo_id.split("/")[0], private=True, exists_ok=True)
         api.add_collection_item(col.slug, item_id=repo_id, item_type=repo_type, exists_ok=True)
         out["collection"] = f"https://huggingface.co/collections/{col.slug}"
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001 - the publication stands outside the collection: the error goes in the record
         out["collection_error"] = f"{type(e).__name__}: {str(e)[:200]}"
     return out
 

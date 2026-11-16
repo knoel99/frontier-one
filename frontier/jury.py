@@ -57,9 +57,6 @@ def _tracked(ws: pathlib.Path) -> list[str]:
     return [x for x in out if x and not x.startswith(HIDDEN) and x not in gen]
 
 
-# ---------------------------------------------------------------- anonymity
-
-
 def identity_names(cfg: dict) -> list[str]:
     """Every name that tells a team's author: provider keys and `names`, model ids, harness keys and names."""
     out = set()
@@ -110,9 +107,6 @@ def incidents_of(context: str) -> tuple[str, dict[str, str]]:
         key, _, body = block.partition("\n")
         parts[key.strip()] = body.strip()
     return head.strip(), parts
-
-
-# ---------------------------------------------------------------- measured by the framework
 
 
 CODE_EXT = (".py", ".jl", ".m", ".r", ".R", ".cpp", ".c", ".f90", ".rs", ".go", ".ipynb", ".sh", ".js", ".ts")
@@ -186,9 +180,6 @@ def facts(state: pathlib.Path) -> dict:
             "penalties": penalties, "disqualified": dsq}
 
 
-# ---------------------------------------------------------------- the team's file
-
-
 def _clip(text: str, n: int) -> str:
     return text if len(text) <= n else text[:n] + f"\n[... {len(text) - n} more characters not shown]"
 
@@ -233,9 +224,6 @@ def team_file(ws: pathlib.Path, f: dict, label: str, incidents: str) -> str:
             used += len(body)
     parts += ["## Small result and record files", "", "\n".join(small) or "(none)", ""]
     return "\n".join(parts)
-
-
-# ---------------------------------------------------------------- judges
 
 
 def _json_of(text: str) -> dict:
@@ -373,9 +361,6 @@ def aggregate(teams: dict, jury_usd: float) -> dict:
         teams[n].pop("file", None)
     return {"criteria": list(CRITERIA), "weights": dict(scoring.WEIGHTS), "jury_llm_usd": round(jury_usd, 4),
             "ranking": order, "teams": teams}
-
-
-# ---------------------------------------------------------------- report
 
 
 def _num(v) -> str:

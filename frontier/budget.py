@@ -219,7 +219,6 @@ class Budget:
         self.dir = pathlib.Path(state_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
 
-    # ------------------------------------------------------------ caps
     @property
     def caps(self) -> dict:
         f = self.dir / "budgets.json"
@@ -232,7 +231,6 @@ class Budget:
 
         update_json(self.dir / "budgets.json", merge, {})
 
-    # ------------------------------------------------------------ LLM
     # Entries use the OpenTelemetry GenAI attribute names (gen_ai.*) plus frontier.* ones, and form a hash chain:
     # each line carries the hash of the previous one and a head file records the last one, so an edited or deleted
     # line and a log cut at its end are detected (verify_chain).
@@ -258,8 +256,6 @@ class Budget:
     def llm_spent(self) -> float:
         return round(sum(e["frontier.cost.usd"] for e in self.llm_entries()), 6)
 
-    # Reservations: the worst case of every call in flight, held until the call is charged, so that parallel
-    # calls (sub-agents, harness traffic through the gateway, several processes) cannot overrun the cap together.
     def _reservations(self, fn) -> object:
         f = self.dir / "reservations.json"
         with locked(self.dir / ".reservations.lock"):
@@ -340,7 +336,6 @@ class Budget:
         """Integrity of the chained logs: {file: True | 'broken at line n'}."""
         return {name: verify_chain(self.dir / name) for name in ("llm.jsonl", "events.jsonl") if (self.dir / name).exists()}
 
-    # ------------------------------------------------------------ cloud
     def resources(self) -> list[dict]:
         f = self.dir / "resources.json"
         return json.loads(f.read_text()) if f.exists() else []
@@ -389,7 +384,6 @@ class Budget:
                            f"{new:.2f} ({price_per_hour:.3f}/h x {max_hours} h) > {cap:.2f} {cur}")
         return True, ""
 
-    # ------------------------------------------------------------ report
     def status(self) -> dict:
         at = now()
         caps = self.caps
@@ -423,7 +417,7 @@ class Budget:
         if deadline:
             out["deadline"] = caps["deadline"]
             out["hours_left"] = round((deadline - at).total_seconds() / 3600, 3)
-        if caps.get("frozen"):  # the harness finishing its turn after deliver, within the grace
+        if caps.get("frozen"):
             out["llm"]["after_delivery_usd"] = round(out["llm"]["spent_usd"] - caps.get("frozen_llm_usd", 0), 6)
         if out["llm"]["cap_usd"] is not None:
             out["llm"]["left_usd"] = round(out["llm"]["cap_usd"] - out["llm"]["spent_usd"], 4)
