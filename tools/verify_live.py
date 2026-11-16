@@ -447,23 +447,32 @@ def f22(root: pathlib.Path, names: list[str], install: bool):
     """One tiny mission per harness, on its native provider: the harness delivers, its calls are metered, the ledgers
     verify, no blocked host is tried and no process is left. A harness that is not installed, or whose provider's
     key does not answer, is BLOCKED."""
+    from frontier.harnesses import HARNESSES
+
     for name in names:
-        provider = HARNESS_PROVIDER.get(name) or next(p for p, n in mission.NATIVE_HARNESS.items() if n == name)
+        provider = HARNESS_PROVIDER.get(name) or HARNESSES[name].provider
         label = f"harness {name} on {provider}"
-        h = launcher.harness_conf(name, provider)
-        if (why := _missing(h)) and install and h.get("install"):
-            subprocess.run(["bash", "-c", h["install"]], capture_output=True, text=True, timeout=900, check=False)
-            why = _missing(h)
-        if why:
-            verdict("F22", label, None, why)
-            continue
-        key = load_config()["providers"][provider]["key_env"]
-        d = root / "files" / f"harness-{name}"
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "subject.md").write_text(HARNESS_SUBJECT)
-        st, ws = root / "missions" / f"harness-{name}", root / "ws" / f"harness-{name}"
-        f = d / "m.toml"
-        f.write_text(f'''[mission]
+        try:
+            _f22_one(root, name, provider, label, install)
+        except Exception as e:  # noqa: BLE001 - one harness that fails to run is its verdict, the others still run
+            verdict("F22", label, False, f"{type(e).__name__}: {str(e)[:300]}")
+
+
+def _f22_one(root: pathlib.Path, name: str, provider: str, label: str, install: bool) -> None:
+    h = launcher.harness_conf(name, provider)
+    if (why := _missing(h)) and install and h.get("install"):
+        subprocess.run(["bash", "-c", h["install"]], capture_output=True, text=True, timeout=900, check=False)
+        why = _missing(h)
+    if why:
+        verdict("F22", label, None, why)
+        return
+    key = load_config()["providers"][provider]["key_env"]
+    d = root / "files" / f"harness-{name}"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "subject.md").write_text(HARNESS_SUBJECT)
+    st, ws = root / "missions" / f"harness-{name}", root / "ws" / f"harness-{name}"
+    f = d / "m.toml"
+    f.write_text(f'''[mission]
 name = "harness-{name}"
 subject = "subject.md"
 workspace = "{ws}"
@@ -476,31 +485,31 @@ reasoning = "low"
 max_sessions = 2
 [llm]
 provider = "{provider}"
-budget_usd = 0.3
+budget_usd = 1.0
 [secrets]
 {key} = "proxy"
 ''')
-        tools_md = mission.prepare(f, ping=True, offers=False)["workspace"] / "TOOLS.md"
-        if "KEY CHECK FAILED" in tools_md.read_text():
-            verdict("F22", label, None, f"the {provider} key does not answer here (TOOLS.md: KEY CHECK FAILED)")
-            continue
-        p = subprocess.run([sys.executable, "-m", "frontier", "mission", "start", str(f), "--no-ping"], cwd=ROOT,
-                           capture_output=True, text=True, timeout=1500, check=False)
-        b = budget.Budget(st)
-        entries = b.llm_entries()
-        metered = [e for e in entries if e["frontier.source"] in ("gateway", "harness-report")]
-        blocked = sorted({e["host"] for e in budget.read_jsonl(st / "events.jsonl") if e.get("event") == "egress"
-                          and not e.get("allowed")})
-        left = subprocess.run(["pgrep", "-af", str(st)], capture_output=True, text=True, check=False).stdout.strip()
-        intact = all(v is True for v in b.verify().values())
-        delivered = (st / "delivery.json").exists()
-        version = subprocess.run([h["command"][0], "--version"], capture_output=True, text=True, timeout=60,
-                                 check=False).stdout.strip().splitlines()[:1]
-        verdict("F22", label, delivered and bool(metered) and intact and not blocked and not left,
-                f"{version[0] if version else 'version unknown'}; launcher exit {p.returncode}; delivered {delivered}; "
-                f"{len(metered)} calls metered ({sum(e['frontier.cost.usd'] for e in metered):.4f} USD, "
-                f"{metered[0]['frontier.source'] if metered else 'none'}); ledgers intact {intact}; blocked hosts "
-                f"tried {blocked or 'none'}; processes left {left or 'none'}")
+    tools_md = mission.prepare(f, ping=True, offers=False)["workspace"] / "TOOLS.md"
+    if "KEY CHECK FAILED" in tools_md.read_text():
+        verdict("F22", label, None, f"the {provider} key does not answer here (TOOLS.md: KEY CHECK FAILED)")
+        return
+    p = subprocess.run([sys.executable, "-m", "frontier", "mission", "start", str(f), "--no-ping"], cwd=ROOT,
+                       capture_output=True, text=True, timeout=1500, check=False)
+    b = budget.Budget(st)
+    entries = b.llm_entries()
+    metered = [e for e in entries if e["frontier.source"] in ("gateway", "harness-report")]
+    blocked = sorted({e["host"] for e in budget.read_jsonl(st / "events.jsonl") if e.get("event") == "egress"
+                      and not e.get("allowed")})
+    left = subprocess.run(["pgrep", "-af", str(st)], capture_output=True, text=True, check=False).stdout.strip()
+    intact = all(v is True for v in b.verify().values())
+    delivered = (st / "delivery.json").exists()
+    version = subprocess.run([h["command"][0], "--version"], capture_output=True, text=True, timeout=60,
+                             check=False).stdout.strip().splitlines()[:1]
+    verdict("F22", label, delivered and bool(metered) and intact and not blocked and not left,
+            f"{version[0] if version else 'version unknown'}; launcher exit {p.returncode}; delivered {delivered}; "
+            f"{len(metered)} calls metered ({sum(e['frontier.cost.usd'] for e in metered):.4f} USD, "
+            f"{metered[0]['frontier.source'] if metered else 'none'}); ledgers intact {intact}; blocked hosts "
+            f"tried {blocked or 'none'}; processes left {left or 'none'}")
 
 
 def _echo(gw_base: str, prompt: str) -> str:
