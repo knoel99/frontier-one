@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from . import llm
 from .budget import Budget, append_chained, now, update_json
 from .config import ROOT
-from .tools import GROUPS, INFRA_TOOLS, REGISTRY, Tool, _obj, all_tools
+from .tools import GROUPS, INFRA_TOOLS, REGISTRY, Tool, _obj, _truncate, all_tools
 
 PROMPTS = ROOT / "prompts"
 ROLES = ROOT / "roles"
@@ -154,10 +154,6 @@ def _fill(template: str, **kw) -> str:
     for k, v in kw.items():
         template = template.replace("{{" + k + "}}", str(v))
     return template
-
-
-def _truncate(s: str, n: int) -> str:
-    return s if len(s) <= n else s[: n // 2] + f"\n…[{len(s) - n} chars cut]…\n" + s[-n // 2:]
 
 
 class Agent:

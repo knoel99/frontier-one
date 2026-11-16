@@ -34,7 +34,7 @@ from . import infra, llm
 from .agent import Agent, Ctx, Run, roles_summary
 from .config import ROOT, load_config
 from .tools import GROUPS as TOOL_GROUPS
-from .tools import REGISTRY
+from .tools import REGISTRY, failed
 
 # Revisions this server answers with the initialize handshake (it also answers server/discover and calls made
 # without a handshake). The stateless 2026-07-28 revision is only partly covered: see docs/STANDARDS.md.
@@ -49,7 +49,6 @@ _READ_LOCAL = {"frontier_plan", "frontier_roles", "api_docs", "budget_status", "
 _READ_REMOTE = {"scw_offers", "scw_instance", "scw_list_instances", "rp_offers", "rp_pod", "rp_list_pods", "rp_logs", "hf_whoami"}
 _DELETE = {"scw_delete_instance", "rp_delete_pod", "infra_cleanup", "deliver"}
 _CREATE = {"scw_create_instance", "rp_create_pod", "hf_publish", "spawn_agent"}
-_COMPUTE = {"sympy"}  # runs the caller's own code on this machine: not read-only, and nothing outside is reached
 
 
 def annotations(name: str) -> dict:
@@ -61,8 +60,6 @@ def annotations(name: str) -> dict:
     if name in _DELETE:
         return {"title": title, "readOnlyHint": False, "destructiveHint": True, "idempotentHint": True,
                 "openWorldHint": name != "deliver"}
-    if name in _COMPUTE:
-        return {"title": title, "readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
     if name in _CREATE:
         return {"title": title, "readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
                 "openWorldHint": True}
@@ -134,10 +131,10 @@ class Server:
         if name == "frontier_roles":
             return roles_summary(), False
         try:
-            out = str(REGISTRY[name].fn(Ctx(self.run, self.root), **args))
+            answer = REGISTRY[name].fn(Ctx(self.run, self.root), **args)
         except Exception as e:  # noqa: BLE001 - a failed call is an answer for the harness, and a line in the log
-            out = f"error: {type(e).__name__}: {e}"
-        err = out.startswith(("error", "refused"))
+            answer = f"error: {type(e).__name__}: {e}"
+        out, err = str(answer), failed(answer)
         self.run.log(event="mcp_call", tool=name, arguments=json.dumps(args)[:2000], output=out[:1000], error=err)
         return out, err
 
