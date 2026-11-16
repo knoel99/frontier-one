@@ -572,9 +572,15 @@ def test_snapshots_notice_merge_tag_and_event(tmp_path, monkeypatch):
     assert s.notice() == note and s.notice() == note and s.notice() == ""  # three calls carry it, then none
     first = s.take(ws)  # the silent one is due at once, the told one merged into it as it falls in its grace
     assert first["labels"] == ["5min", "15min"] and first["minutes"] >= 16
+    assert set(first["pdf"]) == {"5min", "15min"}
+    for lab in first["labels"]:
+        md = (ws / "snapshots" / f"{lab}.md").read_text()
+        assert f"# Snapshot {lab}" in md and "Model calls" in md and "Elapsed" in md
     assert s.take(ws) is None
     tags = subprocess.run(["git", "-C", str(ws), "tag"], capture_output=True, text=True, check=False).stdout.split()
     assert tags == ["snapshot-15min", "snapshot-5min"]
+    assert "snapshots/15min.md" in subprocess.run(["git", "-C", str(ws), "ls-tree", "-r", "--name-only", "snapshot-15min"],
+                                                    capture_output=True, text=True, check=False).stdout
     monkeypatch.setattr(b, "llm_spent", lambda: 12.0)
     assert ("spend", 10) in s.crossed() and ("spend", 20) not in s.crossed()
     assert snapshots.label("time", 120) == "2h" and snapshots._extend([5, 15], 50) == [5, 15, 30, 60]
