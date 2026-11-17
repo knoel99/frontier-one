@@ -443,9 +443,7 @@ def tex_pdf(root: pathlib.Path, name: str, path: str) -> pathlib.Path | str:
         return out
     if not shutil.which("pdflatex"):
         return "pdflatex is not installed on the race's machine"
-    if not _compiling.acquire(timeout=90):
-        return "another PDF is being compiled; try again in a minute"
-    try:
+    with _compiling:  # a second request waits for the first: pdflatex stops at 2 minutes
         with tempfile.TemporaryDirectory() as tmp:
             size = 0
             for f in src.parent.rglob("*"):
@@ -468,8 +466,6 @@ def tex_pdf(root: pathlib.Path, name: str, path: str) -> pathlib.Path | str:
             out.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(pathlib.Path(tmp) / (src.stem + ".pdf"), out)
             return out
-    finally:
-        _compiling.release()
 
 
 def report_pdf(root: pathlib.Path, name: str, path: str) -> pathlib.Path | None:
