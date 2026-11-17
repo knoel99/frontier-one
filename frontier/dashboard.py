@@ -31,7 +31,11 @@ import os
 import pathlib
 import re
 import secrets
+import shutil
+import subprocess
 import sys
+import tempfile
+import threading
 import time
 import urllib.parse
 from http.cookies import SimpleCookie
@@ -415,8 +419,57 @@ def reports(root: pathlib.Path, name: str) -> dict | None:
     files = [{"path": f.relative_to(ws).as_posix(), "kind": f.suffix[1:].lower(), "written": written(f),
               "text": f.read_text(errors="replace")[:REPORT_MAX]}
              for f in sorted(report_files(ws), key=lambda f: (f.suffix.lower() == ".tex", f.as_posix()))]
-    pdfs = [f for f in [*ws.glob("report*.pdf"), *(ws / "report").rglob("*.pdf")] if f.is_file()]
+    # the team's own PDFs, and the one frontier/snapshots.py made at each milestone from the Markdown report
+    pdfs = [f for f in [*ws.glob("report*.pdf"), *(ws / "report").rglob("*.pdf"), *(ws / "snapshots").glob("*.pdf")] if f.is_file()]
     return {"files": files, "pdfs": sorted(f.relative_to(ws).as_posix() for f in pdfs)}
+
+
+TEX_FILES = {".tex", ".bib", ".bst", ".sty", ".cls", ".png", ".jpg", ".jpeg", ".pdf", ".eps"}
+TEX_MAX = 100_000_000  # bytes copied to compile one report
+_compiling = threading.Lock()  # one pdflatex at a time on the race's machine
+
+
+def tex_pdf(root: pathlib.Path, name: str, path: str) -> pathlib.Path | str:
+    """The PDF of one of a team's LaTeX report files, compiled when asked with pdflatex in a scratch copy of its folder
+    (no shell escape, no file read or written outside it) and kept in DIR/.pdf until the file changes. Returns the PDF
+    or why there is none."""
+    r = reports(root, name)
+    if r is None or path not in [f["path"] for f in r["files"] if f["kind"] == "tex"]:
+        return "no such LaTeX file"
+    src = pathlib.Path(read_json(root / name / "mission.json", {}).get("workspace") or root / name / "ws") / path
+    st = src.stat()
+    out = root / ".pdf" / name / f"{hashlib.sha256(f'{path}|{st.st_mtime_ns}|{st.st_size}'.encode()).hexdigest()[:20]}.pdf"
+    if out.is_file():
+        return out
+    if not shutil.which("pdflatex"):
+        return "pdflatex is not installed on the race's machine"
+    if not _compiling.acquire(timeout=90):
+        return "another PDF is being compiled; try again in a minute"
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            size = 0
+            for f in src.parent.rglob("*"):
+                if f.is_file() and f.suffix.lower() in TEX_FILES:
+                    size += f.stat().st_size
+                    if size > TEX_MAX:
+                        return "the report's folder is too large to compile here"
+                    (pathlib.Path(tmp) / f.relative_to(src.parent)).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(f, pathlib.Path(tmp) / f.relative_to(src.parent))
+            env = {**os.environ, "openin_any": "p", "openout_any": "p"}
+            cmd = ["pdflatex", "-no-shell-escape", "-interaction=nonstopmode", "-halt-on-error", src.name]
+            for _ in range(2):  # twice: references and the table of contents
+                try:
+                    p = subprocess.run(cmd, cwd=tmp, env=env, capture_output=True, text=True, check=False, timeout=120)
+                except subprocess.TimeoutExpired:
+                    return "pdflatex took more than 2 minutes"
+                if p.returncode != 0:
+                    errors = [line for line in p.stdout.splitlines() if line.startswith("!")]
+                    return "pdflatex failed: " + (errors[0] if errors else f"exit {p.returncode}")[:300]
+            out.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(pathlib.Path(tmp) / (src.stem + ".pdf"), out)
+            return out
+    finally:
+        _compiling.release()
 
 
 def report_pdf(root: pathlib.Path, name: str, path: str) -> pathlib.Path | None:
@@ -485,6 +538,7 @@ PAGE = pathlib.Path(__file__).with_name("dashboard.html").read_text().replace(
 DIAGRAMS = ROOT / "docs" / "diagrams"  # the Archify diagrams the How it works tab shows, under /diagrams/<name>
 DIAGRAM = re.compile(r"/diagrams/([a-z0-9-]+\.(png|html))")
 PDF = re.compile(r"/report/([\w.-]+)/(.+\.pdf)")
+TEX = re.compile(r"/texpdf/([\w.-]+)/(.+)\.pdf")  # the PDF of <path>.tex: a URL ending in .pdf saves as one
 DIAGRAM_CSP = "default-src 'self' 'unsafe-inline' data: blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 CSP = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; "
        "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
@@ -558,6 +612,11 @@ class _Handler(BaseHTTPRequestHandler):
             if f is None:
                 return self._deny("no such report")
             # the browser's own PDF viewer draws it: nothing to compile or render on the server
+            body, ctype, csp = f.read_bytes(), "application/pdf", "default-src 'none'; frame-ancestors 'none'"
+        elif m := TEX.fullmatch(url.path):
+            f = tex_pdf(self.root, urllib.parse.unquote(m.group(1)), urllib.parse.unquote(m.group(2)) + ".tex")
+            if isinstance(f, str):
+                return self._reply(f"no PDF: {f}\n".encode(), "text/plain; charset=utf-8", status=503)
             body, ctype, csp = f.read_bytes(), "application/pdf", "default-src 'none'; frame-ancestors 'none'"
         elif url.path == "/api/report":
             r = reports(self.root, urllib.parse.parse_qs(url.query).get("team", [""])[0])

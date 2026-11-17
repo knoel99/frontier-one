@@ -23,6 +23,7 @@ header.top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--b
 [role=tab]{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--ink2);padding:8px 12px;min-height:40px;white-space:nowrap}
 [role=tab][aria-selected=true]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
 [role=tab]:hover{color:var(--ink)}
+.subtabs[hidden]{display:none}.subtabs{margin-top:0;border-top:1px solid var(--line)}.subtabs [role=tab]{min-height:34px;padding:6px 12px;font-size:13px}
 button,select{font:inherit;color:var(--ink);background:var(--raised);border:1px solid var(--line2);border-radius:8px;padding:5px 10px;min-height:32px;cursor:pointer}
 button:hover{border-color:var(--mute)}
 :focus-visible{outline:2px solid var(--acc);outline-offset:2px}
@@ -124,7 +125,10 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 .doc{max-width:980px}.doc p,.doc li{color:var(--ink2);line-height:1.6}.doc .card{margin-bottom:16px}
 .doc .fig{overflow-x:auto}
 .why{border-bottom:1px dotted currentColor;cursor:help;white-space:nowrap}
-.report{max-height:calc(100vh - 250px);overflow:auto;padding:4px 8px}.report .md{max-width:860px;line-height:1.6;color:var(--ink2)}
+.tpick{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}.tpick button{display:inline-flex;align-items:center;gap:6px;padding:4px 10px}
+.tpick svg{width:20px;height:20px}.tpick button[aria-pressed=true]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);font-weight:600}
+.rbar{margin-bottom:8px;flex-wrap:wrap;gap:10px}.rbar a{white-space:nowrap}.report math[display=block]{margin:8px 0}
+.report{max-height:calc(100vh - 300px);overflow:auto;padding:4px 8px}.report .md{max-width:860px;line-height:1.6;color:var(--ink2)}
 .report h1,.report h2,.report h3{color:var(--ink)}.report table{border-collapse:collapse}.report td,.report th{border:1px solid var(--line);padding:4px 8px}
 .report pre{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,monospace;margin:0}.report code{font:12.5px ui-monospace,monospace}
 .arch{margin:12px 0}.arch img{width:100%;height:auto;border:1px solid var(--line);border-radius:10px;background:#fff}.arch figcaption{color:var(--mute);font-size:12.5px;margin-top:4px}.doc .fig svg{width:100%;min-width:640px;height:auto;display:block;margin:8px 0}
@@ -149,15 +153,14 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
  <span class="clock" id="clock"></span>
  <div class="right"><details class="picker" id="picker"><summary><span>Teams</span> <b id="pk-n"></b> <span class="faces" id="pk-faces"></span></summary>
   <div class="pop" role="group" aria-label="Teams shown"><div class="acts"><button id="pk-all">All</button><button id="pk-none">None</button><span class="sub" style="margin:0 0 0 auto">"only" keeps one</span></div><div id="pk-list"></div></div></details><button id="theme" title="Follow the device, or always light, or always dark"></button><button id="pause" aria-pressed="false" title="Stop or resume the refresh every 5 seconds">Pause</button></div>
- <div role="tablist" aria-label="Views">
-  <button role="tab" id="tab-overview" aria-controls="p-overview" aria-selected="true">Overview</button>
-  <button role="tab" id="tab-teams" aria-controls="p-teams" aria-selected="false" tabindex="-1">Teams</button>
-  <button role="tab" id="tab-activity" aria-controls="p-activity" aria-selected="false" tabindex="-1">Activity</button>
-  <button role="tab" id="tab-subagents" aria-controls="p-subagents" aria-selected="false" tabindex="-1">Sub-agents</button>
-  <button role="tab" id="tab-jury" aria-controls="p-jury" aria-selected="false" tabindex="-1">Jury</button>
-  <button role="tab" id="tab-feed" aria-controls="p-feed" aria-selected="false" tabindex="-1">Feed</button>
-  <button role="tab" id="tab-reports" aria-controls="p-reports" aria-selected="false" tabindex="-1">Reports</button>
-  <button role="tab" id="tab-about" aria-controls="p-about" aria-selected="false" tabindex="-1">How it works</button>
+ <div role="tablist" aria-label="Views" id="tabs">
+  <button role="tab" id="tab-overview" data-group="overview" aria-controls="p-overview" aria-selected="true">Overview</button>
+  <button role="tab" id="tab-teams" data-group="teams" aria-controls="p-teams" aria-selected="false" tabindex="-1">Teams</button>
+  <button role="tab" id="tab-activity" data-group="activity" aria-controls="p-activity" aria-selected="false" tabindex="-1">Activity</button>
+  <button role="tab" id="tab-jury" data-group="jury" aria-controls="p-jury" aria-selected="false" tabindex="-1">Jury</button>
+  <button role="tab" id="tab-about" data-group="about" aria-controls="p-about" aria-selected="false" tabindex="-1">How it works</button>
+ </div>
+ <div role="tablist" class="subtabs" id="subtabs" hidden></div>
  </div>
  <span class="sr" aria-live="polite" id="live"></span>
 </div></header>
@@ -186,14 +189,14 @@ The jury grades a snapshot of the work taken at milestones only: 5, 15, 30 min, 
   </div></div>
 </section>
 
-<section role="tabpanel" id="p-teams" aria-labelledby="tab-teams" hidden>
+<section role="tabpanel" id="p-teams" aria-labelledby="sub-teams" hidden>
  <div class="card" style="margin-bottom:16px"><h2>Standings in detail</h2><p class="sub">Global = 50 % scientific quality + 25 % code and data + 25 % efficiency (see How it works). Select a column to sort.</p><div class="scroll"><table id="board2"></table></div></div>
  <div class="chart-head"><div><h2>Teams</h2><p class="sub">Scores, budgets, tokens, machines and the latest actions of each team.</p></div>
  <div class="ctrls"><label>Sort by <select id="tsort"><option value="final">global standing</option><option value="science">scientific quality</option><option value="artifacts">code and data</option><option value="efficiency">efficiency</option><option value="llm">model-call spend</option><option value="sim">simulation spend</option><option value="model">name</option></select></label></div></div>
  <div class="teams" id="tcards"></div>
 </section>
 
-<section role="tabpanel" id="p-activity" aria-labelledby="tab-activity" hidden>
+<section role="tabpanel" id="p-activity" aria-labelledby="sub-activity" hidden>
  <div class="card" style="margin-bottom:16px"><div class="chart-head"><div><h2>Activity timeline</h2><p class="sub">Harness sessions, sub-agents and cloud machines. Hatched: still running.</p></div>
  <div class="ctrls"><label>Group by <select id="gby"><option value="team">team</option><option value="provider">provider</option><option value="kind">kind</option></select></label>
  <label>Show <select id="gkind"><option value="">everything</option><option value="session">sessions</option><option value="sub-agent">sub-agents</option><option value="machine">machines</option></select></label>
@@ -206,7 +209,7 @@ The jury grades a snapshot of the work taken at milestones only: 5, 15, 30 min, 
  <div class="chart scroll" id="c-models"></div></div>
 </section>
 
-<section role="tabpanel" id="p-subagents" aria-labelledby="tab-subagents" hidden><div class="card"><div class="chart-head"><div><h2>Sub-agents</h2><p class="sub" id="subsum"></p></div>
+<section role="tabpanel" id="p-subagents" aria-labelledby="sub-subagents" hidden><div class="card"><div class="chart-head"><div><h2>Sub-agents</h2><p class="sub" id="subsum"></p></div>
  <div class="ctrls"><label>Team <select id="steam"><option value="">all teams</option></select></label><label>Role <select id="srole"><option value="">all roles</option></select></label></div></div>
  <div id="sdetail"></div><div class="scroll"><table id="subs"></table></div><div class="pager" id="spager"></div></div></section>
 
@@ -219,12 +222,13 @@ The jury grades a snapshot of the work taken at milestones only: 5, 15, 30 min, 
  <div class="card"><h2>Latest verdicts</h2><p class="sub" id="jsum"></p><div class="scroll"><table id="jtable"></table></div><div class="pager" id="jpager"></div></div>
 </section>
 
-<section role="tabpanel" id="p-feed" aria-labelledby="tab-feed" hidden><div class="card"><div class="chart-head"><div><h2>All actions</h2><p class="sub">Latest first.</p></div>
+<section role="tabpanel" id="p-feed" aria-labelledby="sub-feed" hidden><div class="card"><div class="chart-head"><div><h2>Event log</h2><p class="sub">Every action of the teams, as logged, latest first.</p></div>
  <label>Kind <select id="fkind"><option value="">all</option></select></label></div>
  <div class="scroll feed" tabindex="0" role="region" aria-label="All actions, scrollable"><table id="feedt"></table></div></div></section>
 
-<section role="tabpanel" id="p-reports" aria-labelledby="tab-reports" hidden><div class="card"><div class="chart-head"><div><h2>Reports</h2><p class="sub" id="rmeta">Each team's report as its agent writes it (report* and report/ in its workspace), refreshed live. The LaTeX source is shown as text; a PDF the team compiled opens in the browser's own viewer.</p></div>
- <div class="ctrls"><label>Team <select id="rteam"></select></label><label>File <select id="rfile"></select></label><span id="rpdf"></span></div></div>
+<section role="tabpanel" id="p-reports" aria-labelledby="sub-reports" hidden><div class="card"><div class="chart-head"><div><h2>Reports</h2><p class="sub">Each team's report as its agent writes it (report* and report/ in its workspace), refreshed live: Markdown rendered with its equations, LaTeX as source and as a PDF compiled on request.</p></div></div>
+ <div class="tpick" id="rteam" role="group" aria-label="Team"></div>
+ <div class="ctrls rbar"><label>File <select id="rfile"></select></label><span id="rpdf"></span><span class="sub" id="rerr" role="status"></span></div>
  <div class="scroll report" id="rbody" tabindex="0" role="region" aria-label="The report, scrollable"></div></div></section>
 <section role="tabpanel" id="p-about" aria-labelledby="tab-about" hidden><div class="doc">
 <div class="card"><h2>A race</h2>
@@ -532,7 +536,31 @@ function head(){const now=Date.parse(S.d.time),dl=Math.max(...TEAMS.map(t=>Date.
 function feature(){const st=document.querySelector('.stack');document.querySelectorAll('.stack>[data-chart]').forEach(c=>{const on=c.dataset.chart===S.feat;
  c.classList.toggle('big',on);c.querySelector('[data-feat]').setAttribute('aria-pressed',on);if(on&&st.firstElementChild!==c)st.prepend(c)})}
 /* reports: fetched for the team shown only, while the tab is open */
-function md(src){const inl=x=>esc(x).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/(^|\W)\*([^*]+)\*/g,'$1<i>$2</i>')
+/* LaTeX math to MathML, which the browser draws itself: the common commands; an unknown one shows as its name */
+const MSYM={alpha:'α',beta:'β',gamma:'γ',delta:'δ',epsilon:'ϵ',varepsilon:'ε',zeta:'ζ',eta:'η',theta:'θ',kappa:'κ',lambda:'λ',mu:'μ',nu:'ν',xi:'ξ',pi:'π',rho:'ρ',sigma:'σ',tau:'τ',phi:'ϕ',varphi:'φ',chi:'χ',psi:'ψ',omega:'ω',
+ Gamma:'Γ',Delta:'Δ',Theta:'Θ',Lambda:'Λ',Xi:'Ξ',Pi:'Π',Sigma:'Σ',Phi:'Φ',Psi:'Ψ',Omega:'Ω',partial:'∂',nabla:'∇',infty:'∞',ell:'ℓ',hbar:'ℏ'};
+const MOP={cdot:'⋅',times:'×',pm:'±',mp:'∓',leq:'≤',le:'≤',geq:'≥',ge:'≥',neq:'≠',ne:'≠',approx:'≈',sim:'∼',propto:'∝',equiv:'≡',to:'→',rightarrow:'→',leftarrow:'←',Rightarrow:'⇒',mapsto:'↦',
+ in:'∈',subset:'⊂',cup:'∪',cap:'∩',sum:'∑',prod:'∏',int:'∫',oint:'∮',ldots:'…',cdots:'⋯',langle:'⟨',rangle:'⟩',lvert:'|',rvert:'|',forall:'∀',exists:'∃',circ:'∘',ast:'∗',star:'⋆',
+ log:'log',ln:'ln',exp:'exp',sin:'sin',cos:'cos',tan:'tan',max:'max',min:'min',arg:'arg',lim:'lim',det:'det'};
+function tex2mml(src,block){const T=src.match(/\\[A-Za-z]+|\\.|[A-Za-z]|\d+(\.\d+)?|\S/g)||[];let i=0;
+ const arg=()=>{if(T[i]==='{'){i++;const r=seq('}');i++;return r}return atom()};
+ function atom(){const t=T[i++];if(t===undefined)return '';
+  if(t==='{'){const r=seq('}');i++;return `<mrow>${r}</mrow>`}
+  if(t==='\\frac'||t==='\\dfrac'||t==='\\tfrac')return `<mfrac><mrow>${arg()}</mrow><mrow>${arg()}</mrow></mfrac>`;
+  if(t==='\\sqrt')return `<msqrt><mrow>${arg()}</mrow></msqrt>`;
+  if(/^\\(mathrm|text|operatorname|mathbf|mathit|mathcal|mathbb|boldsymbol)$/.test(t)){const v=T[i]==='{'?(i++,(()=>{let w='';while(i<T.length&&T[i]!=='}')w+=T[i++];i++;return w})()):T[i++];
+   return t==='\\text'?`<mtext>${esc(v)}</mtext>`:`<mi mathvariant="${t==='\\mathbf'||t==='\\boldsymbol'?'bold':t==='\\mathbb'?'double-struck':t==='\\mathcal'?'script':t==='\\mathit'?'italic':'normal'}">${esc(v)}</mi>`}
+  if(t==='\\left'||t==='\\right'||t==='\\,'||t==='\;'||t==='\\!'||t==='\\quad')return t==='\\quad'?'<mspace width="1em"/>':'';
+  if(t[0]==='\\'){const n=t.slice(1);return MSYM[n]?`<mi>${MSYM[n]}</mi>`:MOP[n]?`<mo>${MOP[n]}</mo>`:`<mi mathvariant="normal">${esc(n)}</mi>`}
+  if(/^\d/.test(t))return `<mn>${t}</mn>`;if(/[A-Za-z]/.test(t))return `<mi>${t}</mi>`;return `<mo>${esc(t)}</mo>`}
+ function seq(end){let o='';while(i<T.length&&T[i]!==end){let b=atom();let sub='',sup='';
+   while(T[i]==='_'||T[i]==='^'){const k=T[i++];const a=arg();if(k==='_')sub=a;else sup=a}
+   o+=sub&&sup?`<msubsup>${b}<mrow>${sub}</mrow><mrow>${sup}</mrow></msubsup>`:sub?`<msub>${b}<mrow>${sub}</mrow></msub>`:sup?`<msup>${b}<mrow>${sup}</mrow></msup>`:b}return o}
+ return `<math${block?' display="block"':''}><semantics><mrow>${seq()}</mrow><annotation encoding="application/x-tex">${esc(src)}</annotation></semantics></math>`}
+function md(src){const M=[],keep=(x,b)=>`\u0000${M.push(tex2mml(x,b))-1}\u0000`;
+ src=src.replace(/\$\$([\s\S]+?)\$\$/g,(_,x)=>keep(x,1)).replace(/\\\[([\s\S]+?)\\\]/g,(_,x)=>keep(x,1)).replace(/\$([^$\n]+?)\$/g,(_,x)=>keep(x,0)).replace(/\\\(([^\n]+?)\\\)/g,(_,x)=>keep(x,0));
+ return mdBlocks(src).replace(/\u0000(\d+)\u0000/g,(_,k)=>M[+k])}
+function mdBlocks(src){const inl=x=>esc(x).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/(^|\W)\*([^*]+)\*/g,'$1<i>$2</i>')
   .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'<a href="$2" rel="noopener noreferrer" target="_blank">$1</a>');
  const out=[],L=src.split('\n');let i=0;
  while(i<L.length){const l=L[i];let m;
@@ -545,23 +573,31 @@ function md(src){const inl=x=>esc(x).replace(/`([^`]+)`/g,'<code>$1</code>').rep
   else i++}
  return out.join('')}
 let RQ=null,RK='';
-function reports(){const rt=$('rteam'),cur=rt.value||(TEAMS[0]||{}).name;
- if(rt.options.length!==TEAMS.length)rt.innerHTML=TEAMS.map(t=>`<option value="${esc(t.name)}"${t.name===cur?' selected':''}>${esc(t.model)} · ${esc(t.harness_title)}</option>`).join('');
+async function dl(url,name){$('rerr').textContent='Compiling…';try{const r=await fetch(url,{cache:'no-store'});
+ if(!r.ok){$('rerr').textContent=(await r.text()).trim();return}const a=document.createElement('a');a.href=URL.createObjectURL(await r.blob());a.download=name;a.click();
+ setTimeout(()=>URL.revokeObjectURL(a.href),10000);$('rerr').textContent=''}catch(e){$('rerr').textContent='The PDF could not be fetched.'}}
+const enc=p=>p.split('/').map(encodeURIComponent).join('/');
+function reports(){const rt=$('rteam'),cur=S.rteam&&BY[S.rteam]?S.rteam:(TEAMS[0]||{}).name;S.rteam=cur;
+ if(rt.childElementCount!==TEAMS.length)rt.innerHTML=TEAMS.map(t=>`<button data-rteam="${esc(t.name)}" aria-pressed="false" aria-label="${esc(t.model)} · ${esc(t.harness_title)}" data-tip="${esc(t.model)}\n${esc(t.harness_title)}">${t.logos&&t.logos[0]?icon(t.logos[0]):''}<span>${esc(t.model)}</span></button>`).join('');
+ rt.querySelectorAll('[data-rteam]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.rteam===cur));
  if(!cur||RQ)return;
- RQ=fetch('api/report?team='+encodeURIComponent(cur),{cache:'no-store'}).then(r=>r.json()).then(r=>{RQ=null;const rf=$('rfile'),f0=rf.value,
+ RQ=fetch('api/report?team='+encodeURIComponent(cur),{cache:'no-store'}).then(r=>r.json()).then(r=>{RQ=null;if(cur!==S.rteam)return reports();const rf=$('rfile'),f0=rf.value,
    files=r.files||[],key=cur+'|'+files.map(f=>f.path+f.written).join()+'|'+f0;
   if(rf.options.length!==files.length||[...rf.options].some((o,k)=>o.value!==files[k].path))rf.innerHTML=files.map(f=>`<option${f.path===f0?' selected':''}>${esc(f.path)}</option>`).join('');
-  $('rpdf').innerHTML=(r.pdfs||[]).map(p=>`<a href="report/${encodeURIComponent(cur)}/${p.split('/').map(encodeURIComponent).join('/')}" target="_blank" rel="noopener">PDF: ${esc(p)}</a>`).join(' ');
-  if(key===RK)return;RK=key;const f=files.find(x=>x.path===rf.value)||files[0],b=$('rbody'),top=b.scrollTop;
+  const f=files.find(x=>x.path===rf.value)||files[0],T=encodeURIComponent(cur),own=(r.pdfs||[]).filter(p=>!p.startsWith('snapshots/')),ms=(r.pdfs||[]).filter(p=>p.startsWith('snapshots/'));
+  $('rpdf').innerHTML=(f&&f.kind==='tex'?`<a href="texpdf/${T}/${enc(f.path.slice(0,-4))}.pdf" target="_blank" rel="noopener">Open the PDF</a> <button data-dl="texpdf/${T}/${enc(f.path.slice(0,-4))}.pdf" data-name="${esc(cur)}-${esc(f.path.split('/').pop().slice(0,-4))}.pdf">Download the PDF</button>`:'')+
+   own.map(p=>` <a href="report/${T}/${enc(p)}" target="_blank" rel="noopener">${esc(p)}</a>`).join('')+
+   (ms.length?` <label>Milestone PDF <select id="rms"><option value="">what the jury read…</option>${ms.map(p=>`<option value="report/${T}/${enc(p)}">${esc(p.slice(10,-4))}</option>`).join('')}</select></label>`:'');
+  if(key===RK)return;RK=key;const b=$('rbody'),top=b.scrollTop;
   b.innerHTML=!f?'<div class="empty">No report yet: the agent has not written one.</div>':
-   `<p class="sub">${esc(f.path)}, written ${esc(ago(f.written))} · ${num(f.text.length)} characters</p>`+(f.kind==='tex'?`<pre>${esc(f.text)}</pre>`:`<div class="md">${md(f.text)}</div>`);
+   `<p class="sub">${esc(BY[cur].model)} · ${esc(f.path)}, written ${esc(ago(f.written))} · ${num(f.text.length)} characters</p>`+(f.kind==='tex'?`<pre>${esc(f.text)}</pre>`:`<div class="md">${md(f.text)}</div>`);
   b.scrollTop=top}).catch(()=>{RQ=null})}
 /* on-demand evaluation: offered only when something honors it (DIR/requests) */
 function evline(){const E=S.d.evaluate,b=$('evaluate'),l=$('evline');b.hidden=!E;l.hidden=!(E&&E.pending.length);
  if(E){b.disabled=!!E.pending.length;if(E.pending.length)l.textContent='Evaluation asked: every running team is snapshotted now; its grades come when the judges answer.'}}
 const VIEWS={overview:()=>{feature();evline();board();jline();chartQT();chartQC();chartSP()},teams:()=>{board2();cards()},activity:()=>{chartGantt();chartModels()},subagents:subagents,jury:jury,feed:feed,reports:reports,about:()=>{}};
 function focusKey(f){if(!f||f===document.body)return null;if(f.id)return '#'+CSS.escape(f.id);if(f.tagName==='SUMMARY'&&f.parentElement.id)return '#'+CSS.escape(f.parentElement.id)+'>summary';
- for(const a of ['sort','pg','jpg','ax','v','only','pick','feat'])if(f.dataset[a]!=null)return `[data-${a}="${CSS.escape(f.dataset[a])}"]`;return null}
+ for(const a of ['sort','pg','jpg','ax','v','only','pick','feat','rteam','dl'])if(f.dataset[a]!=null)return `[data-${a}="${CSS.escape(f.dataset[a])}"]`;return null}
 /* a table that can scroll sideways is reachable by keyboard, named after its card */
 function scrollables(){document.querySelectorAll('.scroll:not([tabindex])').forEach(e=>{const h=e.closest('.card')&&e.closest('.card').querySelector('h2');
  e.tabIndex=0;e.setAttribute('role','region');e.setAttribute('aria-label',(h?h.textContent:'Table')+', scrollable')})}
@@ -571,10 +607,21 @@ function render(){if(!S.d)return;const open=new Set([...document.querySelectorAl
  for(const id of open){const e=$(id);if(e)e.open=true}
  for(const [id,y] of scroll){const h=$(id),e=h&&(h.matches('.feed')?h:h.querySelector('div'));if(e)e.scrollTop=y}
  if(fk&&document.activeElement===document.body){const e=document.querySelector(fk);if(e)e.focus({preventScroll:true})}}
-function show(tab,focus){S.tab=tab;document.querySelectorAll('[role=tab]').forEach(b=>{const on=b.id==='tab-'+tab;b.setAttribute('aria-selected',on);b.tabIndex=on?0:-1;if(on){if(focus)b.focus();b.scrollIntoView({block:'nearest',inline:'nearest'})}});
+/* views: a tab per group, and a sub-tab per view in a group of several */
+const GROUPS={overview:['overview'],teams:['teams','reports'],activity:['activity','subagents','feed'],jury:['jury'],about:['about']};
+const SUBNAME={teams:'Team cards',reports:'Reports',activity:'Timeline',subagents:'Sub-agents',feed:'Event log'};
+const groupOf=tab=>Object.keys(GROUPS).find(g=>GROUPS[g].includes(tab));
+function show(tab,focus){S.tab=tab;const g=groupOf(tab),views=GROUPS[g];S.sub=S.sub||{};S.sub[g]=tab;
+ document.querySelectorAll('#tabs [role=tab]').forEach(b=>{const on=b.dataset.group===g;b.setAttribute('aria-selected',on);b.tabIndex=on?0:-1;
+  b.setAttribute('aria-controls','p-'+(S.sub[b.dataset.group]||GROUPS[b.dataset.group][0]));if(on){if(focus==='top')b.focus();b.scrollIntoView({block:'nearest',inline:'nearest'})}});
+ const st=$('subtabs');st.hidden=views.length<2;st.setAttribute('aria-label',$('tab-'+g).textContent+' views');
+ st.innerHTML=views.length<2?'':views.map(v=>`<button role="tab" id="sub-${v}" data-sub="${v}" aria-controls="p-${v}" aria-selected="${v===tab}" tabindex="${v===tab?0:-1}">${SUBNAME[v]}</button>`).join('');
+ if(focus==='sub')$('sub-'+tab).focus();
  document.querySelectorAll('[role=tabpanel]').forEach(p=>p.hidden=p.id!=='p-'+tab);if(location.hash!=='#'+tab)history.replaceState(null,'',location.pathname+'#'+tab);render()}
-document.querySelector('[role=tablist]').addEventListener('keydown',e=>{const tabs=[...document.querySelectorAll('[role=tab]')],i=tabs.findIndex(b=>b.id==='tab-'+S.tab);
- const j=e.key==='ArrowRight'?(i+1)%tabs.length:e.key==='ArrowLeft'?(i-1+tabs.length)%tabs.length:e.key==='Home'?0:e.key==='End'?tabs.length-1:-1;if(j>=0){e.preventDefault();show(tabs[j].id.slice(4),true)}});
+document.addEventListener('keydown',e=>{const list=e.target.closest('[role=tablist]');if(!list||e.target.getAttribute('role')!=='tab')return;
+ const tabs=[...list.querySelectorAll('[role=tab]')],i=tabs.indexOf(e.target);
+ const j=e.key==='ArrowRight'?(i+1)%tabs.length:e.key==='ArrowLeft'?(i-1+tabs.length)%tabs.length:e.key==='Home'?0:e.key==='End'?tabs.length-1:-1;
+ if(j<0)return;e.preventDefault();const b=tabs[j];b.dataset.group?show(S.sub&&S.sub[b.dataset.group]||GROUPS[b.dataset.group][0],'top'):show(b.dataset.sub,'sub')});
 async function load(){try{const d=window.__STATE__||await (await fetch('api/state',{cache:'no-store'})).json();S.d=d;
  TEAMS=d.teams.slice().sort((a,b)=>a.name.localeCompare(b.name));BY=Object.fromEntries(TEAMS.map(t=>[t.name,t]));
  T0=Math.min(...TEAMS.map(t=>Date.parse(t.status.time)-(t.status.elapsed_hours||0)*3.6e6).filter(isFinite));render();
@@ -582,10 +629,12 @@ async function load(){try{const d=window.__STATE__||await (await fetch('api/stat
 document.addEventListener('click',e=>{const g=e.target.closest('[data-goto]');if(g){e.preventDefault();show(g.dataset.goto);scrollTo(0,0);return}
  const b=e.target.closest('button');
  if(!e.target.closest('#picker')&&$('picker').open)$('picker').open=false;if(!b)return;
- if(b.getAttribute('role')==='tab')show(b.id.slice(4));
+ if(b.getAttribute('role')==='tab')b.dataset.group?show(S.sub&&S.sub[b.dataset.group]||GROUPS[b.dataset.group][0]):show(b.dataset.sub);
  else if(b.dataset.only)setHidden(new Set(TEAMS.map(t=>t.name).filter(n=>n!==b.dataset.only)));
  else if(b.id==='pk-all')setHidden(new Set());else if(b.id==='pk-none')setHidden(new Set(TEAMS.map(t=>t.name)));
  else if(b.dataset.ax){S.ax[b.dataset.ax]=b.dataset.v;document.querySelectorAll(`[data-ax="${b.dataset.ax}"]`).forEach(x=>x.setAttribute('aria-pressed',x===b));b.dataset.ax==='qt'?chartQT():chartQC()}
+ else if(b.dataset.rteam){S.rteam=b.dataset.rteam;RK='';$('rerr').textContent='';reports()}
+ else if(b.dataset.dl)dl(b.dataset.dl,b.dataset.name);
  else if(b.id==='evaluate'){b.disabled=true;fetch('api/evaluate',{method:'POST'}).then(()=>load())}
  else if(b.dataset.feat){S.feat=b.dataset.feat;try{localStorage.setItem('fd.feat',S.feat)}catch(e){}VIEWS.overview();b.focus()}
  else if(b.dataset.sort){const k=b.dataset.sort;S.sort={k,dir:S.sort.k===k?-S.sort.dir:(k==='model'||k==='status'?1:-1)};board2()}
@@ -597,7 +646,8 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideTip();if($('pic
 document.querySelectorAll('select[data-cost]').forEach(s=>s.onchange=()=>{S.cost[s.dataset.cost]=s.value;s.dataset.cost==='qc'?chartQC():chartSP()});
 $('metric').onchange=e=>{S.metric=e.target.value;chartQT();chartQC()};
 for(const id of ['gby','gkind','gwin'])$(id).onchange=chartGantt;for(const id of ['msrc','mmode','mwin'])$(id).onchange=chartModels;
-$('tsort').onchange=cards;$('rteam').onchange=$('rfile').onchange=()=>{RK='';reports()};$('jwin').onchange=jury;$('fkind').onchange=feed;for(const id of ['steam','srole'])$(id).onchange=()=>{S.page=0;subagents()};
+$('tsort').onchange=cards;$('rfile').onchange=()=>{RK='';reports()};
+document.addEventListener('change',e=>{if(e.target.id==='rms'&&e.target.value){window.open(e.target.value,'_blank','noopener');e.target.value=''}});$('jwin').onchange=jury;$('fkind').onchange=feed;for(const id of ['steam','srole'])$(id).onchange=()=>{S.page=0;subagents()};
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',render);
 /* theme: auto (the device's), light or dark, kept per browser */
 const THEMES={auto:'◐ Auto',light:'☀ Light',dark:'☾ Dark'};

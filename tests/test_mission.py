@@ -735,3 +735,27 @@ def test_dashboard_serves_a_team_report_and_takes_an_evaluation_request_only_fro
         assert len(dashboard.evaluate_state(root)["pending"]) == 1
     finally:
         srv.shutdown()
+
+
+def test_dashboard_compiles_a_report_s_latex_once_and_never_reads_outside_its_folder(tmp_path):
+    import shutil
+
+    import pytest
+
+    from frontier import dashboard
+
+    if not shutil.which("pdflatex"):
+        pytest.skip("pdflatex is not installed")
+    ws = tmp_path / "ws"
+    (ws / "report").mkdir(parents=True)
+    tex = ws / "report" / "report.tex"
+    tex.write_text("\\documentclass{article}\\begin{document}Hello $x^2$\\end{document}\n")
+    (tmp_path / "m" / "t1").mkdir(parents=True)
+    (tmp_path / "m" / "t1" / "mission.json").write_text(json.dumps({"workspace": str(ws)}))
+    root = tmp_path / "m"
+    pdf = dashboard.tex_pdf(root, "t1", "report/report.tex")
+    assert pdf.read_bytes()[:5] == b"%PDF-" and dashboard.tex_pdf(root, "t1", "report/report.tex") == pdf  # kept
+    assert dashboard.tex_pdf(root, "t1", "../secret.tex") == "no such LaTeX file"
+    (tmp_path / "secret.txt").write_text("s3cret")
+    tex.write_text(f"\\documentclass{{article}}\\begin{{document}}\\input{{{tmp_path / 'secret.txt'}}}\\end{{document}}\n")
+    assert dashboard.tex_pdf(root, "t1", "report/report.tex").startswith("pdflatex failed")  # paranoid: no file outside

@@ -10,7 +10,8 @@ report() { tail -c 60000 /var/log/race-vm.log | curl -s --local-port 1-1023 -X P
   --data-binary @- http://169.254.42.42/user_data/race-log >/dev/null || true; }
 trap 'echo "== FAILED at line $LINENO: $BASH_COMMAND"; report' ERR
 
-apt-get update -q && apt-get install -y -q git python3 curl ca-certificates
+apt-get update -q && apt-get install -y -q git python3 curl ca-certificates \
+  texlive-latex-recommended lmodern  # the PDF of a report's LaTeX, compiled when the dashboard asks (frontier/dashboard.py)
 arch=$(dpkg --print-architecture)
 curl -fsSL "https://github.com/caddyserver/caddy/releases/download/v2.11.9/caddy_2.11.9_linux_${arch}.tar.gz" \
   | tar -xz -C /usr/local/bin caddy
