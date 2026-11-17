@@ -254,7 +254,7 @@ recipe, and replaces only the `codex` binary with a stand-in. Their boxes link t
 | `catalog/` | the Scaleway and Runpod API catalog (one signature per operation) and a guide per provider |
 | `prompts/`, `roles/` | the brief, the system prompts, the two role presets |
 | `docs/` | `HARNESSES.md` (what each harness reads and gets), `STANDARDS.md` (industry standards and where Frontier stands), `TEST-PLAN.md`, `TEST-RESULTS.md`, `diagrams/` |
-| `tools/` | `build_catalog.py`, `update_prices.py`, `sync_harnesses.py`, `verify_live.py` (the live checks), `check_model.py` |
+| `tools/` | `build_catalog.py`, `update_prices.py`, `sync_harnesses.py`, `verify_live.py` (the live checks), `check_model.py`, `fake_race.py` (a race of plausible fake data for the dashboard, no model call) |
 | `formal/` | the TLA+ model of the LLM reservations and how to check it |
 | `tests/` | the unit tests, the code rules (`test_rules.py`), and every order of parallel model calls (`test_call_orders.py`) |
 | `bin/` | `frontier`, `frontier-mcp`: run from anywhere |
