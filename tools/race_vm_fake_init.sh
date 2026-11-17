@@ -1,0 +1,38 @@
+#!/bin/bash
+# First-boot script of a fake-race VM (cloud-init user data), filled in by `tools/race_vm.py up --fake`: never run by
+# hand. No key reaches this VM and no model is called: tools/fake_race.py writes __HOURS__ hours of synthetic race data
+# and keeps it moving, and the dashboard serves it over HTTPS at <ip>.sslip.io behind its token.
+set -eu
+export HOME=/root DEBIAN_FRONTEND=noninteractive
+exec >>/var/log/race-vm.log 2>&1
+echo "== boot $(date -u +%FT%TZ)"
+report() { tail -c 60000 /var/log/race-vm.log | curl -s --local-port 1-1023 -X PATCH -H 'Content-Type: text/plain' \
+  --data-binary @- http://169.254.42.42/user_data/race-log >/dev/null || true; }
+trap 'echo "== FAILED at line $LINENO: $BASH_COMMAND"; report' ERR
+
+apt-get update -q && apt-get install -y -q git python3 curl ca-certificates
+arch=$(dpkg --print-architecture)
+curl -fsSL "https://github.com/caddyserver/caddy/releases/download/v2.11.9/caddy_2.11.9_linux_${arch}.tar.gz" \
+  | tar -xz -C /usr/local/bin caddy
+
+useradd -m -s /bin/bash frontier
+F=/home/frontier
+git clone -q --branch '__BRANCH__' https://github.com/knoel99/frontier-one $F/frontier-one
+mkdir -p $F/race && printf 'FRONTIER_DASHBOARD_TOKEN=__TOKEN__\n' > $F/race/dashboard.env
+chmod 600 $F/race/dashboard.env && chown -R frontier: $F
+mkdir -p /etc/caddy && printf '__HOST__ {\n\treverse_proxy 127.0.0.1:8800\n}\n' > /etc/caddy/Caddyfile
+
+unit() {  # name, user, command
+  printf '[Unit]\nAfter=network-online.target\n[Service]\nUser=%s\nWorkingDirectory=%s/frontier-one\nEnvironmentFile=%s/race/dashboard.env\nExecStart=%s\nRestart=on-failure\nStandardOutput=append:/var/log/%s.log\nStandardError=append:/var/log/%s.log\n[Install]\nWantedBy=multi-user.target\n' \
+    "$2" "$F" "$F" "$3" "$1" "$1" > "/etc/systemd/system/$1.service"
+}
+unit race-fake frontier "/usr/bin/python3 tools/fake_race.py $F/race/missions --hours __HOURS__ --live"
+unit race-dashboard frontier "/usr/bin/python3 -m frontier dashboard --root $F/race/missions --port 8800"
+unit race-caddy root "/usr/local/bin/caddy run --config /etc/caddy/Caddyfile"
+touch /var/log/race-fake.log /var/log/race-dashboard.log && chown frontier: /var/log/race-fake.log /var/log/race-dashboard.log
+systemctl daemon-reload && systemctl enable --now race-fake
+# the generator writes the whole period before it goes live: the dashboard starts once the data is complete
+until grep -q '^live:' /var/log/race-fake.log; do sleep 2; done
+systemctl enable --now race-caddy race-dashboard
+echo "== ready https://__HOST__/ $(date -u +%FT%TZ)"
+report

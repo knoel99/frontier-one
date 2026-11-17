@@ -2,6 +2,7 @@
 """Run a mission on a Scaleway VM of its own and get the link to its live dashboard.
 
     python3 tools/race_vm.py up MISSION.toml [--zone nl-ams-1] [--type BASIC2-A4C-8G] [--branch master] [--wait]
+    python3 tools/race_vm.py up --fake [--hours 24] [--type BASIC2-A2C-4G] [--wait]   # synthetic data, no key, no LLM
     python3 tools/race_vm.py log SERVER_ID [--zone nl-ams-1]     # the tail of the VM's first-boot log
     python3 tools/race_vm.py down SERVER_ID [--zone nl-ams-1]
 
@@ -12,6 +13,8 @@ a [scaleway] section, manage Instances and Block Storage; a flexible IP; and the
 and serves the dashboard over HTTPS at https://<ip>.sslip.io behind a random token. `up` prints that link.
 The mission's [secrets] section is dropped: on the VM every key comes from `frontier-keys`.
 `down` deletes the VM, its volumes, its IP, and the IAM application with its key and policy.
+`up --fake` runs no mission: its VM gets no key and no IAM application, and serves the dashboard of a synthetic race
+(tools/fake_race.py, tools/race_vm_fake_init.sh) behind the same HTTPS and token.
 The operator's own Scaleway key comes from the usual sources (SCW_SECRET_KEY, or a proxy that injects it).
 """
 
@@ -36,8 +39,10 @@ from frontier.budget import parse_time
 from frontier.http import scw, scw_defaults, scw_raw
 
 INIT = ROOT / "tools" / "race_vm_init.sh"
+FAKE_INIT = ROOT / "tools" / "race_vm_fake_init.sh"
 SECRET, SECRET_REGION = "frontier-keys", "fr-par"
 DISK_BYTES = 40_000_000_000  # the harnesses' npm, uv and pnpm trees
+FAKE_DISK_BYTES = 10_000_000_000  # a fake race installs no harness
 
 
 def mission_for_vm(text: str) -> str:
@@ -96,31 +101,40 @@ def wait_ready(url: str, minutes: float) -> bool:
 
 
 def up(a) -> int:
-    path = pathlib.Path(a.mission).resolve()
-    text = path.read_text()
-    m = tomllib.loads(text)
-    name, d = m["mission"]["name"], scw_defaults()
+    d = scw_defaults()
     project, zone = d["project_id"], a.zone
     if not project:
         sys.exit("SCW_DEFAULT_PROJECT_ID is not set")
-    org = scw("GET", f"/account/v3/projects/{project}")["organization_id"]
+    if not a.fake and not a.mission:
+        sys.exit("give a mission file, or --fake")
     now = dt.datetime.now(dt.UTC)
-    subject_name, subject = subject_file(path, m)
-    perms = ["SecretManagerReadOnly", "SecretManagerSecretAccess"]
-    if "scaleway" in m:
-        perms += ["InstancesFullAccess", "BlockStorageFullAccess"]
-    vm = f"race-{name}"[:60]
     created: dict[str, str] = {}
+    if a.fake:
+        vm, text = f"race-fake-{now:%Y%m%d-%H%M}", ""
+    else:
+        path = pathlib.Path(a.mission).resolve()
+        text = path.read_text()
+        m = tomllib.loads(text)
+        subject_name, subject = subject_file(path, m)
+        perms = ["SecretManagerReadOnly", "SecretManagerSecretAccess"]
+        if "scaleway" in m:
+            perms += ["InstancesFullAccess", "BlockStorageFullAccess"]
+        vm = f"race-{m['mission']['name']}"[:60]
     try:
-        created["app"], key = create_iam(vm, org, project, perms, mission_end(m, now) + dt.timedelta(days=1))
+        if not a.fake:
+            org = scw("GET", f"/account/v3/projects/{project}")["organization_id"]
+            created["app"], key = create_iam(vm, org, project, perms, mission_end(m, now) + dt.timedelta(days=1))
         ip = scw("POST", f"/instance/v1/zones/{zone}/ips", {"project": project, "type": "routed_ipv4"})["ip"]
         created["ip"] = ip["id"]
         host = ip["address"].replace(".", "-") + ".sslip.io"
         token = secrets.token_urlsafe(24)
-        script = fill(INIT.read_text(), {
-            "BRANCH": a.branch, "MISSION_B64": base64.b64encode(mission_for_vm(text).encode()).decode(),
-            "SUBJECT_NAME": subject_name, "SUBJECT_B64": base64.b64encode(subject).decode(), "SCW_KEY": key,
-            "REGION": SECRET_REGION, "PROJECT": project, "SECRET": SECRET, "ZONE": zone, "TOKEN": token, "HOST": host})
+        if a.fake:
+            script = fill(FAKE_INIT.read_text(), {"BRANCH": a.branch, "TOKEN": token, "HOST": host, "HOURS": str(a.hours)})
+        else:
+            script = fill(INIT.read_text(), {
+                "BRANCH": a.branch, "MISSION_B64": base64.b64encode(mission_for_vm(text).encode()).decode(),
+                "SUBJECT_NAME": subject_name, "SUBJECT_B64": base64.b64encode(subject).decode(), "SCW_KEY": key,
+                "REGION": SECRET_REGION, "PROJECT": project, "SECRET": SECRET, "ZONE": zone, "TOKEN": token, "HOST": host})
         imgs = scw("GET", "/marketplace/v2/local-images",
                    query={"image_label": "ubuntu_noble", "zone": zone, "type": "instance_sbs"})["local_images"]
         img = next((i for i in imgs if a.type in i.get("compatible_commercial_types", [])), None)
@@ -128,8 +142,8 @@ def up(a) -> int:
             raise ValueError(f"no ubuntu_noble image for {a.type} in {zone}")
         server = scw("POST", f"/instance/v1/zones/{zone}/servers", {
             "name": vm, "commercial_type": a.type, "image": img["id"], "project": project, "public_ips": [ip["id"]],
-            "tags": ["frontier", "race-vm", f"iam-app:{created['app']}"],
-            "volumes": {"0": {"size": DISK_BYTES, "volume_type": "sbs_volume"}}})["server"]
+            "tags": ["frontier", "race-vm"] + ([f"iam-app:{created['app']}"] if created.get("app") else []),
+            "volumes": {"0": {"size": FAKE_DISK_BYTES if a.fake else DISK_BYTES, "volume_type": "sbs_volume"}}})["server"]
         created["server"] = server["id"]
         scw("PATCH", f"/instance/v1/zones/{zone}/servers/{server['id']}/user_data/cloud-init", script,
             content_type="text/plain")
@@ -183,9 +197,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     u = sub.add_parser("up", help="create the race VM and print its dashboard link")
-    u.add_argument("mission")
+    u.add_argument("mission", nargs="?")
+    u.add_argument("--fake", action="store_true", help="no mission: the dashboard of a synthetic race (tools/fake_race.py)")
+    u.add_argument("--hours", type=float, default=24, help="with --fake: hours of race data written before it goes live")
     u.add_argument("--zone", default="nl-ams-1")
-    u.add_argument("--type", default="BASIC2-A4C-8G")
+    u.add_argument("--type", help="instance type (default BASIC2-A4C-8G, BASIC2-A2C-4G with --fake)")
     u.add_argument("--branch", default="master", help="branch of the framework the VM clones")
     u.add_argument("--wait", action="store_true", help="wait until the dashboard answers (up to 30 min)")
     lg = sub.add_parser("log", help="print the tail of the VM's first-boot log (written at the end or on a failure)")
@@ -196,6 +212,7 @@ def main() -> int:
     d.add_argument("--zone", default="nl-ams-1")
     a = ap.parse_args()
     if a.cmd == "up":
+        a.type = a.type or ("BASIC2-A2C-4G" if a.fake else "BASIC2-A4C-8G")
         return up(a)
     if a.cmd == "log":
         code, text = scw_raw("GET", f"/instance/v1/zones/{a.zone}/servers/{a.server_id}/user_data/race-log")
