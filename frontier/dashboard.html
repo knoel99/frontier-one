@@ -37,7 +37,7 @@ h2{font-size:15px;font-weight:650;margin:0 0 2px}h3{font-size:14px;margin:0 0 4p
 .picker>summary::-webkit-details-marker{display:none}
 .picker>summary::after{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg) translateY(-2px);margin-left:4px}
 .picker .faces{display:inline-flex;gap:2px;flex-wrap:wrap}.picker .faces svg{width:16px;height:16px}
-.pop{position:absolute;z-index:15;top:calc(100% + 6px);left:0;background:var(--raised);border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 28px #00000026;padding:8px;width:min(380px,calc(100vw - 32px));max-height:70vh;overflow:auto}
+.pop{position:absolute;z-index:15;top:calc(100% + 6px);right:0;background:var(--raised);border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 28px #00000026;padding:8px;width:min(380px,calc(100vw - 32px));max-height:70vh;overflow:auto}
 .pop .acts{display:flex;gap:6px;padding:0 4px 8px;border-bottom:1px solid var(--line);margin-bottom:6px;align-items:center}
 .pop .row{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px;min-height:44px}.pop .row:hover{background:var(--line)}
 .pop .row label{flex:1;color:var(--ink);font-size:13px;cursor:pointer}
@@ -47,9 +47,12 @@ h2{font-size:15px;font-weight:650;margin:0 0 2px}h3{font-size:14px;margin:0 0 4p
 .key.dash{border-top-style:dashed}.key.dot{border-top-style:dotted}
 .sw{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;margin-right:4px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--shadow);min-width:0}
-.home{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
-@media (max-width:1100px){.home{grid-template-columns:1fr}}
-.stack{display:grid;gap:16px}
+.home{display:grid;grid-template-columns:minmax(330px,27%) minmax(0,1fr);gap:12px;align-items:start}
+.stack{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.stack>.wide{grid-column:1/-1}
+.home .card{padding:12px 14px}.home h2{font-size:14px}.home .sub{margin-bottom:6px;font-size:12px}
+.home .chart-head{margin-bottom:2px}#board td,#board th{padding:6px 5px}#board .who{gap:8px}#board .id{font-size:11px}#board .budget{min-width:58px}
+@media (max-width:1200px){.home{grid-template-columns:1fr}}
+@media (max-width:900px){.stack{grid-template-columns:1fr}}
 .chart-head{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:flex-start;justify-content:space-between;margin-bottom:6px}
 .ctrls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
@@ -84,11 +87,15 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 .pill.good{background:var(--good-bg);color:var(--good)}.pill.warn{background:var(--warn-bg);color:var(--warn)}.pill.bad{background:var(--bad-bg);color:var(--bad)}
 .pill.run::before{animation:pulse 1.6s infinite}@keyframes pulse{50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.pill.run::before{animation:none}}
+.si{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;cursor:help}
+.si-run{color:var(--good);background:var(--good-bg)}.si-run svg{animation:pulse 1.4s infinite}.si-done{color:var(--good)}
+.si-wait,.si-prep{color:var(--mute)}.si-budget,.si-deadline{color:var(--bad)}
+@media (prefers-reduced-motion:reduce){.si-run svg{animation:none}}
 .who{display:flex;gap:10px;align-items:center}.who b{font-weight:600;white-space:nowrap}.who .id{display:block}.who .mob{display:none;margin-top:3px}
 .logos{display:inline-flex;gap:4px;align-items:center;color:var(--ink);vertical-align:-0.25em}.logos svg{width:1.25em;height:1.25em;flex:none}
 .logo1 svg{width:22px;height:22px}
 .team-logos{display:flex;gap:6px;font-size:22px;color:var(--ink)}.team-logos svg{width:1em;height:1em}
-.budget{min-width:120px}.budget .bar{height:8px;border-radius:4px;background:var(--line);display:flex;gap:2px;overflow:hidden}
+.budget{min-width:84px}.budget .bar{height:8px;border-radius:4px;background:var(--line);display:flex;gap:2px;overflow:hidden}
 .budget .bar i{display:block;height:100%}.budget .t{font-size:12px;color:var(--ink2);margin-top:3px;white-space:nowrap}
 .legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink2);margin-top:8px}
 .teams{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr));gap:16px}
@@ -112,7 +119,8 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:4px 0 12px}
 .facts .v{font-weight:650;font-size:17px;font-variant-numeric:tabular-nums}.facts .l{color:var(--mute);font-size:12px}
 .doc{max-width:980px}.doc p,.doc li{color:var(--ink2);line-height:1.6}.doc .card{margin-bottom:16px}
-.doc .fig{overflow-x:auto}.doc svg{width:100%;min-width:640px;height:auto;display:block;margin:8px 0}
+.doc .fig{overflow-x:auto}
+.arch{margin:12px 0}.arch img{width:100%;height:auto;border:1px solid var(--line);border-radius:10px;background:#fff}.arch figcaption{color:var(--mute);font-size:12.5px;margin-top:4px}.doc svg{width:100%;min-width:640px;height:auto;display:block;margin:8px 0}
 .doc svg .box{fill:var(--raised);stroke:var(--line2)}.doc svg .hot{fill:color-mix(in srgb,var(--acc) 14%,var(--raised));stroke:var(--acc)}
 .doc svg text{fill:var(--ink);font-size:13px}.doc svg .m{fill:var(--mute);font-size:11.5px}.doc svg .arr{stroke:var(--mute);fill:none;stroke-width:1.5}.doc svg .ah{fill:var(--mute)}
 #tip{position:fixed;z-index:30;pointer-events:none;background:var(--raised);color:var(--ink);border:1px solid var(--line2);border-radius:8px;padding:8px 10px;font-size:12.5px;box-shadow:0 4px 16px #0000002a;max-width:min(360px,calc(100vw - 16px));white-space:pre-line;display:none}
@@ -122,7 +130,7 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 @media (max-width:640px){
  header.top{position:static}.bar-in,main{padding-left:12px;padding-right:12px}.clock{font-size:12px;flex-basis:100%;order:2}[role=tablist]{order:3}.babs{display:none}
  .card{padding:12px;border-radius:10px}.stats{grid-template-columns:repeat(2,1fr)}
- td,th{padding:7px 6px}.st{display:none}.who .mob{display:block}.budget{min-width:72px}
+ td,th{padding:7px 6px}.budget{min-width:72px}
  .chart-head{flex-direction:column}.ctrls{width:100%}}
 </style>
 <script>try{const t=localStorage.getItem('fd.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
@@ -132,7 +140,8 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 <header class="top"><div class="bar-in">
  <h1 class="brand"><i id="dot" aria-hidden="true"></i>Race dashboard</h1>
  <span class="clock" id="clock"></span>
- <div class="right"><button id="theme" title="Follow the device, or always light, or always dark"></button><button id="pause" aria-pressed="false" title="Stop or resume the refresh every 5 seconds">Pause</button></div>
+ <div class="right"><details class="picker" id="picker"><summary><span>Teams</span> <b id="pk-n"></b> <span class="faces" id="pk-faces"></span></summary>
+  <div class="pop" role="group" aria-label="Teams shown"><div class="acts"><button id="pk-all">All</button><button id="pk-none">None</button><span class="sub" style="margin:0 0 0 auto">"only" keeps one</span></div><div id="pk-list"></div></div></details><button id="theme" title="Follow the device, or always light, or always dark"></button><button id="pause" aria-pressed="false" title="Stop or resume the refresh every 5 seconds">Pause</button></div>
  <div role="tablist" aria-label="Views">
   <button role="tab" id="tab-overview" aria-controls="p-overview" aria-selected="true">Overview</button>
   <button role="tab" id="tab-teams" aria-controls="p-teams" aria-selected="false" tabindex="-1">Teams</button>
@@ -145,27 +154,23 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
  <span class="sr" aria-live="polite" id="live"></span>
 </div></header>
 <main id="main">
-<div class="toolbar">
- <details class="picker" id="picker"><summary><span>Teams</span> <b id="pk-n"></b> <span class="faces" id="pk-faces"></span></summary>
-  <div class="pop" role="group" aria-label="Teams shown"><div class="acts"><button id="pk-all">All</button><button id="pk-none">None</button><span class="sub" style="margin:0 0 0 auto">"only" keeps one</span></div><div id="pk-list"></div></div></details>
-</div>
 
 <section role="tabpanel" id="p-overview" aria-labelledby="tab-overview">
  <div class="home">
-  <div class="card"><div class="chart-head"><div><h2>Live leaderboard</h2><p class="sub">Global score out of 100, now: the latest graded snapshot with the spend and time so far. Budget: what is spent of all the caps together.</p></div></div>
+  <div class="card"><div class="chart-head"><div><h2>Live leaderboard</h2><p class="sub">Global score out of 100, now. Budget: spent of all the caps together.</p></div></div>
    <div class="scroll"><table id="board"></table></div>
-   <div class="legend"><span><i class="sw" style="background:var(--c-llm)"></i>model calls</span><span><i class="sw" style="background:var(--c-sim)"></i>simulations (rented machines, EUR at par)</span><span><i class="sw" style="background:var(--line)"></i>left</span></div>
+   <div class="legend"><span><i class="sw" style="background:var(--c-llm)"></i>model calls</span><span><i class="sw" style="background:var(--c-sim)"></i>simulations</span><span><i class="sw" style="background:var(--line)"></i>left</span></div>
    <p class="sub" id="jline" style="margin:12px 0 0"></p></div>
   <div class="stack">
-   <div class="card"><div class="chart-head"><div><h2 id="h-qt">Score over time</h2><p class="sub">One point per graded snapshot, out of 100; each line ends on the team's live score. Hover a line for its team.</p></div>
+   <div class="card"><div class="chart-head"><div><h2 id="h-qt">Score over time</h2><p class="sub">Out of 100, a point per graded snapshot; each line ends on the live score.</p></div>
     <div class="ctrls"><label>Score <select id="metric"><option value="final">global</option><option value="science">scientific quality</option><option value="artifacts">code and data</option><option value="efficiency">efficiency</option></select></label>
     <div class="seg" role="group" aria-label="Time axis scale"><button data-ax="qt" data-v="lin" aria-pressed="true">Linear</button><button data-ax="qt" data-v="log" aria-pressed="false">Log</button></div></div></div>
     <div class="chart" id="c-qt"></div><details class="tv" id="tv-qt"><summary>Table view</summary><div class="scroll" id="t-qt" tabindex="0" role="region" aria-label="Score over time, as a table"></div></details></div>
-   <div class="card"><div class="chart-head"><div><h2 id="h-qc">Score against cost</h2><p class="sub">The same snapshots and score, against what the team had spent then.</p></div>
+   <div class="card"><div class="chart-head"><div><h2 id="h-qc">Score against cost</h2><p class="sub">The same snapshots, against what the team had spent then.</p></div>
     <div class="ctrls"><label>Cost <select data-cost="qc"><option value="all">model calls + simulations</option><option value="llm">model calls</option><option value="sim">simulations</option></select></label>
     <div class="seg" role="group" aria-label="Cost axis scale"><button data-ax="qc" data-v="lin" aria-pressed="false">Linear</button><button data-ax="qc" data-v="log" aria-pressed="true">Log</button></div></div></div>
     <div class="chart" id="c-qc"></div><details class="tv" id="tv-qc"><summary>Table view</summary><div class="scroll" id="t-qc" tabindex="0" role="region" aria-label="Score against cost, as a table"></div></details></div>
-   <div class="card"><div class="chart-head"><div><h2>Spend over time</h2><p class="sub">Cumulative USD, on the same time axis as the score over time. Hover for every team at that moment.</p></div>
+   <div class="card wide"><div class="chart-head"><div><h2>Spend over time</h2><p class="sub">Cumulative USD, on the time axis of the score over time; hover for every team.</p></div>
     <div class="ctrls"><label>Cost <select data-cost="sp"><option value="all">model calls + simulations</option><option value="llm">model calls</option><option value="sim">simulations</option></select></label></div></div>
     <div class="chart" id="c-sp"></div></div>
   </div></div>
@@ -211,21 +216,10 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 <section role="tabpanel" id="p-about" aria-labelledby="tab-about" hidden><div class="doc">
 <div class="card"><h2>A race</h2>
 <p>Each team is one AI provider, in its own harness (Claude Code, Codex CLI, Grok Build…), on the same research subject, with the same deadline and the same budgets: model calls in USD, Scaleway in EUR, Runpod in USD. The AI decides its own strategy: models, reasoning levels, sub-agents, machines and scope. Frontier gives it its tools, meters every cost, keeps the ledgers and checks the deliverables.</p>
-<div class="fig"><svg viewBox="0 0 940 300" role="img" aria-label="Flow of one mission: the owner's mission file, the launcher, the harness sessions with their tools, the ledgers and snapshots, delivery, then the jury">
-<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" d="M0,0L10,5L0,10z"/></marker></defs>
-<rect class="box" x="10" y="20" width="150" height="70" rx="10"/><text x="85" y="48" text-anchor="middle">Owner</text><text class="m" x="85" y="68" text-anchor="middle">mission.toml, keys, caps</text>
-<rect class="box" x="200" y="20" width="170" height="70" rx="10"/><text x="285" y="48" text-anchor="middle">Launcher</text><text class="m" x="285" y="68" text-anchor="middle">MISSION.md, TOOLS.md, files</text>
-<rect class="hot" x="410" y="20" width="190" height="70" rx="10"/><text x="505" y="48" text-anchor="middle">Harness sessions (the AI)</text><text class="m" x="505" y="68" text-anchor="middle">until deliver, deadline or budget</text>
-<rect class="box" x="640" y="20" width="140" height="70" rx="10"/><text x="710" y="48" text-anchor="middle">deliver</text><text class="m" x="710" y="68" text-anchor="middle">report, code, records</text>
-<rect class="box" x="820" y="20" width="110" height="70" rx="10"/><text x="875" y="48" text-anchor="middle">Jury</text><text class="m" x="875" y="68" text-anchor="middle">grades, ranks</text>
-<path class="arr" d="M160,55H198" marker-end="url(#ar)"/><path class="arr" d="M370,55H408" marker-end="url(#ar)"/><path class="arr" d="M600,55H638" marker-end="url(#ar)"/><path class="arr" d="M780,55H818" marker-end="url(#ar)"/>
-<rect class="box" x="300" y="150" width="150" height="62" rx="10"/><text x="375" y="176" text-anchor="middle">Frontier MCP tools</text><text class="m" x="375" y="196" text-anchor="middle">spawn_agent, cloud, budget</text>
-<rect class="box" x="470" y="150" width="150" height="62" rx="10"/><text x="545" y="176" text-anchor="middle">Metering gateway</text><text class="m" x="545" y="196" text-anchor="middle">every model call priced</text>
-<rect class="box" x="640" y="150" width="150" height="62" rx="10"/><text x="715" y="176" text-anchor="middle">Scaleway, Runpod</text><text class="m" x="715" y="196" text-anchor="middle">machines with max_hours</text>
-<path class="arr" d="M480,90L400,148" marker-end="url(#ar)"/><path class="arr" d="M520,90L540,148" marker-end="url(#ar)"/><path class="arr" d="M450,181H468" marker-end="url(#ar)"/><path class="arr" d="M620,181H638" marker-end="url(#ar)"/>
-<rect class="box" x="300" y="240" width="320" height="50" rx="10"/><text x="460" y="262" text-anchor="middle">Hash-chained ledgers and snapshots</text><text class="m" x="460" y="280" text-anchor="middle">llm.jsonl, events.jsonl · a commit at each time and spend milestone</text>
-<path class="arr" d="M375,212V238" marker-end="url(#ar)"/><path class="arr" d="M545,212V238" marker-end="url(#ar)"/><path class="arr" d="M620,265C800,265 875,200 875,92" marker-end="url(#ar)"/>
-</svg></div>
+<figure class="arch"><a href="diagrams/race.html" target="_blank" rel="noopener"><img src="diagrams/race.png" loading="lazy" width="2880" height="2932" alt="A race: one mission per provider and harness, in parallel, on the same subject with the same caps, then the jury"></a>
+<figcaption>A race: N missions in parallel. Select the picture for the interactive diagram, every box linked to its code.</figcaption></figure>
+<figure class="arch"><a href="diagrams/launch-1-campaign.html" target="_blank" rel="noopener"><img src="diagrams/launch-1-campaign.png" loading="lazy" width="3960" height="3300" alt="One campaign, stage by stage: the mission file, mission start, prepare, the guards, the session loop, deliver, the stop check, finish, then status, dashboard and jury"></a>
+<figcaption>One team's campaign, stage by stage, with the times of a traced launch.</figcaption></figure>
 <p>Snapshots: at 5, 15 and 30 minutes, then 1, 2, 4, 8 h and doubling, and at 5, 10, 20, 50, 100… USD of total spend, the workspace is committed and tagged. Graded blind by the jury (its activity is in the Jury tab), they draw each team's score against time and money, the charts of the Overview.</p></div>
 <div class="card"><h2>The score, out of 100</h2>
 <div class="fig"><svg viewBox="0 0 940 250" role="img" aria-label="Scoring tree: the global score is 50 percent scientific quality, 25 percent code and data, 25 percent efficiency, minus penalties">
@@ -247,13 +241,22 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 <li><b>Penalties</b>: the stewards take points off for infractions found in the ledgers; a broken ledger disqualifies.</li>
 </ul>
 <p>Live, this dashboard applies the same formula (frontier/scoring.py) to each team's latest graded snapshot with its spend and time so far, and to every snapshot against the other teams at the same milestone.</p></div>
+<div class="card"><h2>How the jury grades</h2>
+<p>Each judge is a frontier model of another provider: a judge never grades the team of its own provider. The judges work <b>independently and in parallel</b>: each one gets the grading brief, the subject, the race context, the calibration example if any and the anonymised file of one team, never another judge's verdict. Names are redacted and a file that still names its team is not sent. Only then are the verdicts combined: the median of the judges for each rubric, the strictest judge for the adequacy to the subject, then efficiency, the stewards' penalties and the final score.</p>
+<figure class="arch"><a href="diagrams/launch-5-jury.html" target="_blank" rel="noopener"><img src="diagrams/launch-5-jury.png" loading="lazy" alt="The jury's workflow: the teams' files anonymised, the judges in parallel and independent, the median of their verdicts, the scores and the ranking"></a>
+<figcaption>The jury's workflow (frontier/jury.py).</figcaption></figure></div>
+<div class="card"><h2>More diagrams</h2><p>Interactive, every box linked to its code:
+<a href="diagrams/launch-2-timeline.html" target="_blank" rel="noopener">a launch on one clock</a> ·
+<a href="diagrams/launch-3-prompts.html" target="_blank" rel="noopener">the prompts, skills and files the AI reads</a> ·
+<a href="diagrams/launch-4-session.html" target="_blank" rel="noopener">one session, function by function</a> ·
+<a href="diagrams/processes.html" target="_blank" rel="noopener">the processes of a race</a>.</p></div>
 <div class="card"><h2>Team status</h2><div class="scroll"><table><tbody>
-<tr><td><span class="pill">Preparing</span></td><td>The workspace is ready; no session has started yet.</td></tr>
-<tr><td><span class="pill good run">Session n running</span></td><td>The harness is working, in its n-th session.</td></tr>
-<tr><td><span class="pill">Between sessions</span></td><td>A session ended; the launcher starts the next one, up to max_sessions.</td></tr>
-<tr><td><span class="pill good">Delivered</span></td><td>The AI called deliver: the clock and the spend are frozen.</td></tr>
-<tr><td><span class="pill bad">LLM budget spent</span></td><td>No model call fits in what is left: the launcher stops.</td></tr>
-<tr><td><span class="pill bad">Deadline passed</span></td><td>The time is up; the repository is graded as it stands.</td></tr>
+<tr><td><span class="si si-prep" data-icon="prep"></span> Preparing</td><td>The workspace is ready; no session has started yet.</td></tr>
+<tr><td><span class="si si-run" data-icon="run"></span> Session n running</td><td>The harness is working, in its n-th session.</td></tr>
+<tr><td><span class="si si-wait" data-icon="wait"></span> Between sessions</td><td>A session ended; the launcher starts the next one, up to max_sessions.</td></tr>
+<tr><td><span class="si si-done" data-icon="done"></span> Delivered</td><td>The AI called deliver: the clock and the spend are frozen.</td></tr>
+<tr><td><span class="si si-budget" data-icon="budget"></span> LLM budget spent</td><td>No model call fits in what is left: the launcher stops.</td></tr>
+<tr><td><span class="si si-deadline" data-icon="deadline"></span> Deadline passed</td><td>The time is up; the repository is graded as it stands.</td></tr>
 </tbody></table></div></div></div></section>
 </main><div id="tip" role="tooltip"></div>
 <script>
@@ -284,6 +287,16 @@ function status(t){if(t.delivered)return['good','Delivered'];const l=t.status.ll
  if(t.status.hours_left!=null&&t.status.hours_left<=0)return['bad','Deadline passed'];if(t.running)return['good run',`Session ${t.running.n} running`];
  return (t.activities||[]).some(a=>a.kind==='session')?['','Between sessions']:['','Preparing']}
 const pill=t=>{const [c,x]=status(t);return `<span class="pill ${c}">${esc(x)}</span>`};
+const ICONS={run:'<path d="M5 3l8 5-8 5z" fill="currentColor"/>',
+ done:'<circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M4.6 8.3l2.2 2.2 4.6-4.7" stroke="var(--surface)" stroke-width="1.8" fill="none" stroke-linecap="round"/>',
+ wait:'<rect x="4" y="3" width="3" height="10" rx="1" fill="currentColor"/><rect x="9" y="3" width="3" height="10" rx="1" fill="currentColor"/>',
+ prep:'<path d="M4.5 2h7M4.5 14h7M5.5 2c0 3.5 5 3.5 5 6s-5 2.5-5 6M10.5 2c0 3.5-5 3.5-5 6s5 2.5 5 6" stroke="currentColor" fill="none" stroke-width="1.4"/>',
+ budget:'<circle cx="8" cy="8" r="6.3" stroke="currentColor" fill="none" stroke-width="1.7"/><path d="M3.6 12.4l8.8-8.8" stroke="currentColor" stroke-width="1.7"/>',
+ deadline:'<circle cx="8" cy="8" r="6.3" stroke="currentColor" fill="none" stroke-width="1.6"/><path d="M8 4.6V8l2.6 1.7" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round"/>'};
+const skey=t=>{const x=status(t)[1];return x==='Delivered'?'done':x==='LLM budget spent'?'budget':x==='Deadline passed'?'deadline':x.startsWith('Session')?'run':x==='Preparing'?'prep':'wait'};
+const sicon=t=>{const k=skey(t),x=status(t)[1];return `<span class="si si-${k}" role="img" aria-label="${esc(x)}" tabindex="0" data-tip="${esc(x)}"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">${ICONS[k]}</svg></span>`};
+const SLEGEND='Status\n▶ a session is running (it blinks)\n✓ delivered: time and spend frozen\nⅡ between two sessions\n⧗ preparing, no session yet\n⦸ LLM budget spent\n◷ deadline passed';
+const sth=()=>`<th class="st"><span tabindex="0" data-tip="${esc(SLEGEND)}" style="border-bottom:1px dotted currentColor;cursor:help">Status</span></th>`;
 const elapsed=t=>t.delivered?t.delivered.elapsed_hours*3600:(t.status.elapsed_hours??0)*3600;
 const simUsd=t=>(t.status.cloud.scaleway.spent||0)+(t.status.cloud.runpod.spent||0);
 const costOf=(s,k)=>k==='llm'?s.llm_usd:k==='sim'?s.simulation_usd:s.llm_usd+s.simulation_usd;
@@ -321,13 +334,13 @@ function line(f,t,P,tipText,step){const c=col(t),d=dash(t),pd=path(P,f.X,f.Y,ste
  return `<g class="ln" data-team="${esc(t.name)}"><path d="${pd}" fill="none" stroke="${c}" stroke-width="2.2" ${d?`stroke-dasharray="${d}"`:''}/><circle cx="${f.X(last[0])}" cy="${f.Y(last[1])}" r="3.5" fill="${c}"/></g>`+
  `<path class="hit" d="${pd}" data-team="${esc(t.name)}" data-tip="${esc(tipText)}"/>`}
 /* company logos in a column right of the plot, at the height of each line's end, spread apart, tied by a dotted leader */
-function ends(f){const R=10,gap=2*R+3,B=f.ends.sort((a,b)=>a.y-b.y),hi=f.h-f.P.b;for(const b of B)b.by=b.y;
+function ends(f){const lo=f.P.t,hi=f.h-f.P.b,B=f.ends.sort((a,b)=>a.y-b.y),gap=Math.min(23,(hi-lo)/Math.max(1,B.length-1)),R=Math.max(6,Math.min(10,gap/2-1));for(const b of B)b.by=b.y;
  for(let i=1;i<B.length;i++)B[i].by=Math.max(B[i].by,B[i-1].by+gap);
  if(B.length&&B[B.length-1].by>hi){B[B.length-1].by=hi;for(let i=B.length-2;i>=0;i--)B[i].by=Math.min(B[i].by,B[i+1].by-gap)}
  const lx=f.w-f.P.r+24;let s='';
  for(const b of B){const n=esc(b.t.name),g=b.t.logos&&b.t.logos[0];
   s+=`<g class="ln" data-team="${n}"><path class="lead" d="M${b.x+5},${b.y}L${lx-R-5},${b.by}"/></g><g data-team="${n}" data-tip="${esc(b.tip)}"><circle class="badge" cx="${lx}" cy="${b.by}" r="${R}" stroke="${b.c}" stroke-width="2"/>`+
-   (g?`<use href="#logo-${esc(g)}" x="${lx-7}" y="${b.by-7}" width="14" height="14" style="color:var(--ink)"/>`:'')+`<circle cx="${lx}" cy="${b.by}" r="${R+6}" fill="transparent"/></g>`}
+   (g?`<use href="#logo-${esc(g)}" x="${lx-R*0.7}" y="${b.by-R*0.7}" width="${R*1.4}" height="${R*1.4}" style="color:var(--ink)"/>`:'')+`<circle cx="${lx}" cy="${b.by}" r="${R+6}" fill="transparent"/></g>`}
  return s}
 
 /* score over time, score against cost, spend over time; one time axis from the start of the race to now */
@@ -341,7 +354,7 @@ function scoreChart(id,xOf,{log,xt,xl,lo,xmax}){const el=$('c-'+id),mn=METRIC[S.
  if(!ser.length){el.innerHTML='<div class="empty">No graded snapshot yet</div>';$('t-'+id).innerHTML='';return}
  const xs=ser.flatMap(x=>x.pts.map(p=>p.x)),x0=log?Math.max(lo,Math.min(...xs)):0,x1=Math.max(xmax||0,...xs,x0*10||1);
  el.dataset.label=`${mn} out of 100 ${id==='qt'?'over time':'against cost'}, one line per team`;
- const f=frame(el,narrow()?260:300,{x:(a,b)=>log?logs(x0,x1,a,b):lin(0,x1,a,b),y:(a,b)=>lin(0,100,a,b),xt,yt:v=>v,xl});
+ const f=frame(el,chartH(),{x:(a,b)=>log?logs(x0,x1,a,b):lin(0,x1,a,b),y:(a,b)=>lin(0,100,a,b),xt,yt:v=>v,xl});
  let s=f.s;for(const {t,pts} of ser){const c=col(t),P=pts.map(p=>[p.x,p.q]),last=pts[pts.length-1];
   for(const p of pts.slice(0,-1))s+=`<circle class="ring" cx="${f.X(p.x)}" cy="${f.Y(p.q)}" r="3" fill="${c}" data-team="${esc(t.name)}" data-tip="${esc(ptTip(t,p,mn))}"/>`;
   s+=line(f,t,P,`${t.model} · ${t.harness_title}\n${mn} ${sc(last.q)} ${last.s.live?'now, as in the leaderboard':'at its latest snapshot'}\n${dur(last.s.minutes*60)} after the start · ${money(last.s.llm_usd+last.s.simulation_usd)} spent`)}
@@ -350,6 +363,7 @@ const ptTip=(t,p,mn)=>`${mn} ${sc(p.q)} · ${t.model}\nsnapshot ${p.s.labels.joi
 function qTable(ser){return `<table><thead><tr><th>Team</th><th>Snapshot</th><th class="n">Time</th><th class="n">Model calls</th><th class="n">Simulations</th><th class="n">Science</th><th class="n">Code and data</th><th class="n">Efficiency</th><th class="n">Global</th></tr></thead><tbody>${
  ser.flatMap(({t,pts})=>pts.filter(p=>!p.s.live).map(({s})=>`<tr><td>${key(t)} ${esc(t.model)}</td><td>${esc(s.labels.join(', '))}</td><td class="n">${dur(s.minutes*60)}</td><td class="n">${money(s.llm_usd)}</td><td class="n">${money(s.simulation_usd)}</td><td class="n">${sc(s.quality)}</td><td class="n">${sc(s.artifacts)}</td><td class="n">${sc(s.efficiency)}</td><td class="n">${sc(s.final)}</td></tr>`)).join('')}</tbody></table>`}
 const raceHours=()=>(Date.parse(S.d.time)-T0)/3.6e6;
+const chartH=()=>narrow()?240:Math.round(Math.max(190,Math.min(360,(innerHeight-345)*0.58)));
 const chartQT=()=>scoreChart('qt',s=>s.minutes/60,{log:S.ax.qt==='log',lo:5/60,xmax:S.ax.qt==='log'?0:raceHours(),xt:v=>v<1?Math.round(v*60)+' min':v+' h',xl:'hours since the start'});
 const chartQC=()=>scoreChart('qc',s=>costOf(s,S.cost.qc),{log:S.ax.qc==='log',lo:0.01,xt:v=>(v<1?v:NF.format(v))+' $',xl:'USD, '+COSTL[S.cost.qc]});
 function spendSeries(t,k,t1){const L=(t.series||[]).map(([x,y])=>[Date.parse(x),y]),M=(t.sim_series||[]).map(([x,y])=>[Date.parse(x),y]);
@@ -360,7 +374,7 @@ function spendSeries(t,k,t1){const L=(t.series||[]).map(([x,y])=>[Date.parse(x),
 function chartSP(){const el=$('c-sp'),k=S.cost.sp,t1=Date.parse(S.d.time),ser=shown().map(t=>({t,P:spendSeries(t,k,t1)})).filter(x=>x.P.length);
  if(!ser.length){el.innerHTML=`<div class="empty">No ${COSTL[k]} yet</div>`;return}
  const H=x=>(x-T0)/3.6e6,ymax=Math.max(...ser.map(x=>x.P[x.P.length-1][1]),1);el.dataset.label='Cumulative spend per team: '+COSTL[k];
- const f=frame(el,narrow()?240:260,{x:(a,b)=>lin(0,raceHours(),a,b),y:(a,b)=>lin(0,ymax,a,b),xt:v=>v+' h',yt:v=>v+' $',xl:'hours since the start'});
+ const f=frame(el,Math.round(chartH()*0.72),{x:(a,b)=>lin(0,raceHours(),a,b),y:(a,b)=>lin(0,ymax,a,b),xt:v=>v+' h',yt:v=>v+' $',xl:'hours since the start'});
  let s=f.s;for(const {t,P} of ser){const st=Math.max(1,Math.floor(P.length/400)),Q=P.filter((_,i)=>i%st===0||i===P.length-1).map(([x,y])=>[H(x),y]);
   s+=line(f,t,Q,`${t.model} · ${t.harness_title}\n${money(Q[Q.length-1][1])} of ${COSTL[k]}`,k==='llm')}
  s+=ends(f)+`<line class="xhl axis" y1="${f.P.t}" y2="${f.h-f.P.b}" visibility="hidden"/><rect class="xh" x="${f.P.l}" y="${f.P.t}" width="${f.w-f.P.l-f.P.r}" height="${f.h-f.P.t-f.P.b}" fill="transparent"/>`;
@@ -372,20 +386,20 @@ function chartSP(){const el=$('c-sp'),k=S.cost.sp,t1=Date.parse(S.d.time),ser=sh
  rect.onpointerleave=()=>{xl.setAttribute('visibility','hidden');hideTip()}}
 
 /* budget: everything spent against every cap together, model calls and simulations in their own colours everywhere */
-function budget(t){const s=t.status,c=s.cloud,cap=(s.llm.cap_usd||0)+(c.scaleway.cap||0)+(c.runpod.cap||0),l=s.llm.spent_usd,m=simUsd(t);
+function budget(t,short){const s=t.status,c=s.cloud,cap=(s.llm.cap_usd||0)+(c.scaleway.cap||0)+(c.runpod.cap||0),l=s.llm.spent_usd,m=simUsd(t);
  if(!cap)return `<div class="budget"><div class="t">${money(l+m)} · no cap</div></div>`;const pl=Math.min(100,100*l/cap),pm=Math.min(100-pl,100*m/cap);
- return `<div class="budget" role="img" aria-label="${money(l)} model calls and ${money(m)} simulations of ${money(cap)} in all"><div class="bar"><i style="width:${pl}%;background:var(--c-llm)"></i><i style="width:${pm}%;background:var(--c-sim)"></i></div>
- <div class="t">${Math.round(pl+pm)} %<span class="babs"> · ${money(l+m,'')} / ${NF.format(cap)} $</span></div></div>`}
-const who=(t,st)=>`<div class="who">${key(t)}${logos(t,'logos logo1',1)}<div><b>${esc(t.model)}</b><span class="id">${esc(t.harness_title)}</span>${st?`<span class="mob">${pill(t)}</span>`:''}</div></div>`;
+ return `<div class="budget" role="img" tabindex="${short?0:-1}" aria-label="${money(l)} model calls and ${money(m)} simulations of ${money(cap)} in all" data-tip="${esc(`${Math.round(pl+pm)} % of all the caps (${NF.format(cap)} USD)\n${money(l)} model calls\n${money(m)} simulations`)}"><div class="bar"><i style="width:${pl}%;background:var(--c-llm)"></i><i style="width:${pm}%;background:var(--c-sim)"></i></div>
+ <div class="t">${Math.round(pl+pm)} %${short?'':`<span class="babs"> · ${money(l+m,'')} / ${NF.format(cap)} $</span>`}</div></div>`}
+const who=(t,st,nokey)=>`<div class="who">${nokey?'':key(t)}${logos(t,'logos logo1',1)}<div><b>${esc(t.model)}</b><span class="id">${esc(t.harness_title)}</span>${st?`<span class="mob">${pill(t)}</span>`:''}</div></div>`;
 const metric=(t,k)=>k==='model'?t.model:k==='status'?status(t)[1]:k==='llm'?t.status.llm.spent_usd:k==='sim'?simUsd(t):k==='time'?elapsed(t):k==='spent'?t.status.llm.spent_usd+simUsd(t):t.scores[k];
 const order=(list,k,dir)=>list.slice().sort((a,b)=>{const x=metric(a,k),y=metric(b,k);return (x==null)-(y==null)||(typeof x==='string'?x.localeCompare(y):(x-y))*dir});
-function board(){const rk=ranks();$('board').innerHTML=`<thead><tr><th class="n">#</th><th>Team</th><th class="st">Status</th><th class="n">Global</th><th>Budget</th></tr></thead><tbody>${
- order(shown(),'final',-1).map(t=>`<tr><td class="n">${(rk[t.name]||{}).final??'–'}</td><td>${who(t,true)}</td><td class="st">${pill(t)}</td><td class="n"><b>${sc(t.scores.final)}</b></td><td>${budget(t)}</td></tr>`).join('')}</tbody>`}
+function board(){const rk=ranks();$('board').innerHTML=`<thead><tr><th class="n">#</th><th>Team</th>${sth()}<th class="n">Global</th><th>Budget</th></tr></thead><tbody>${
+ order(shown(),'final',-1).map(t=>`<tr><td class="n">${(rk[t.name]||{}).final??'–'}</td><td>${who(t,false,true)}</td><td class="st">${sicon(t)}</td><td class="n"><b>${sc(t.scores.final)}</b></td><td>${budget(t,true)}</td></tr>`).join('')}</tbody>`}
 const COLS=[['model','Team'],['status','Status','st'],['final','Global','n'],['science','Science','n'],['artifacts','Code and data','n'],['efficiency','Efficiency','n'],['spent','Budget'],['time','Time','n']];
 function board2(){const {k,dir}=S.sort,rk=ranks();
- $('board2').innerHTML=`<thead><tr><th class="n">#</th>${COLS.map(([c,l,n])=>`<th class="${n||''}" ${k===c?`aria-sort="${dir>0?'ascending':'descending'}"`:''}><button data-sort="${c}">${l}</button></th>`).join('')}</tr></thead><tbody>${
+ $('board2').innerHTML=`<thead><tr><th class="n">#</th>${COLS.map(([c,l,n])=>`<th class="${n||''}" ${k===c?`aria-sort="${dir>0?'ascending':'descending'}"`:''}><button data-sort="${c}" ${c==='status'?`data-tip="${esc(SLEGEND)}"`:''}>${l}</button></th>`).join('')}</tr></thead><tbody>${
  order(shown(),k,dir).map(t=>{const s=t.scores,r=rk[t.name]||{};
- return `<tr><td class="n">${r.final??'–'}</td><td>${who(t,true)}</td><td class="st">${pill(t)}</td><td class="n"><b>${sc(s.final)}</b></td><td class="n">${sc(s.science)}</td><td class="n">${sc(s.artifacts)}</td><td class="n">${sc(s.efficiency)}</td><td>${budget(t)}</td><td class="n">${dur(elapsed(t))}</td></tr>`}).join('')}</tbody>`}
+ return `<tr><td class="n">${r.final??'–'}</td><td>${who(t)}</td><td class="st">${sicon(t)}</td><td class="n"><b>${sc(s.final)}</b></td><td class="n">${sc(s.science)}</td><td class="n">${sc(s.artifacts)}</td><td class="n">${sc(s.efficiency)}</td><td>${budget(t)}</td><td class="n">${dur(elapsed(t))}</td></tr>`}).join('')}</tbody>`}
 
 /* team cards */
 function meter(label,spent,committed,cap,cur,colr){if(cap==null)return `<div class="meter"><div class="row"><b>${label}</b><span>${money(spent,cur)} · no cap</span></div></div>`;
@@ -540,6 +554,7 @@ function theme(t){const r=document.documentElement;if(t==='auto')delete r.datase
 $('theme').onclick=()=>{const cur=document.documentElement.dataset.theme||'auto';theme(cur==='auto'?'light':cur==='light'?'dark':'auto')};
 theme(document.documentElement.dataset.theme||'auto');
 let rs;new ResizeObserver(()=>{clearTimeout(rs);rs=setTimeout(()=>{if(S.d)VIEWS[S.tab]()},150)}).observe($('main'));
+document.querySelectorAll('[data-icon]').forEach(e=>e.innerHTML=`<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">${ICONS[e.dataset.icon]}</svg>`);
 const first=location.hash.slice(1);if(VIEWS[first])show(first);
 load();if(!window.__STATE__)setInterval(()=>{if(!S.paused&&document.visibilityState==='visible')load()},5000);
 </script></body></html>

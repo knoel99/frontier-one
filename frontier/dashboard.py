@@ -26,6 +26,7 @@ import hmac
 import json
 import os
 import pathlib
+import re
 import secrets
 import sys
 import time
@@ -36,7 +37,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import llm as llm_mod
 from . import scoring
 from .budget import Budget, now, parse_time, read_json, read_jsonl
-from .config import load_config
+from .config import ROOT, load_config
 from .mission import STATE_ROOT as ROOT_DEFAULT
 
 FEED = 300  # actions kept in the global feed
@@ -397,6 +398,9 @@ def standings(teams: list[dict]) -> None:
 PAGE = pathlib.Path(__file__).with_name("dashboard.html").read_text().replace(
     "<!--LOGOS-->", pathlib.Path(__file__).with_name("logos.svg").read_text())
 # The page runs its own inline script and style only, talks to its own origin only, and is never framed.
+DIAGRAMS = ROOT / "docs" / "diagrams"  # the Archify diagrams the How it works tab shows, under /diagrams/<name>
+DIAGRAM = re.compile(r"/diagrams/([a-z0-9-]+\.(png|html))")
+DIAGRAM_CSP = "default-src 'self' 'unsafe-inline' data: blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 CSP = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; "
        "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 
@@ -446,17 +450,24 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._login(link, https, session)
             if not session:
                 return self._deny("open the dashboard with a login link (tools/race_vm.py link)")
-        if self.path.startswith("/api/state"):
+        csp, cache = CSP, "no-store"
+        if m := DIAGRAM.fullmatch(urllib.parse.urlsplit(self.path).path):
+            f = DIAGRAMS / m.group(1)
+            if not f.is_file():
+                return self._deny("no such diagram")
+            body, ctype = f.read_bytes(), "image/png" if m.group(2) == "png" else "text/html; charset=utf-8"
+            csp, cache = DIAGRAM_CSP, "private, max-age=3600"  # an Archify page runs its own viewer, fonts inlined
+        elif self.path.startswith("/api/state"):
             body, ctype = json.dumps(snapshot(self.root), separators=(",", ":")).encode(), "application/json"
         else:
             body, ctype = PAGE.encode(), "text/html; charset=utf-8"
-        zipped = "gzip" in self.headers.get("Accept-Encoding", "")
+        zipped = "gzip" in self.headers.get("Accept-Encoding", "") and ctype != "image/png"
         if zipped:  # the state of a long race is megabytes of JSON, fetched every few seconds
             body = gzip.compress(body, 5)
         self.send_response(200)
         self.send_header("Content-Type", ctype)
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Security-Policy", CSP)
+        self.send_header("Cache-Control", cache)
+        self.send_header("Content-Security-Policy", csp)
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")

@@ -564,6 +564,9 @@ def test_dashboard_opens_with_a_login_link_until_it_expires_and_never_with_the_t
         code, h, body = get("/api/state", cookie, **{"Accept-Encoding": "gzip"})
         assert code == 200 and h["Content-Encoding"] == "gzip" and json.loads(gzip.decompress(body))["teams"] == []
         assert get("/api/state", "frontier_dashboard=1.forged")[0] == 403
+        code, h, body = get("/diagrams/race.png", cookie)  # the How it works tab's Archify diagrams
+        assert code == 200 and h["Content-Type"] == "image/png" and body[:4] == b"\x89PNG"
+        assert get("/diagrams/race.png")[0] == 403 and get("/diagrams/nope.png", cookie)[0] == 403
         expired = path(dashboard.login_link(f"http://127.0.0.1:{port}", "s3cret-token", minutes=-1))
         forged = path(dashboard.login_link(f"http://127.0.0.1:{port}", "another-token"))
         assert get(expired)[0] == 403 and get(forged)[0] == 403
