@@ -682,3 +682,56 @@ def test_the_race_clock_doubles_its_speed_and_inverts():
     assert abs((race_clock(c, real_time(c, end)) - end).total_seconds()) < 1
     flat = dict(c, doubling_minutes=0)
     assert race_clock(flat, t0 + dt.timedelta(minutes=6)) == t0 + dt.timedelta(minutes=60)
+
+
+def test_dashboard_serves_a_team_report_and_takes_an_evaluation_request_only_from_a_session(tmp_path):
+    import http.client
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from frontier import dashboard
+
+    ws = tmp_path / "ws"
+    (ws / "report").mkdir(parents=True)
+    (ws / "report.md").write_text("# Title\n\nBody")
+    (ws / "report" / "report.tex").write_text(r"\section{Title}")
+    (ws / "report" / "report.pdf").write_bytes(b"%PDF-1.4 fake")
+    (ws / "secret.pdf").write_bytes(b"%PDF-1.4 not a report")
+    (tmp_path / "missions" / "t1").mkdir(parents=True)
+    root = tmp_path / "missions"
+    (root / "t1" / "mission.json").write_text(json.dumps({"workspace": str(ws)}))
+
+    class Handler(dashboard._Handler):
+        token = "s3cret-token"
+
+    Handler.root = root
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+    cookie = "frontier_dashboard=" + dashboard._session("s3cret-token")
+
+    def req(method, path, cookie=cookie, **headers):
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        c.request(method, path, headers={**({"Cookie": cookie} if cookie else {}), **headers})
+        r = c.getresponse()
+        return r.status, r.headers, r.read()
+
+    try:
+        code, _, body = req("GET", "/api/report?team=t1")
+        r = json.loads(body)
+        assert code == 200 and [f["path"] for f in r["files"]] == ["report.md", "report/report.tex"]  # Markdown first
+        assert r["files"][0]["text"] == "# Title\n\nBody" and r["pdfs"] == ["report/report.pdf"]
+        code, h, body = req("GET", "/report/t1/report/report.pdf")
+        assert code == 200 and h["Content-Type"] == "application/pdf" and body.startswith(b"%PDF")
+        assert req("GET", "/report/t1/secret.pdf")[0] == 403  # only the report's PDFs, never another file
+        assert req("GET", "/report/t1/report/report.pdf", cookie="")[0] == 403
+        assert req("GET", "/api/report?team=..")[0] == 403 and req("GET", "/api/report?team=nope")[0] == 403
+        assert req("POST", "/api/evaluate")[0] == 409  # nothing honors a request: no DIR/requests
+        (root / "requests").mkdir()
+        assert req("POST", "/api/evaluate", cookie="")[0] == 403
+        assert req("POST", "/api/evaluate", Origin="https://evil.example")[0] == 403
+        assert req("POST", "/api/evaluate", Origin=f"http://127.0.0.1:{port}")[0] == 200
+        assert req("POST", "/api/evaluate")[0] == 409  # one pending at a time
+        assert len(dashboard.evaluate_state(root)["pending"]) == 1
+    finally:
+        srv.shutdown()

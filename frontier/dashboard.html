@@ -123,6 +123,10 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 .facts .v{font-weight:650;font-size:17px;font-variant-numeric:tabular-nums}.facts .l{color:var(--mute);font-size:12px}
 .doc{max-width:980px}.doc p,.doc li{color:var(--ink2);line-height:1.6}.doc .card{margin-bottom:16px}
 .doc .fig{overflow-x:auto}
+.why{border-bottom:1px dotted currentColor;cursor:help;white-space:nowrap}
+.report{max-height:calc(100vh - 250px);overflow:auto;padding:4px 8px}.report .md{max-width:860px;line-height:1.6;color:var(--ink2)}
+.report h1,.report h2,.report h3{color:var(--ink)}.report table{border-collapse:collapse}.report td,.report th{border:1px solid var(--line);padding:4px 8px}
+.report pre{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,monospace;margin:0}.report code{font:12.5px ui-monospace,monospace}
 .arch{margin:12px 0}.arch img{width:100%;height:auto;border:1px solid var(--line);border-radius:10px;background:#fff}.arch figcaption{color:var(--mute);font-size:12.5px;margin-top:4px}.doc .fig svg{width:100%;min-width:640px;height:auto;display:block;margin:8px 0}
 .doc svg .box{fill:var(--raised);stroke:var(--line2)}.doc svg .hot{fill:color-mix(in srgb,var(--acc) 14%,var(--raised));stroke:var(--acc)}
 .doc svg text{fill:var(--ink);font-size:13px}.doc svg .m{fill:var(--mute);font-size:11.5px}.doc svg .arr{stroke:var(--mute);fill:none;stroke-width:1.5}.doc svg .ah{fill:var(--mute)}
@@ -152,6 +156,7 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
   <button role="tab" id="tab-subagents" aria-controls="p-subagents" aria-selected="false" tabindex="-1">Sub-agents</button>
   <button role="tab" id="tab-jury" aria-controls="p-jury" aria-selected="false" tabindex="-1">Jury</button>
   <button role="tab" id="tab-feed" aria-controls="p-feed" aria-selected="false" tabindex="-1">Feed</button>
+  <button role="tab" id="tab-reports" aria-controls="p-reports" aria-selected="false" tabindex="-1">Reports</button>
   <button role="tab" id="tab-about" aria-controls="p-about" aria-selected="false" tabindex="-1">How it works</button>
  </div>
  <span class="sr" aria-live="polite" id="live"></span>
@@ -160,16 +165,18 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 
 <section role="tabpanel" id="p-overview" aria-labelledby="tab-overview">
  <div class="home">
-  <div class="card lb"><div class="chart-head"><div><h2>Live leaderboard</h2><p class="sub">Global score out of 100, now. Budget: spent of all the caps together.</p></div></div>
+  <div class="card lb"><div class="chart-head"><div><h2>Live leaderboard</h2><p class="sub">Global score out of 100, from the latest graded snapshot. Budget: spent of all the caps together.</p></div><button id="evaluate" hidden>Evaluate now</button></div><p class="sub" id="evline" role="status" hidden></p>
    <div class="scroll"><table id="board"></table></div>
    <div class="legend"><span><i class="sw" style="background:var(--c-llm)"></i>model calls</span><span><i class="sw" style="background:var(--c-sim)"></i>simulations</span><span><i class="sw" style="background:var(--line)"></i>left</span></div>
    <p class="sub" id="jline" style="margin:12px 0 0"></p></div>
   <div class="stack">
-   <div class="card" data-chart="qt"><div class="chart-head"><div><h2 id="h-qt">Score over time</h2><p class="sub">Out of 100, a point per graded snapshot; each line ends on the live score.</p></div>
+   <div class="card" data-chart="qt"><div class="chart-head"><div><h2 id="h-qt">Score over time</h2><p class="sub">Out of 100, a point per graded snapshot (milestones or on demand); each line ends on the live score. <span class="why" tabindex="0" data-tip="Why so few points?
+The jury grades a snapshot of the work taken at milestones only: 5, 15, 30 min, then 1, 2, 4, 8 h… of race, and 5, 10, 20, 50 USD… of spend, 5 min after each; or on demand (Evaluate now). Between two grades nothing is measured: the line joins them.">Why so few points?</span></p></div>
     <div class="ctrls"><label>Score <select id="metric"><option value="final">global</option><option value="science">scientific quality</option><option value="artifacts">code and data</option><option value="efficiency">efficiency</option></select></label>
     <div class="seg" role="group" aria-label="Time axis scale"><button data-ax="qt" data-v="lin" aria-pressed="true">Linear</button><button data-ax="qt" data-v="log" aria-pressed="false">Log</button></div><button class="feat" data-feat="qt" aria-pressed="false" aria-label="Show score over time large">⤢ Enlarge</button></div></div>
     <div class="chart" id="c-qt"></div><details class="tv" id="tv-qt"><summary>Table view</summary><div class="scroll" id="t-qt" tabindex="0" role="region" aria-label="Score over time, as a table"></div></details></div>
-   <div class="card" data-chart="qc"><div class="chart-head"><div><h2 id="h-qc">Score against cost</h2><p class="sub">The same snapshots, against what the team had spent then.</p></div>
+   <div class="card" data-chart="qc"><div class="chart-head"><div><h2 id="h-qc">Score against cost</h2><p class="sub">The same graded snapshots, against what the team had spent then. <span class="why" tabindex="0" data-tip="Why so few points?
+The jury grades a snapshot of the work taken at milestones only: 5, 15, 30 min, then 1, 2, 4, 8 h… of race, and 5, 10, 20, 50 USD… of spend, 5 min after each; or on demand (Evaluate now). Between two grades nothing is measured: the line joins them.">Why so few points?</span></p></div>
     <div class="ctrls"><label>Cost <select data-cost="qc"><option value="all">model calls + simulations</option><option value="llm">model calls</option><option value="sim">simulations</option></select></label>
     <div class="seg" role="group" aria-label="Cost axis scale"><button data-ax="qc" data-v="lin" aria-pressed="false">Linear</button><button data-ax="qc" data-v="log" aria-pressed="true">Log</button></div><button class="feat" data-feat="qc" aria-pressed="false" aria-label="Show score against cost large">⤢ Enlarge</button></div></div>
     <div class="chart" id="c-qc"></div><details class="tv" id="tv-qc"><summary>Table view</summary><div class="scroll" id="t-qc" tabindex="0" role="region" aria-label="Score against cost, as a table"></div></details></div>
@@ -216,6 +223,9 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
  <label>Kind <select id="fkind"><option value="">all</option></select></label></div>
  <div class="scroll feed" tabindex="0" role="region" aria-label="All actions, scrollable"><table id="feedt"></table></div></div></section>
 
+<section role="tabpanel" id="p-reports" aria-labelledby="tab-reports" hidden><div class="card"><div class="chart-head"><div><h2>Reports</h2><p class="sub" id="rmeta">Each team's report as its agent writes it (report* and report/ in its workspace), refreshed live. The LaTeX source is shown as text; a PDF the team compiled opens in the browser's own viewer.</p></div>
+ <div class="ctrls"><label>Team <select id="rteam"></select></label><label>File <select id="rfile"></select></label><span id="rpdf"></span></div></div>
+ <div class="scroll report" id="rbody" tabindex="0" role="region" aria-label="The report, scrollable"></div></div></section>
 <section role="tabpanel" id="p-about" aria-labelledby="tab-about" hidden><div class="doc">
 <div class="card"><h2>A race</h2>
 <p>Each team is one AI provider, in its own harness (Claude Code, Codex CLI, Grok Build…), on the same research subject, with the same deadline and the same budgets: model calls in USD, Scaleway in EUR, Runpod in USD. The AI decides its own strategy: models, reasoning levels, sub-agents, machines and scope. Frontier gives it its tools, meters every cost, keeps the ledgers and checks the deliverables.</p>
@@ -370,7 +380,7 @@ const ptTip=(t,p,mn)=>`${mn} ${sc(p.q)} · ${t.model}\nsnapshot ${p.s.labels.joi
 function qTable(ser){return `<table><thead><tr><th>Team</th><th>Snapshot</th><th class="n">Time</th><th class="n">Model calls</th><th class="n">Simulations</th><th class="n">Science</th><th class="n">Code and data</th><th class="n">Efficiency</th><th class="n">Global</th></tr></thead><tbody>${
  ser.flatMap(({t,pts})=>pts.filter(p=>!p.s.live).map(({s})=>`<tr><td>${key(t)} ${esc(t.model)}</td><td>${esc(s.labels.join(', '))}</td><td class="n">${dur(s.minutes*60)}</td><td class="n">${money(s.llm_usd)}</td><td class="n">${money(s.simulation_usd)}</td><td class="n">${sc(s.quality)}</td><td class="n">${sc(s.artifacts)}</td><td class="n">${sc(s.efficiency)}</td><td class="n">${sc(s.final)}</td></tr>`)).join('')}</tbody></table>`}
 const raceHours=()=>(Date.parse(S.d.time)-T0)/3.6e6;
-const chartH=id=>narrow()?240:Math.round(Math.max(id===S.feat?220:150,(innerHeight-440)*(id===S.feat?0.6:0.4)));
+const chartH=id=>narrow()?240:Math.round(Math.max(id===S.feat?200:130,(innerHeight-500)*(id===S.feat?0.6:0.4)));
 // hours as d/h/min: 0.5 → 30 min, 30 → 1 d 6 h
 const HT=v=>{const m=Math.round(v*60),d=Math.floor(m/1440),h=Math.floor(m%1440/60),n=m%60;return [d&&d+' d',h&&h+' h',n&&n+' min'].filter(Boolean).join(' ')||'0';};
 const chartQT=()=>scoreChart('qt',s=>s.minutes/60,{log:S.ax.qt==='log',lo:5/60,xmax:S.ax.qt==='log'?0:raceHours(),xt:HT,xl:'time since the start'});
@@ -520,10 +530,38 @@ function head(){const now=Date.parse(S.d.time),dl=Math.max(...TEAMS.map(t=>Date.
 /* tabs: only the shown one is drawn */
 // the enlarged chart goes first, across the column; the two others share the row below
 function feature(){const st=document.querySelector('.stack');document.querySelectorAll('.stack>[data-chart]').forEach(c=>{const on=c.dataset.chart===S.feat;
- c.classList.toggle('big',on);c.querySelector('[data-feat]').setAttribute('aria-pressed',on);if(on)st.prepend(c)})}
-const VIEWS={overview:()=>{feature();board();jline();chartQT();chartQC();chartSP()},teams:()=>{board2();cards()},activity:()=>{chartGantt();chartModels()},subagents:subagents,jury:jury,feed:feed,about:()=>{}};
+ c.classList.toggle('big',on);c.querySelector('[data-feat]').setAttribute('aria-pressed',on);if(on&&st.firstElementChild!==c)st.prepend(c)})}
+/* reports: fetched for the team shown only, while the tab is open */
+function md(src){const inl=x=>esc(x).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/(^|\W)\*([^*]+)\*/g,'$1<i>$2</i>')
+  .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'<a href="$2" rel="noopener noreferrer" target="_blank">$1</a>');
+ const out=[],L=src.split('\n');let i=0;
+ while(i<L.length){const l=L[i];let m;
+  if(l.startsWith('```')){const b=[];for(i++;i<L.length&&!L[i].startsWith('```');i++)b.push(L[i]);i++;out.push(`<pre><code>${esc(b.join('\n'))}</code></pre>`)}
+  else if(m=l.match(/^(#{1,6})\s+(.*)/)){const n=Math.min(6,m[1].length+1);out.push(`<h${n}>${inl(m[2])}</h${n}>`);i++}
+  else if(/^\|.*\|\s*$/.test(l)){const R=[];for(;i<L.length&&/^\|/.test(L[i]);i++)if(!/^\|[\s:|-]+\|\s*$/.test(L[i]))R.push(L[i].slice(1,-1).split('|'));
+   out.push('<table>'+R.map((r,k)=>'<tr>'+r.map(c=>k?`<td>${inl(c.trim())}</td>`:`<th>${inl(c.trim())}</th>`).join('')+'</tr>').join('')+'</table>')}
+  else if(/^\s*([-*]|\d+\.)\s/.test(l)){const it=[],ol=/^\s*\d/.test(l);for(;i<L.length&&/^\s*([-*]|\d+\.)\s/.test(L[i]);i++)it.push(`<li>${inl(L[i].replace(/^\s*([-*]|\d+\.)\s/,''))}</li>`);out.push(`<${ol?'ol':'ul'}>${it.join('')}</${ol?'ol':'ul'}>`)}
+  else if(l.trim()){const b=[];for(;i<L.length&&L[i].trim()&&!/^(#|```|\||\s*([-*]|\d+\.)\s)/.test(L[i]);i++)b.push(L[i]);out.push(`<p>${inl(b.join(' '))}</p>`)}
+  else i++}
+ return out.join('')}
+let RQ=null,RK='';
+function reports(){const rt=$('rteam'),cur=rt.value||(TEAMS[0]||{}).name;
+ if(rt.options.length!==TEAMS.length)rt.innerHTML=TEAMS.map(t=>`<option value="${esc(t.name)}"${t.name===cur?' selected':''}>${esc(t.model)} · ${esc(t.harness_title)}</option>`).join('');
+ if(!cur||RQ)return;
+ RQ=fetch('api/report?team='+encodeURIComponent(cur),{cache:'no-store'}).then(r=>r.json()).then(r=>{RQ=null;const rf=$('rfile'),f0=rf.value,
+   files=r.files||[],key=cur+'|'+files.map(f=>f.path+f.written).join()+'|'+f0;
+  if(rf.options.length!==files.length||[...rf.options].some((o,k)=>o.value!==files[k].path))rf.innerHTML=files.map(f=>`<option${f.path===f0?' selected':''}>${esc(f.path)}</option>`).join('');
+  $('rpdf').innerHTML=(r.pdfs||[]).map(p=>`<a href="report/${encodeURIComponent(cur)}/${p.split('/').map(encodeURIComponent).join('/')}" target="_blank" rel="noopener">PDF: ${esc(p)}</a>`).join(' ');
+  if(key===RK)return;RK=key;const f=files.find(x=>x.path===rf.value)||files[0],b=$('rbody'),top=b.scrollTop;
+  b.innerHTML=!f?'<div class="empty">No report yet: the agent has not written one.</div>':
+   `<p class="sub">${esc(f.path)}, written ${esc(ago(f.written))} · ${num(f.text.length)} characters</p>`+(f.kind==='tex'?`<pre>${esc(f.text)}</pre>`:`<div class="md">${md(f.text)}</div>`);
+  b.scrollTop=top}).catch(()=>{RQ=null})}
+/* on-demand evaluation: offered only when something honors it (DIR/requests) */
+function evline(){const E=S.d.evaluate,b=$('evaluate'),l=$('evline');b.hidden=!E;l.hidden=!(E&&E.pending.length);
+ if(E){b.disabled=!!E.pending.length;if(E.pending.length)l.textContent='Evaluation asked: every running team is snapshotted now; its grades come when the judges answer.'}}
+const VIEWS={overview:()=>{feature();evline();board();jline();chartQT();chartQC();chartSP()},teams:()=>{board2();cards()},activity:()=>{chartGantt();chartModels()},subagents:subagents,jury:jury,feed:feed,reports:reports,about:()=>{}};
 function focusKey(f){if(!f||f===document.body)return null;if(f.id)return '#'+CSS.escape(f.id);if(f.tagName==='SUMMARY'&&f.parentElement.id)return '#'+CSS.escape(f.parentElement.id)+'>summary';
- for(const a of ['sort','pg','jpg','ax','v','only','pick'])if(f.dataset[a]!=null)return `[data-${a}="${CSS.escape(f.dataset[a])}"]`;return null}
+ for(const a of ['sort','pg','jpg','ax','v','only','pick','feat'])if(f.dataset[a]!=null)return `[data-${a}="${CSS.escape(f.dataset[a])}"]`;return null}
 /* a table that can scroll sideways is reachable by keyboard, named after its card */
 function scrollables(){document.querySelectorAll('.scroll:not([tabindex])').forEach(e=>{const h=e.closest('.card')&&e.closest('.card').querySelector('h2');
  e.tabIndex=0;e.setAttribute('role','region');e.setAttribute('aria-label',(h?h.textContent:'Table')+', scrollable')})}
@@ -548,6 +586,7 @@ document.addEventListener('click',e=>{const g=e.target.closest('[data-goto]');if
  else if(b.dataset.only)setHidden(new Set(TEAMS.map(t=>t.name).filter(n=>n!==b.dataset.only)));
  else if(b.id==='pk-all')setHidden(new Set());else if(b.id==='pk-none')setHidden(new Set(TEAMS.map(t=>t.name)));
  else if(b.dataset.ax){S.ax[b.dataset.ax]=b.dataset.v;document.querySelectorAll(`[data-ax="${b.dataset.ax}"]`).forEach(x=>x.setAttribute('aria-pressed',x===b));b.dataset.ax==='qt'?chartQT():chartQC()}
+ else if(b.id==='evaluate'){b.disabled=true;fetch('api/evaluate',{method:'POST'}).then(()=>load())}
  else if(b.dataset.feat){S.feat=b.dataset.feat;try{localStorage.setItem('fd.feat',S.feat)}catch(e){}VIEWS.overview();b.focus()}
  else if(b.dataset.sort){const k=b.dataset.sort;S.sort={k,dir:S.sort.k===k?-S.sort.dir:(k==='model'||k==='status'?1:-1)};board2()}
  else if(b.dataset.pg){S.page+=+b.dataset.pg;subagents()}
@@ -558,7 +597,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideTip();if($('pic
 document.querySelectorAll('select[data-cost]').forEach(s=>s.onchange=()=>{S.cost[s.dataset.cost]=s.value;s.dataset.cost==='qc'?chartQC():chartSP()});
 $('metric').onchange=e=>{S.metric=e.target.value;chartQT();chartQC()};
 for(const id of ['gby','gkind','gwin'])$(id).onchange=chartGantt;for(const id of ['msrc','mmode','mwin'])$(id).onchange=chartModels;
-$('tsort').onchange=cards;$('jwin').onchange=jury;$('fkind').onchange=feed;for(const id of ['steam','srole'])$(id).onchange=()=>{S.page=0;subagents()};
+$('tsort').onchange=cards;$('rteam').onchange=$('rfile').onchange=()=>{RK='';reports()};$('jwin').onchange=jury;$('fkind').onchange=feed;for(const id of ['steam','srole'])$(id).onchange=()=>{S.page=0;subagents()};
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',render);
 /* theme: auto (the device's), light or dark, kept per browser */
 const THEMES={auto:'◐ Auto',light:'☀ Light',dark:'☾ Dark'};

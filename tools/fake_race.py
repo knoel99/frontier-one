@@ -2,7 +2,7 @@
 """A fake race for the dashboard: plausible state directories for one team per provider, with no model call.
 
     python3 tools/fake_race.py DIR [--hours 24] [--seed 7] [--live]
-    python3 tools/fake_race.py DIR --replay [--speed 10] [--doubling 10] [--hours 72]   # a race from its start, faster
+    python3 tools/fake_race.py DIR --replay [--speed 100] [--doubling 1] [--hours 72]   # a race from its start, faster
     python3 -m frontier dashboard --root DIR
 
 It writes what the launcher, the gateway and the MCP server would have written over the first --hours of a race that
@@ -12,12 +12,13 @@ the time and spend milestones of frontier/snapshots.py with a made-up scientific
 Costs come from config/prices.toml. With --live it then keeps appending calls and actions in real time until stopped. With --replay the
 race starts now, empty, and its --hours of race are written as they happen on a clock of their own (DIR/clock.json, which
 the dashboard reads): SPEED race minutes per real minute at the start, the speed doubling every DOUBLING real minutes, so
-that the snapshots' milestones, which double too, come at a steady pace (72 h in about 50 min by default).
+that the snapshots' milestones, which double too, come at a steady pace (72 h in about 5 min by default).
 """
 
 from __future__ import annotations
 
 import argparse
+import bisect
 import datetime as dt
 import math
 import json
@@ -43,6 +44,21 @@ EDITS = ["src/train.py", "src/model.py", "src/eval.py", "report/report.md", "DEC
 MESSAGES = ["Baseline reproduced within 0.4 points of the paper.", "The ablation lowers the score: keeping attention.",
             "Moving the 3-seed sweep to a rented GPU.", "Report section 4 updated with the new table.",
             "Budget check: about half of the LLM budget left, keeping the frontier tier for writing only."]
+REPORT = [  # the sections a fake report fills in, in order; $...$ is LaTeX math in both versions
+    ("Abstract", "We train neural surrogates of the vorticity form of the 2D Navier-Stokes equations at $Re = 10^3$ "
+     "and compare them with a pseudo-spectral solver on accuracy, cost and long-horizon stability."),
+    ("Introduction", "Learned solvers promise orders of magnitude of speed-up, but their errors grow over long rollouts. "
+     "We measure that growth against the cost of the training data."),
+    ("Data", "Trajectories come from a pseudo-spectral solver on a $256 \\times 256$ periodic grid, "
+     "$\\partial_t \\omega + u \\cdot \\nabla \\omega = \\nu \\Delta \\omega + f$, with 1000 initial conditions."),
+    ("Method", "A Fourier neural operator with 4 layers and 32 modes, trained on one-step targets with a "
+     "rollout loss over 8 steps; the code is in `src/train.py`."),
+    ("Results", "Relative $L^2$ error of the vorticity after 50 steps, per run, on held-out initial conditions."),
+    ("Discussion", "The error halves with each tripling of the data until about 3 GPU hours, then the rollout loss dominates."),
+    ("AI contributions", "The lead agent wrote the solver and the training loop; sub-agents surveyed the literature and "
+     "reviewed the statistics."),
+    ("Reproducibility", "`bash reproduce.sh` regenerates every table and figure from a fresh checkout; see `DELIVERY.md`."),
+]
 TASKS = ["Survey the literature on the subject and list the 8 most relevant papers with one line each.",
          "Review src/train.py for bugs and data leakage; answer with a list of findings.",
          "Try to refute the result of table 2: rerun the evaluation logic by hand on 20 samples.",
@@ -263,7 +279,7 @@ class Team:
 
     def snapshots(self, end: dt.datetime) -> None:
         """A snapshot 5 minutes after each time and spend milestone, as the watchdog takes them, and its grade."""
-        r, due = self.rng, []
+        due = []
         minutes = [m for m in TIME_MINUTES] + [TIME_MINUTES[-1] * 2 ** k for k in range(1, 8)]
         due += [(self.start + dt.timedelta(minutes=m), label("time", m)) for m in minutes]
         cum, spends = 0.0, list(SPEND_USD)
@@ -271,22 +287,55 @@ class Team:
             cum += e["frontier.cost.usd"]
             while spends and cum >= spends[0]:
                 due.append((budget.parse_time(e["t"]), label("usd", spends.pop(0))))
-        q = 0.0
         for t, lab in sorted(due):
             t += dt.timedelta(minutes=5)
             if t >= end or (self.delivered_at and t > self.delivered_at):
                 continue
-            llm, sim = self.spend_at(t)
-            m = (t - self.start).total_seconds() / 60
-            commit = f"{r.getrandbits(160):040x}"
-            self.ev(t, "snapshot", labels=[lab], commit=commit, minutes=round(m, 2), llm_usd=round(llm, 4),
-                    simulation_usd=round(sim, 4), core_seconds=round(m * 60 * r.uniform(0.2, 0.9), 1), pdf={lab: "ok"})
-            work = m * self.speed - (180 if self.harness == "vibe" else 0)  # minutes of real work: Vibe's first sessions failed
-            if m >= 15:  # before, there is no report to grade
-                q = max(q - 4, min(100, self.skill * (1 - math.exp(-max(0, work) / self.tau)) + r.gauss(0, 2.5)))
-                arts = min(100, max(0.0, q * self.code + r.gauss(0, 3)))  # code and data follow the science, loosely
-                self.grades[commit] = {"scientific_quality": round(max(0.0, q), 1), "artifacts": round(arts, 1)}
-                self.graded.append((t, commit, lab))
+            self.snapshot(t, lab)
+
+    def work(self, m: float) -> float:
+        """Minutes of real work after m minutes of race: Vibe's first sessions failed."""
+        return m * self.speed - (180 if self.harness == "vibe" else 0)
+
+    def snapshot(self, t: dt.datetime, lab: str) -> dict:
+        """The snapshot taken at t and its grade, which follows the science so far without falling much below the
+        last one; returns the snapshot event."""
+        r = self.rng
+        llm, sim = self.spend_at(t)
+        m = (t - self.start).total_seconds() / 60
+        commit = f"{r.getrandbits(160):040x}"
+        self.ev(t, "snapshot", labels=[lab], commit=commit, minutes=round(m, 2), llm_usd=round(llm, 4),
+                simulation_usd=round(sim, 4), core_seconds=round(m * 60 * r.uniform(0.2, 0.9), 1), pdf={lab: "ok"})
+        if m >= 15:  # before, there is no report to grade
+            before = [g for g in sorted(self.graded) if g[0] <= t]
+            q = self.grades[before[-1][1]]["scientific_quality"] if before else 0.0
+            q = max(q - 4, min(100, self.skill * (1 - math.exp(-max(0, self.work(m)) / self.tau)) + r.gauss(0, 2.5)))
+            arts = min(100, max(0.0, q * self.code + r.gauss(0, 3)))  # code and data follow the science, loosely
+            self.grades[commit] = {"scientific_quality": round(max(0.0, q), 1), "artifacts": round(arts, 1)}
+            self.graded.append((t, commit, lab))
+        return self.events[-1]
+
+    def report(self, m: float) -> tuple[str, str] | None:
+        """The report after m minutes of race, as Markdown and LaTeX: its sections come with the work, a row of results
+        per hour; None before the agent starts writing."""
+        f = 1 - math.exp(-max(0, self.work(m)) / self.tau)
+        n = min(len(REPORT), int(f * len(REPORT) * 1.6))
+        if m < 15 or not n:
+            return None
+        err = 0.08 * (1.3 - self.skill / 100)
+        rows = [(f"run-{i + 1:02d}", err * 2 ** -(i / 3), 0.5 + i * 0.37) for i in range(min(12, int(m / 60)))]
+        title = f"Neural surrogates for 2D incompressible flow: {self.main}"
+        md = [f"# {title}", ""]
+        tex = [r"\documentclass{article}", r"\usepackage{amsmath,booktabs}", rf"\title{{{title}}}", r"\begin{document}", r"\maketitle"]
+        for head, body in REPORT[:n]:
+            md += [f"## {head}", "", body, ""]
+            tex += [rf"\section{{{head}}}", body.replace("**", "").replace("`", "").replace("%", r"\%"), ""]
+            if head == "Results" and rows:
+                md += ["| run | relative L2 error | GPU hours |", "|---|---|---|"]
+                md += [f"| {a} | {b:.4f} | {c:.2f} |" for a, b, c in rows] + [""]
+                tex += [r"\begin{tabular}{lrr}\toprule run & relative $L^2$ error & GPU hours \\ \midrule"]
+                tex += [rf"{a} & {b:.4f} & {c:.2f} \\" for a, b, c in rows] + [r"\bottomrule\end{tabular}", ""]
+        return "\n".join(md), "\n".join(tex + [r"\end{document}", ""])
 
     def write(self) -> None:
         s = {"name": self.name, "harness": self.harness, "provider": self.p, "providers": [self.p], "tier": "frontier",
@@ -324,36 +373,48 @@ def jury(root: pathlib.Path, teams: list[Team], cfg: dict, rng: random.Random, e
 
 
 def jury_rows(teams: list[Team], cfg: dict, rng: random.Random, end: dt.datetime) -> tuple[list[dict], list[dict]]:
-    """Each judge's calls and verdicts for every graded snapshot, a few minutes after it, never on its own provider."""
+    """Each judge's calls and verdicts for every graded snapshot."""
+    return verdicts([(tm, *g) for tm in teams for g in tm.graded], cfg, rng, end)
+
+
+def verdicts(graded: list, cfg: dict, rng: random.Random, end: dt.datetime) -> tuple[list[dict], list[dict]]:
+    """Each judge's calls and verdicts for these (team, time, commit, label), a few minutes after the snapshot, never
+    on its own provider."""
     calls, events = [], []
-    for tm in teams:
-        for t, commit, lab in tm.graded:
-            g = tm.grades[commit]
-            for j in [p for p in JUDGES if p != tm.p and p in cfg["providers"]]:
-                start = t + dt.timedelta(minutes=rng.uniform(2, 10))
-                secs = rng.uniform(30, 150)
-                stop = start + dt.timedelta(seconds=secs)
-                if stop >= end:
-                    continue
-                model = cfg["providers"][j]["tiers"]["frontier"]
-                inp = rng.randint(15000, 45000)
-                usage = {"input": inp, "cached": inp // 2, "output": rng.randint(2000, 6000)}
-                usd, _ = budget.llm_cost(j, model, usage, 1.0, at=stop)
-                calls.append({"t": iso(stop), "frontier.source": "jury", "gen_ai.agent.name": f"judge:{j}", "gen_ai.provider.name": j,
-                              "gen_ai.request.model": model, "frontier.mode": "", "gen_ai.usage.input_tokens": usage["input"],
-                              "gen_ai.usage.output_tokens": usage["output"], "gen_ai.usage.cache_read.input_tokens": usage["cached"],
-                              "gen_ai.usage.cache_write.input_tokens": 0, "gen_ai.usage.reasoning.output_tokens": usage["output"] // 2,
-                              "frontier.cost.usd": round(usd, 6), "frontier.price_exact": True})
-                events.append({"t": iso(stop), "event": "verdict", "judge": j, "model": model, "team": tm.name, "commit": commit,
-                               "label": lab, "scientific_quality": round(min(100, max(0, g["scientific_quality"] + rng.gauss(0, 3))), 1),
-                               "artifacts": round(min(100, max(0, g["artifacts"] + rng.gauss(0, 3))), 1),
-                               "seconds": round(secs), "usd": round(usd, 6)})
+    for tm, t, commit, lab in graded:
+        g = tm.grades[commit]
+        for j in [p for p in JUDGES if p != tm.p and p in cfg["providers"]]:
+            start = t + dt.timedelta(minutes=rng.uniform(2, 10))
+            secs = rng.uniform(30, 150)
+            stop = start + dt.timedelta(seconds=secs)
+            if stop >= end:
+                continue
+            model = cfg["providers"][j]["tiers"]["frontier"]
+            inp = rng.randint(15000, 45000)
+            usage = {"input": inp, "cached": inp // 2, "output": rng.randint(2000, 6000)}
+            usd, _ = budget.llm_cost(j, model, usage, 1.0, at=stop)
+            calls.append({"t": iso(stop), "frontier.source": "jury", "gen_ai.agent.name": f"judge:{j}", "gen_ai.provider.name": j,
+                          "gen_ai.request.model": model, "frontier.mode": "", "gen_ai.usage.input_tokens": usage["input"],
+                          "gen_ai.usage.output_tokens": usage["output"], "gen_ai.usage.cache_read.input_tokens": usage["cached"],
+                          "gen_ai.usage.cache_write.input_tokens": 0, "gen_ai.usage.reasoning.output_tokens": usage["output"] // 2,
+                          "frontier.cost.usd": round(usd, 6), "frontier.price_exact": True})
+            events.append({"t": iso(stop), "event": "verdict", "judge": j, "model": model, "team": tm.name, "commit": commit,
+                           "label": lab, "scientific_quality": round(min(100, max(0, g["scientific_quality"] + rng.gauss(0, 3))), 1),
+                           "artifacts": round(min(100, max(0, g["artifacts"] + rng.gauss(0, 3))), 1),
+                           "seconds": round(secs), "usd": round(usd, 6)})
     return calls, events
 
 
-def replay(root: pathlib.Path, teams: list[Team], jcalls: list[dict], jevents: list[dict], clock: dict) -> None:
-    """Write each team's race and the jury's work as the race's clock reaches them; a snapshot's grade is published
-    once its judges have answered."""
+def replay(root: pathlib.Path, teams: list[Team], jcalls: list[dict], jevents: list[dict], clock: dict, cfg: dict,
+           rng: random.Random, end: dt.datetime) -> None:
+    """Write each team's race, its report and the jury's work as the race's clock reaches them; a snapshot's grade is
+    published once its judges have answered. A request the dashboard leaves in DIR/requests takes a graded snapshot
+    of every running team at once."""
+    rq = root / "requests"
+    rq.mkdir(parents=True, exist_ok=True)
+    for f in rq.glob("*.json"):
+        f.unlink()
+    asked = 0
     jd = root / "jury"
     jd.mkdir(exist_ok=True)
     for f in [jd / "llm.jsonl", jd / "events.jsonl", jd / ".llm.jsonl.head", jd / ".events.jsonl.head"]:
@@ -370,6 +431,8 @@ def replay(root: pathlib.Path, teams: list[Team], jcalls: list[dict], jevents: l
     for tm in teams:
         for f in ["llm.jsonl", "events.jsonl", ".llm.jsonl.head", ".events.jsonl.head", "delivery.json"]:
             (tm.d / f).unlink(missing_ok=True)
+        for f in [tm.d / "ws" / "report.md", tm.d / "ws" / "report" / "report.tex"]:
+            f.unlink(missing_ok=True)
         for sub in ("runners", "sessions"):
             (tm.d / sub).mkdir(exist_ok=True)
             for f in (tm.d / sub).glob("*.log"):
@@ -380,14 +443,42 @@ def replay(root: pathlib.Path, teams: list[Team], jcalls: list[dict], jevents: l
         budget.write_json(tm.d / "budgets.json", {k: v for k, v in tm.caps.items() if not k.startswith("frozen")})
         budget.write_json(tm.d / "resources.json", [])
         queues[tm.name] = {"llm": sorted(tm.llm, key=lambda e: e["t"]), "events": sorted(tm.events, key=lambda e: e["t"]),
-                           "i": {"llm": 0, "events": 0}, "res": "", "logs": set(), "delivered": False}
+                           "i": {"llm": 0, "events": 0}, "res": "", "logs": set(), "delivered": False, "report": None}
     jq = {"llm": sorted(jcalls, key=lambda e: e["t"]), "events": sorted(jevents, key=lambda e: e["t"]), "i": {"llm": 0, "events": 0}}
     published: dict[str, dict] = {}
     print(f"live: replaying {len(teams)} teams; Ctrl-C to stop", flush=True)
     while True:
-        now = iso(race_clock(clock, budget.now()))
+        at = race_clock(clock, budget.now())
+        now = iso(at)
+        for f in sorted(rq.glob("evaluate-*.json")):
+            asked += 1
+            new = []
+            for tm in teams:
+                if at >= end or (tm.delivered_at and at >= tm.delivered_at):
+                    continue
+                ev = tm.snapshot(at, f"on demand {asked}")
+                q = queues[tm.name]
+                bisect.insort(q["events"], ev, lo=q["i"]["events"], key=lambda e: e["t"])
+                if tm.graded[-1][1] == ev["commit"]:
+                    new.append((tm, *tm.graded[-1]))
+                    ready[ev["commit"]] = now
+            calls, verdict = verdicts(new, cfg, rng, end)
+            for kind, rows in (("llm", calls), ("events", verdict)):
+                i = jq["i"][kind]
+                jq[kind] = jq[kind][:i] + sorted(jq[kind][i:] + rows, key=lambda e: e["t"])
+            for v in verdict:
+                ready[v["commit"]] = max(ready[v["commit"]], v["t"])
+            print(f"{now}: on-demand evaluation {asked}, {len(new)} teams graded", flush=True)
+            f.unlink()
         for tm in teams:
             q = queues[tm.name]
+            m = (min(at, tm.delivered_at or at) - tm.start).total_seconds() / 60
+            rep = tm.report(m)
+            if rep and rep[0] != q["report"]:
+                (tm.d / "ws" / "report").mkdir(parents=True, exist_ok=True)
+                (tm.d / "ws" / "report.md").write_text(rep[0])
+                (tm.d / "ws" / "report" / "report.tex").write_text(rep[1])
+                q["report"] = rep[0]
             for kind, f in (("llm", "llm.jsonl"), ("events", "events.jsonl")):
                 rows, i = q[kind], q["i"][kind]
                 while i < len(rows) and rows[i]["t"] <= now:
@@ -452,8 +543,8 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--live", action="store_true")
     ap.add_argument("--replay", action="store_true", help="start the race now and write it as it happens")
-    ap.add_argument("--speed", type=float, default=10, help="with --replay: race minutes per real minute at the start")
-    ap.add_argument("--doubling", type=float, default=10, help="with --replay: real minutes for the speed to double (0: never)")
+    ap.add_argument("--speed", type=float, default=100, help="with --replay: race minutes per real minute at the start")
+    ap.add_argument("--doubling", type=float, default=1, help="with --replay: real minutes for the speed to double (0: never)")
     a = ap.parse_args()
     root = pathlib.Path(a.root)
     cfg = load_config()
@@ -473,7 +564,7 @@ def main() -> int:
         budget.write_json(root / "clock.json", clock)
         real = (real_time(clock, end) - start).total_seconds() / 60
         print(f"replay: {hours:g} h of race in {real:.0f} min, from {iso(start)}", flush=True)
-        replay(root, teams, jcalls, jevents, clock)
+        replay(root, teams, jcalls, jevents, clock, cfg, rng, end)
         return 0
     teams = [Team(root, p, cfg, random.Random(rng.random()), start, hours) for p in cfg["providers"]]
     for tm in teams:

@@ -39,9 +39,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import llm as llm_mod
 from . import scoring
-from .budget import Budget, now, parse_time, read_json, read_jsonl
+from .budget import Budget, now, parse_time, read_json, read_jsonl, write_json
 from .config import ROOT, load_config
 from .mission import STATE_ROOT as ROOT_DEFAULT
+from .mission import report_files
 
 FEED = 300  # actions kept in the global feed
 LINK_MINUTES = 15
@@ -365,7 +366,64 @@ def snapshot(root: pathlib.Path) -> dict:
     return {"time": at.isoformat(timespec="seconds"), "root": str(root), "teams": teams, "jury": jury_state(root / "jury"),
             "feed": feed[::-1],
             "subagents": history, "activities": [a for t in teams for a in t["activities"]],
-            "model_calls": [{**c, "team": t["name"]} for t in teams for c in t.get("model_calls", [])]}
+            "model_calls": [{**c, "team": t["name"]} for t in teams for c in t.get("model_calls", [])],
+            "evaluate": evaluate_state(root)}
+
+
+REPORT_MAX = 400_000  # characters of one report file sent to the page
+
+
+def evaluate_state(root: pathlib.Path) -> dict | None:
+    """On-demand grading: DIR/requests exists when something honors the requests (tools/fake_race.py --replay does;
+    the framework's jury grades at the milestones only), and holds the requests not yet taken."""
+    d = root / "requests"
+    if not d.is_dir():
+        return None
+    return {"pending": sorted(read_json(f, {}).get("requested_at", "") for f in d.glob("evaluate-*.json"))}
+
+
+def request_evaluation(root: pathlib.Path) -> bool:
+    """Ask for a graded snapshot of every running team now; False when one is already pending or nobody honors it."""
+    st = evaluate_state(root)
+    if st is None or st["pending"]:
+        return False
+    at = race_now(root)
+    write_json(root / "requests" / f"evaluate-{at.strftime('%Y%m%dT%H%M%S')}.json", {"requested_at": at.isoformat(timespec="seconds")})
+    return True
+
+
+def team_dir(root: pathlib.Path, name: str) -> pathlib.Path | None:
+    """A team's state directory from a name the page sent: only a direct child of DIR with a mission."""
+    d = root / name
+    return d if re.fullmatch(r"[\w.-]+", name) and not name.startswith(".") and (d / "mission.json").is_file() else None
+
+
+def reports(root: pathlib.Path, name: str) -> dict | None:
+    """A team's report as it stands: its Markdown, Quarto and LaTeX sources (frontier.mission.report_files) with their
+    times, and the PDFs next to them, which the page opens by their path."""
+    d = team_dir(root, name)
+    if d is None:
+        return None
+    ws = pathlib.Path(read_json(d / "mission.json", {}).get("workspace") or d / "ws")
+    if not ws.is_dir():
+        return {"files": [], "pdfs": []}
+    clock = read_json(root / "clock.json")  # a replayed race: its files were written on its own clock
+
+    def written(f: pathlib.Path) -> str:
+        t = dt.datetime.fromtimestamp(f.stat().st_mtime, dt.UTC)
+        return (race_clock(clock, t) if clock else t).isoformat(timespec="seconds")
+    files = [{"path": f.relative_to(ws).as_posix(), "kind": f.suffix[1:].lower(), "written": written(f),
+              "text": f.read_text(errors="replace")[:REPORT_MAX]}
+             for f in sorted(report_files(ws), key=lambda f: (f.suffix.lower() == ".tex", f.as_posix()))]
+    pdfs = [f for f in [*ws.glob("report*.pdf"), *(ws / "report").rglob("*.pdf")] if f.is_file()]
+    return {"files": files, "pdfs": sorted(f.relative_to(ws).as_posix() for f in pdfs)}
+
+
+def report_pdf(root: pathlib.Path, name: str, path: str) -> pathlib.Path | None:
+    r = reports(root, name)
+    if r is None or path not in r["pdfs"]:
+        return None
+    return pathlib.Path(read_json(root / name / "mission.json", {}).get("workspace") or root / name / "ws") / path
 
 
 def jury_state(d: pathlib.Path) -> dict:
@@ -426,6 +484,7 @@ PAGE = pathlib.Path(__file__).with_name("dashboard.html").read_text().replace(
 # The page runs its own inline script and style only, talks to its own origin only, and is never framed.
 DIAGRAMS = ROOT / "docs" / "diagrams"  # the Archify diagrams the How it works tab shows, under /diagrams/<name>
 DIAGRAM = re.compile(r"/diagrams/([a-z0-9-]+\.(png|html))")
+PDF = re.compile(r"/report/([\w.-]+)/(.+\.pdf)")
 DIAGRAM_CSP = "default-src 'self' 'unsafe-inline' data: blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 CSP = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; "
        "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
@@ -456,7 +515,8 @@ class _Handler(BaseHTTPRequestHandler):
         if not (ok or session):
             return self._deny("this login link has expired; ask for a new one (tools/race_vm.py link)")
         # Lax, not Strict: a link opened from another site (a chat, a mail) is a cross-site navigation, and a Strict cookie
-        # set on it is not sent on the redirect that follows. The dashboard only answers GET: Lax keeps it from other sites.
+        # set on it is not sent on the redirect that follows. Lax is not sent on a cross-site POST either: the one write
+        # (do_POST) stays out of other sites' reach.
         self.send_response(303)
         self.send_header("Location", "/")
         self.send_header("Cache-Control", "no-store")
@@ -465,6 +525,21 @@ class _Handler(BaseHTTPRequestHandler):
                          "HttpOnly; SameSite=Lax" + ("; Secure" if https else ""))
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def _session_ok(self) -> bool:
+        cookie = SimpleCookie(self.headers.get("Cookie", "")).get("frontier_dashboard")
+        return not self.token or bool(cookie and _valid_session(self.token, cookie.value))
+
+    def do_POST(self):
+        """The one write: ask for an on-demand evaluation. A session cookie (SameSite=Lax: never sent by a cross-site
+        POST) and, when the browser states it, an Origin of this host."""
+        origin = urllib.parse.urlsplit(self.headers.get("Origin", "")).netloc
+        if not self._session_ok() or (origin and origin != self.headers.get("Host", "")):
+            return self._deny("no session")
+        if urllib.parse.urlsplit(self.path).path != "/api/evaluate":
+            return self._deny("no such action")
+        ok = request_evaluation(self.root)
+        self._reply(json.dumps({"requested": ok}).encode(), "application/json", status=200 if ok else 409)
 
     def do_GET(self):
         https = self.headers.get("X-Forwarded-Proto") == "https"  # behind Caddy (tools/race_vm.py)
@@ -477,7 +552,19 @@ class _Handler(BaseHTTPRequestHandler):
             if not session:
                 return self._deny("open the dashboard with a login link (tools/race_vm.py link)")
         csp, cache = CSP, "no-store"
-        if m := DIAGRAM.fullmatch(urllib.parse.urlsplit(self.path).path):
+        url = urllib.parse.urlsplit(self.path)
+        if m := PDF.fullmatch(url.path):
+            f = report_pdf(self.root, urllib.parse.unquote(m.group(1)), urllib.parse.unquote(m.group(2)))
+            if f is None:
+                return self._deny("no such report")
+            # the browser's own PDF viewer draws it: nothing to compile or render on the server
+            body, ctype, csp = f.read_bytes(), "application/pdf", "default-src 'none'; frame-ancestors 'none'"
+        elif url.path == "/api/report":
+            r = reports(self.root, urllib.parse.parse_qs(url.query).get("team", [""])[0])
+            if r is None:
+                return self._deny("no such team")
+            body, ctype = json.dumps(r, separators=(",", ":")).encode(), "application/json"
+        elif m := DIAGRAM.fullmatch(url.path):
             f = DIAGRAMS / m.group(1)
             if not f.is_file():
                 return self._deny("no such diagram")
@@ -487,10 +574,14 @@ class _Handler(BaseHTTPRequestHandler):
             body, ctype = json.dumps(snapshot(self.root), separators=(",", ":")).encode(), "application/json"
         else:
             body, ctype = PAGE.encode(), "text/html; charset=utf-8"
-        zipped = "gzip" in self.headers.get("Accept-Encoding", "") and ctype != "image/png"
+        self._reply(body, ctype, csp, cache, https)
+
+    def _reply(self, body: bytes, ctype: str, csp: str = CSP, cache: str = "no-store", https: bool = False,
+               status: int = 200) -> None:
+        zipped = "gzip" in self.headers.get("Accept-Encoding", "") and ctype not in ("image/png", "application/pdf")
         if zipped:  # the state of a long race is megabytes of JSON, fetched every few seconds
             body = gzip.compress(body, 5)
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Cache-Control", cache)
         self.send_header("Content-Security-Policy", csp)
