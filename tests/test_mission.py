@@ -441,6 +441,20 @@ def test_dashboard_snapshot(tmp_path, cfg):
     assert snap["feed"][0]["team"] == "t"
 
 
+def test_dashboard_joins_each_snapshot_with_its_grade_and_shows_an_ungraded_one_without(tmp_path, cfg):
+    from frontier import dashboard
+
+    info = mission.prepare(_mission(tmp_path), ping=False, offers=False)
+    run = Run(cfg, workspace=info["workspace"], run_id="x", log_dir=info["state"], settings=info["settings"])
+    for c in ("aaa", "bbb"):
+        run.log(event="snapshot", labels=["1h"], commit=c, minutes=60, llm_usd=1.5, simulation_usd=0.5)
+    (tmp_path / "jury").mkdir()
+    (tmp_path / "jury" / "snapshots.json").write_text(json.dumps({"t": {"aaa": 42.5}}))
+    snaps = dashboard.snapshot(tmp_path)["teams"][0]["snapshots"]
+    assert [(x["commit"], x["quality"]) for x in snaps] == [("aaa", 42.5), ("bbb", None)]
+    assert snaps[0]["llm_usd"] == 1.5 and snaps[0]["simulation_usd"] == 0.5
+
+
 def test_dashboard_subagent_history(tmp_path, cfg):
     from frontier import dashboard
 
@@ -527,6 +541,10 @@ def test_dashboard_with_a_token_serves_only_the_link_that_holds_it(tmp_path):
         assert code == 200 and b"<html" in body.lower() and "HttpOnly" in cookie
         code, _, body = get("/api/state", cookie.split(";")[0])
         assert code == 200 and json.loads(body)["teams"] == []
+        req = urllib.request.Request(base + "/api/state", headers={"Cookie": cookie.split(";")[0], "Accept-Encoding": "gzip"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            import gzip
+            assert r.headers["Content-Encoding"] == "gzip" and json.loads(gzip.decompress(r.read()))["teams"] == []
         assert get("/api/state", "frontier_dashboard=wrong")[0] == 403
     finally:
         srv.shutdown()

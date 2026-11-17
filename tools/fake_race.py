@@ -6,14 +6,16 @@
 
 It writes what the launcher, the gateway and the MCP server would have written over the first --hours of a race that
 started --hours ago: mission.json, budgets.json, the hash-chained llm.jsonl and events.jsonl (through budget.py, so
-the dashboard finds them intact), resources.json, runners/<id>.log and the harness session logs. Costs come from
-config/prices.toml. With --live it then keeps appending calls and actions in real time until stopped.
+the dashboard finds them intact), resources.json, runners/<id>.log and the harness session logs, and the snapshots at
+the time and spend milestones of frontier/snapshots.py with a made-up scientific quality in DIR/jury/snapshots.json.
+Costs come from config/prices.toml. With --live it then keeps appending calls and actions in real time until stopped.
 """
 
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import math
 import json
 import pathlib
 import random
@@ -24,6 +26,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from frontier import budget
 from frontier.config import load_config
 from frontier.mission import NATIVE_HARNESS
+from frontier.snapshots import SPEND_USD, TIME_MINUTES, label
 
 TOOLS = ["budget_status", "scw_offers", "rp_offers", "api_docs", "sympy", "frontier_plan", "infra_resources", "mission_status"]
 COMMANDS = ["ls subject/", "pdftotext subject/subject.pdf - | head -120", "pip install torch==2.9.1 datasets==4.2.0",
@@ -64,6 +67,8 @@ class Team:
         self.cloud = rng.choice(["scaleway", "runpod", "both", "both", "none"])
         self.share = rng.uniform(0.2, 0.6) if provider != "openai" else 0.95  # of the LLM cap spent by the end; one team burns
         self.hours, self.refused = hours, False
+        self.skill, self.tau = rng.uniform(35, 85), rng.uniform(150, 700)  # where its science levels off, and how fast
+        self.grades: dict[str, float] = {}
         self.events: list[dict] = []
         self.llm: list[dict] = []
         self.resources: list[dict] = []
@@ -230,6 +235,40 @@ class Team:
         self.caps.update(frozen=True, frozen_llm_usd=round(self.spent, 6))
         self.delivery = rec
 
+    def spend_at(self, t: dt.datetime) -> tuple[float, float]:
+        """(model calls USD, simulations USD) at `t`, EUR counted at par as frontier/snapshots.py does."""
+        llm = sum(e["frontier.cost.usd"] for e in self.llm if e["t"] <= iso(t))
+        sim = 0.0
+        for r in self.resources:
+            a, b = budget.parse_time(r["created"]), min(budget.parse_time(r.get("deleted_at")) or t, t)
+            sim += max(0.0, (b - a).total_seconds() / 3600) * (r.get("eur_per_hour") or r.get("usd_per_hour") or 0)
+        return llm, sim
+
+    def snapshots(self, end: dt.datetime) -> None:
+        """A snapshot 5 minutes after each time and spend milestone, as the watchdog takes them, and its grade."""
+        r, due = self.rng, []
+        minutes = [m for m in TIME_MINUTES] + [TIME_MINUTES[-1] * 2 ** k for k in range(1, 8)]
+        due += [(self.start + dt.timedelta(minutes=m), label("time", m)) for m in minutes]
+        cum, spends = 0.0, list(SPEND_USD)
+        for e in sorted(self.llm, key=lambda e: e["t"]):
+            cum += e["frontier.cost.usd"]
+            while spends and cum >= spends[0]:
+                due.append((budget.parse_time(e["t"]), label("usd", spends.pop(0))))
+        q = 0.0
+        for t, lab in sorted(due):
+            t += dt.timedelta(minutes=5)
+            if t >= end or (self.delivered_at and t > self.delivered_at):
+                continue
+            llm, sim = self.spend_at(t)
+            m = (t - self.start).total_seconds() / 60
+            commit = f"{r.getrandbits(160):040x}"
+            self.ev(t, "snapshot", labels=[lab], commit=commit, minutes=round(m, 2), llm_usd=round(llm, 4),
+                    simulation_usd=round(sim, 4), core_seconds=round(m * 60 * r.uniform(0.2, 0.9), 1), pdf={lab: "ok"})
+            work = m - (180 if self.harness == "vibe" else 0)  # minutes of real work: Vibe's first sessions failed
+            if m >= 15:  # before, there is no report to grade
+                q = max(q - 4, min(100, self.skill * (1 - math.exp(-max(0, work) / self.tau)) + r.gauss(0, 2.5)))
+                self.grades[commit] = round(max(0.0, q), 1)
+
     def write(self) -> None:
         s = {"name": self.name, "harness": self.harness, "provider": self.p, "providers": [self.p], "tier": "frontier",
              "reasoning": "high", "workspace": str(self.d / "ws"), "state": str(self.d), "fake": True}
@@ -284,10 +323,13 @@ def main() -> int:
     teams = [Team(root, p, cfg, random.Random(rng.random()), start, a.hours) for p in NATIVE_HARNESS if p in cfg["providers"]]
     for tm in teams:
         tm.simulate(end)
+        tm.snapshots(end)
         tm.write()
         st = budget.Budget(tm.d).status()
         print(f"{tm.name:22s} {len(tm.llm):5d} calls  {st['llm']['spent_usd']:7.2f} USD  {len(tm.resources)} machine(s)  "
               f"{max(tm.sessions)} session(s)  ledgers {st['ledgers_intact']}")
+    (root / "jury").mkdir(exist_ok=True)
+    budget.write_json(root / "jury" / "snapshots.json", {tm.name: tm.grades for tm in teams})
     if a.live:
         print("live: appending calls and actions; Ctrl-C to stop", flush=True)
         live(teams, rng)

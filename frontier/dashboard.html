@@ -1,101 +1,326 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Race dashboard</title>
 <style>
-:root{--bg:#f7f7f5;--card:#fff;--ink:#1d1d1b;--mute:#6b6b66;--line:#e3e2dc;--acc:#0f766e;--warn:#b45309;--bad:#b91c1c}
-@media (prefers-color-scheme:dark){:root{--bg:#141413;--card:#1f1f1d;--ink:#ecebe6;--mute:#9a998f;--line:#33332f;--acc:#2dd4bf;--warn:#f59e0b;--bad:#f87171}}
-body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
-main{max-width:1280px;margin:auto;padding:16px}
-h1{font-size:20px;margin:4px 0 2px}.mute{color:var(--mute)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px;margin:12px 0}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
-.card h2{font-size:16px;margin:0 0 4px}.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:13px}
-.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:2px 0 6px}.bar i{display:block;height:100%;background:var(--acc)}
-.bar.warn i{background:var(--warn)}.bar.bad i{background:var(--bad)}
-table{width:100%;border-collapse:collapse;font-size:12.5px}td,th{padding:3px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-.tag{font-size:11px;padding:1px 6px;border-radius:9px;border:1px solid var(--line);white-space:nowrap}
-.feed td:nth-child(1){white-space:nowrap;color:var(--mute)}.feed{max-height:560px;overflow:auto;display:block}
-svg{width:100%;height:60px}.ok{color:var(--acc)}.ko{color:var(--bad)}
-</style></head><body><main>
-<h1>Race dashboard</h1><div class="mute" id="meta"></div>
-<div class="grid" id="teams"></div>
-<div class="card" style="margin-bottom:12px"><h2>Activity timeline</h2>
-<div class="mute">Group by <select id="gby"><option value="provider">provider</option><option value="team">team</option>
-<option value="kind">kind (aggregated)</option></select>
-window <select id="gwin"><option value="0">all</option><option value="21600">last 6 h</option><option value="3600">last hour</option>
-<option value="900">last 15 min</option></select> · bars: harness sessions, sub-agents, cloud machines; hover for details</div>
-<div id="gantt" style="overflow-x:auto"></div></div>
-<div class="card" style="margin-bottom:12px"><h2>Models over time</h2>
-<div class="mute">One row per team and model, one mark per model call (key checks at the start left out). <span style="color:#e11d48">▮</span> fast modes
-(fast, priority, ultrafast, highspeed, flashx) · <span style="color:#8a8a84">■</span> flex · other colours: standard, by team.
-Hover for time, mode, source and cost.</div>
-<div id="models" style="overflow-x:auto"></div></div>
-<div class="card" style="margin-bottom:12px"><h2>Sub-agents (latest first)</h2>
-<div class="mute" id="subsum"></div><div style="overflow:auto"><table><thead><tr><th>start</th><th>team</th><th>agent</th>
-<th>model</th><th>effort</th><th>mode</th><th>time</th><th>calls</th><th>tools</th><th>in (cached)</th><th>out (reasoning)</th><th>USD</th>
-<th>status</th><th>task</th></tr></thead><tbody id="subs"></tbody></table></div></div>
-<div class="card"><h2>All actions (latest first)</h2><table class="feed"><tbody id="feed"></tbody></table></div>
-</main><script>
-const fmt=(x,d=4)=>x==null?'–':Number(x).toFixed(d), esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function bar(v,cap){if(cap==null||!cap)return '';const p=Math.min(100,100*v/cap);return `<div class="bar ${p>90?'bad':p>70?'warn':''}"><i style="width:${p}%"></i></div>`}
-function spark(series,cap){if(!series.length)return '';const t0=Date.parse(series[0][0]),t1=Math.max(Date.parse(series[series.length-1][0]),t0+1);
- const ymax=Math.max(cap||0,series[series.length-1][1])||1;const pts=series.map(([t,v])=>`${(100*(Date.parse(t)-t0)/(t1-t0)).toFixed(1)},${(60-58*v/ymax).toFixed(1)}`).join(' ');
- return `<svg viewBox="0 0 100 60" preserveAspectRatio="none"><polyline fill="none" stroke="currentColor" stroke-width="1.2" vector-effect="non-scaling-stroke" points="${pts}"/></svg>`}
-function team(t){const s=t.status,l=s.llm,c=s.cloud,tk=t.tokens;
- const state=t.delivered?'<span class="tag ok">delivered</span>':t.running?`<span class="tag">session ${t.running.n} running</span>`:'<span class="tag">idle</span>';
- const integ=Object.values(s.ledgers_intact||{}).every(v=>v===true)?'<span class="ok">ledgers intact</span>':'<span class="ko">LEDGER TAMPERED</span>';
- const alive=t.alive.map(r=>`<tr><td>${esc(r.provider)}</td><td>${esc(r.type||'')}</td><td>${fmt(r.price_h,3)}/h</td><td>${r.hours} / ${r.max_hours} h</td></tr>`).join('');
- const jobs=t.jobs.map(a=>`<div class="mute">${esc(a.text)}</div>`).join('');
- const models=Object.entries(l.by_model).map(([m,v])=>`<tr><td>${esc(m)}</td><td>${v.calls}</td><td>${v.input}</td><td>${v.output}</td><td>${fmt(v.usd)}</td></tr>`).join('');
- return `<div class="card"><h2>${esc(t.name)} ${state}</h2><div class="mute">${esc(t.harness)} · ${esc(t.provider)} · ${esc(t.tier)}/${esc(t.reasoning)} · ${integ}</div>
- <div class="kv"><span>LLM</span><span>${fmt(l.spent_usd)} / ${l.cap_usd??'–'} USD ${l.in_flight_usd?`(+${fmt(l.in_flight_usd)} in flight)`:''}</span></div>${bar(l.spent_usd,l.cap_usd)}
- <div class="kv"><span>Scaleway</span><span>${fmt(c.scaleway.spent,3)} / ${c.scaleway.cap??'–'} EUR (committed ${fmt(c.scaleway.committed,3)})</span></div>${bar(c.scaleway.spent+c.scaleway.committed,c.scaleway.cap)}
- <div class="kv"><span>Runpod</span><span>${fmt(c.runpod.spent,3)} / ${c.runpod.cap??'–'} USD (committed ${fmt(c.runpod.committed,3)})</span></div>${bar(c.runpod.spent+c.runpod.committed,c.runpod.cap)}
- <div class="kv"><span>Tokens</span><span>${tk.input} in (${tk.cached} cached) · ${tk.output} out (${tk.reasoning} reasoning)</span>
- <span>Time</span><span>${t.delivered?`delivered after ${t.delivered.elapsed_hours} h`:`${s.elapsed_hours??'–'} h elapsed · ${s.hours_left??'–'} h left`}</span></div>
- <div class="mute">Cumulative LLM cost</div>${spark(t.series,l.cap_usd)}
- <details><summary>By model and source</summary><table><tr><th>model</th><th>calls</th><th>in</th><th>out</th><th>USD</th></tr>${models}</table>
- <div class="mute">${Object.entries(l.by_source).map(([k,v])=>esc(k)+': '+fmt(v)).join(' · ')}</div></details>
- <details ${alive?'open':''}><summary>Running now: ${t.alive.length} machine(s)</summary><table>${alive}</table>${jobs}</details>
- <details ${(t.runners||[]).length?'open':''}><summary>Runners: ${(t.runners||[]).length} machine(s), alive or deleted</summary><table><tr><th>machine</th><th>state</th><th>time</th><th>cost</th><th>commands</th></tr>${(t.runners||[]).map(r=>`<tr><td>${esc(r.provider)} ${esc(r.type||'')}<div class="mute">${esc(r.id)}</div></td><td>${esc(r.state||'')}</td><td>${r.hours} h</td><td>${fmt(r.cost,4)} ${r.currency}</td><td>${r.commands}</td></tr><tr><td colspan="5"><details><summary class="mute">activity log</summary><pre style="white-space:pre-wrap;max-height:240px;overflow:auto">${esc(r.log_tail)}</pre></details></td></tr>`).join('')}</table></details>
- <details><summary>Latest actions</summary><table>${t.actions.slice(-25).reverse().map(a=>`<tr><td><span class="tag">${esc(a.kind)}</span></td><td>${esc(a.text)}</td></tr>`).join('')}</table></details></div>`}
-async function load(){const d=window.__STATE__||await (await fetch('api/state')).json();
- document.getElementById('meta').textContent=`${d.teams.length} team(s) · ${d.root} · updated ${d.time}`;
- document.getElementById('teams').innerHTML=d.teams.map(team).join('');
- document.getElementById('feed').innerHTML=d.feed.map(a=>`<tr><td>${esc(a.t.slice(11,19))}</td><td><b>${esc(a.team)}</b></td><td><span class="tag">${esc(a.kind)}</span></td><td>${esc(a.text)}</td></tr>`).join('');subs(d);window.__D__=d;gantt(d);models(d);}
-const FAST=new Set(['fast','priority','ultrafast','highspeed','flashx']);
-const TEAMPAL=['#0f766e','#b45309','#7c3aed','#1d4ed8','#4d7c0f','#a21caf','#0e7490','#854d0e','#475569','#065f46'];
-function models(d){const cs=(d.model_calls||[]).filter(c=>c.source!=='launcher'),el=document.getElementById('models');if(!cs.length){el.innerHTML='<div class="mute">no model call yet</div>';return}
- const ts=cs.map(c=>Date.parse(c.t)),t0=Math.min(...ts),t1=Math.max(Date.parse(d.time),...ts),span=Math.max(t1-t0,1000);
- const teams=[...new Set(cs.map(c=>c.team))],names=[...new Set(cs.map(c=>`${c.team} · ${c.model}`))].sort();
- const W=1100,L=260,RH=20,H=names.length*RH+28,x=t=>L+(W-L-10)*(t-t0)/span;
- let s=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:700px;height:${H}px;font-size:11px">`;
- for(let i=0;i<=6;i++){const tt=t0+span*i/6,xx=x(tt);s+=`<line x1="${xx}" x2="${xx}" y1="0" y2="${H-16}" stroke="var(--line)"/><text x="${xx}" y="${H-3}" fill="var(--mute)" text-anchor="middle">${new Date(tt).toISOString().slice(11,16)}</text>`}
- names.forEach((n,i)=>{s+=`<text x="4" y="${i*RH+14}" fill="var(--ink)">${esc(n)}</text>`});
- for(const c of cs){const i=names.indexOf(`${c.team} · ${c.model}`),f=FAST.has(c.mode),col=f?'#e11d48':c.mode==='flex'?'#8a8a84':TEAMPAL[teams.indexOf(c.team)%TEAMPAL.length];
-  s+=`<rect x="${x(Date.parse(c.t))-1.5}" y="${i*RH+(f?1:4)}" width="3" height="${f?RH-2:RH-8}" fill="${col}"><title>${esc(c.team)} · ${esc(c.model)}\n${esc(c.t)} · mode ${esc(c.mode)} · ${esc(c.source)} · ${fmt(c.usd)} USD</title></rect>`}
- el.innerHTML=s+'</svg>'}
-const PAL=['#0f766e','#b45309','#7c3aed','#be123c','#1d4ed8','#4d7c0f','#a21caf','#0e7490','#9a3412'];
-function gantt(d){const acts=d.activities||[],by=document.getElementById('gby').value,now=Date.parse(d.time);
- const el=document.getElementById('gantt');if(!acts.length){el.innerHTML='<div class="mute">no activity yet</div>';return}
- const win=+document.getElementById('gwin').value*1000,t0=win?now-win:Math.min(...acts.map(a=>Date.parse(a.start))),t1=Math.max(now,...acts.map(a=>a.end?Date.parse(a.end):now)),span=Math.max(t1-t0,1000);
- const colorKey=by==='team'?'kind':'team',keys=[...new Set(acts.map(a=>a[colorKey]))],col=k=>PAL[keys.indexOf(k)%PAL.length];
+:root{color-scheme:light;--bg:#f4f4f2;--surface:#fcfcfb;--raised:#ffffff;--ink:#0b0b0b;--ink2:#52514e;--mute:#6b6a65;--line:#e4e3dd;--line2:#d2d1ca;
+--acc:#2a78d6;--good:#006300;--warn:#8a5a00;--bad:#b42323;--good-bg:#e5f3e5;--warn-bg:#fdf1d8;--bad-bg:#fbe6e6;
+--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#6250d6;--s8:#e34948;--shadow:0 1px 2px #0000000d,0 1px 8px #00000008}
+@media (prefers-color-scheme:dark){:root:where(:not([data-theme=light])){color-scheme:dark;--bg:#121211;--surface:#1a1a19;--raised:#20201f;--ink:#f0efec;--ink2:#c3c2b7;--mute:#a3a29a;--line:#2e2e2b;--line2:#3d3d39;
+--acc:#6da7ec;--good:#5fd35f;--warn:#fab219;--bad:#f08080;--good-bg:#173317;--warn-bg:#3a2c08;--bad-bg:#3d1b1b;
+--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#0ca30c;--s7:#9085e9;--s8:#e66767;--shadow:none}}
+:root[data-theme=dark]{color-scheme:dark;--bg:#121211;--surface:#1a1a19;--raised:#20201f;--ink:#f0efec;--ink2:#c3c2b7;--mute:#a3a29a;--line:#2e2e2b;--line2:#3d3d39;
+--acc:#6da7ec;--good:#5fd35f;--warn:#fab219;--bad:#f08080;--good-bg:#173317;--warn-bg:#3a2c08;--bad-bg:#3d1b1b;
+--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#0ca30c;--s7:#9085e9;--s8:#e66767;--shadow:none}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--acc)}
+.skip{position:absolute;left:-999px;top:8px;background:var(--raised);padding:8px 12px;border-radius:8px;z-index:20}.skip:focus{left:8px}
+header.top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.bar-in{max-width:1440px;margin:auto;padding:10px 20px;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center}
+.brand{font-weight:650;font-size:16px;margin:0;display:flex;gap:8px;align-items:center}
+.brand i{width:10px;height:10px;border-radius:50%;background:var(--good);display:inline-block;box-shadow:0 0 0 3px var(--good-bg)}
+.brand i.paused{background:var(--mute);box-shadow:0 0 0 3px var(--line)}
+.clock{color:var(--ink2);font-variant-numeric:tabular-nums}
+nav.sections{display:flex;gap:2px;flex-wrap:wrap;margin-left:auto}
+nav.sections a{color:var(--ink2);text-decoration:none;padding:6px 10px;border-radius:8px;min-height:32px;display:inline-flex;align-items:center}
+nav.sections a:hover{background:var(--line);color:var(--ink)}
+button,select{font:inherit;color:var(--ink);background:var(--raised);border:1px solid var(--line2);border-radius:8px;padding:5px 10px;min-height:32px;cursor:pointer}
+button:hover{border-color:var(--mute)}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+main{max-width:1440px;margin:auto;padding:16px 20px 48px}
+section{scroll-margin-top:70px;margin:0 0 28px}
+h2{font-size:15px;font-weight:650;margin:0 0 2px}
+.sub{color:var(--mute);font-size:12.5px;margin:0 0 12px}
+.filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 16px}
+.filters .lbl{color:var(--mute);font-size:12.5px;margin-right:4px}
+.chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 12px 4px 10px;min-height:32px;font-size:13px}
+.chip[aria-pressed=false]{opacity:.55;text-decoration:line-through}
+.key{display:inline-block;width:14px;height:0;border-top:3px solid currentColor;border-radius:2px;vertical-align:middle}
+.key.dash{border-top-style:dashed}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--shadow);min-width:0}
+.kpi .v{font-size:26px;font-weight:650;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.2;margin-top:4px}
+.kpi .l{color:var(--ink2);font-size:12.5px}.kpi .d{color:var(--mute);font-size:12.5px;margin-top:2px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,560px),1fr));gap:16px}
+.chart-head{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:flex-start;justify-content:space-between;margin-bottom:8px}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:transparent;color:var(--ink2);min-height:30px}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--surface)}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;overflow:visible}
+.chart text{fill:var(--mute);font-size:11px;font-variant-numeric:tabular-nums}
+.chart .lab{fill:var(--ink);font-size:11.5px;font-weight:550}
+.chart .grid{stroke:var(--line)}.chart .axis{stroke:var(--line2)}
+.chart .ring{stroke:var(--surface);stroke-width:2}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--ink2);margin-top:8px}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+details.tv{margin-top:8px}details.tv summary{color:var(--ink2);font-size:12.5px}
+summary{cursor:pointer;min-height:28px;display:flex;align-items:center;gap:6px;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .15s;margin:0 4px 0 2px}
+details[open]>summary::before{transform:rotate(45deg)}
+table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+th{font-weight:550;color:var(--ink2);text-align:left;font-size:12px;white-space:nowrap}
+td,th{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+td.n,th.n{text-align:right}
+tbody tr:hover{background:color-mix(in srgb,var(--line) 45%,transparent)}
+th button{all:unset;cursor:pointer;display:inline-flex;gap:4px;align-items:center}
+th button:focus-visible{outline:2px solid var(--acc)}
+th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=descending] button::after{content:"▼";font-size:9px}
+.scroll{overflow:auto;max-width:100%}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:550;padding:2px 9px;border-radius:999px;white-space:nowrap;background:var(--line);color:var(--ink2)}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.good{background:var(--good-bg);color:var(--good)}.pill.warn{background:var(--warn-bg);color:var(--warn)}.pill.bad{background:var(--bad-bg);color:var(--bad)}
+.pill.run::before{animation:pulse 1.6s infinite}@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.pill.run::before{animation:none}}
+.teams{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr));gap:16px}
+.team-h{display:flex;gap:10px;align-items:baseline;justify-content:space-between}
+.team-h h3{margin:0;font-size:15px;display:flex;gap:8px;align-items:center}
+.meta{color:var(--mute);font-size:12.5px;margin:2px 0 12px;overflow-wrap:anywhere}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.stat .v{font-weight:650;font-size:16px;font-variant-numeric:tabular-nums}.stat .l{color:var(--mute);font-size:11.5px}
+.meter{margin:8px 0}.meter .row{display:flex;justify-content:space-between;gap:8px;font-size:12.5px}
+.meter .row b{font-weight:550}.meter .row span{color:var(--ink2);font-variant-numeric:tabular-nums}
+.track{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:4px;display:flex;gap:2px}
+.track i{display:block;height:100%;border-radius:3px;background:var(--acc)}.track i.c{background:var(--line2)}
+.track.warn i:first-child{background:var(--s4)}.track.bad i:first-child{background:var(--bad)}
+.team details{border-top:1px solid var(--line);padding:4px 0}.team details>div{padding:4px 0 8px}
+.id{color:var(--mute);font-size:11.5px;font-family:ui-monospace,monospace}
+.feed{max-height:520px}
+.feed td:first-child{white-space:nowrap;color:var(--mute)}
+.kind{font-size:11.5px;color:var(--ink2);border:1px solid var(--line2);border-radius:6px;padding:1px 6px;white-space:nowrap}
+.pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px;color:var(--mute);font-size:12.5px}
+.empty{color:var(--mute);padding:24px;text-align:center}
+#tip{position:fixed;z-index:30;pointer-events:none;background:var(--raised);color:var(--ink);border:1px solid var(--line2);border-radius:8px;padding:8px 10px;font-size:12.5px;box-shadow:0 4px 16px #0000002a;max-width:340px;white-space:pre-line;display:none}
+#tip b{font-variant-numeric:tabular-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.stale{opacity:.6;transition:opacity .2s}
+@media (max-width:640px){header.top{position:static}.bar-in,main{padding-left:16px;padding-right:16px}
+nav.sections{margin-left:0;flex-wrap:nowrap;overflow-x:auto;max-width:100%;order:3}section{scroll-margin-top:8px}.stats{grid-template-columns:repeat(2,1fr)}.kpi .v{font-size:22px}}
+</style></head><body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top"><div class="bar-in">
+ <h1 class="brand"><i id="dot" aria-hidden="true"></i>Race dashboard</h1>
+ <span class="clock" id="clock"></span>
+ <nav class="sections" aria-label="Sections"><a href="#overview">Overview</a><a href="#quality">Quality</a><a href="#spend">Spend</a>
+ <a href="#activity">Activity</a><a href="#teams">Teams</a><a href="#subagents">Sub-agents</a><a href="#feed">Feed</a></nav>
+ <button id="pause" aria-pressed="false" title="Stop or resume the refresh every 5 seconds">Pause updates</button>
+ <span class="sr" aria-live="polite" id="live"></span>
+</div></header>
+<main id="main">
+<div class="filters" role="group" aria-labelledby="flbl"><span class="lbl" id="flbl">Teams shown</span><span id="chips"></span><button id="all">Show all</button></div>
+<section id="overview" aria-labelledby="h-ov"><h2 id="h-ov" class="sr">Overview</h2><div class="kpis" id="kpis"></div></section>
+<section aria-labelledby="h-lb"><div class="card"><h2 id="h-lb">Standings</h2><p class="sub">Ranked by the latest graded scientific quality (out of 100). Select a column to sort.</p>
+ <div class="scroll"><table id="board"></table></div></div></section>
+<section id="quality" aria-labelledby="h-q"><div class="grid2">
+ <div class="card"><div class="chart-head"><div><h2 id="h-q">Scientific quality over time</h2><p class="sub">One point per graded snapshot, against the time since the start of the race.</p></div></div>
+  <div class="chart" id="c-qt"></div><div class="legend" id="lg-qt"></div>
+  <details class="tv" id="tv-qt"><summary>Table view</summary><div class="scroll" id="t-qt"></div></details></div>
+ <div class="card"><div class="chart-head"><div><h2>Scientific quality against cost</h2><p class="sub">One point per graded snapshot, against the spend at that moment (log scale).</p></div>
+  <div class="seg" role="group" aria-label="Cost counted"><button data-cost="llm" aria-pressed="true">Model calls</button><button data-cost="all" aria-pressed="false">Model calls + simulations</button></div></div>
+  <div class="chart" id="c-qc"></div><div class="legend" id="lg-qc"></div>
+  <details class="tv" id="tv-qc"><summary>Table view</summary><div class="scroll" id="t-qc"></div></details></div>
+</div></section>
+<section id="spend" aria-labelledby="h-s"><div class="card"><div class="chart-head"><div><h2 id="h-s">Cumulative model-call spend</h2><p class="sub">Every model call of each team, the harness and its sub-agents, in USD.</p></div></div>
+ <div class="chart" id="c-sp"></div><div class="legend" id="lg-sp"></div></div></section>
+<section id="activity" aria-labelledby="h-a"><div class="card"><div class="chart-head"><div><h2 id="h-a">Activity timeline</h2><p class="sub">Harness sessions, sub-agents and cloud machines. Hatched: still running.</p></div>
+ <div style="display:flex;gap:8px;flex-wrap:wrap"><label>Group by <select id="gby"><option value="team">team</option><option value="provider">provider</option><option value="kind">kind</option></select></label>
+ <label>Window <select id="gwin"><option value="0">whole race</option><option value="21600">last 6 h</option><option value="3600">last hour</option><option value="900">last 15 min</option></select></label></div></div>
+ <div class="chart scroll" id="c-gantt"></div>
+ <h2 style="margin-top:20px">Model calls</h2><p class="sub">One row per team and model, one tick per call. Tall red ticks: fast modes. Grey: flex.</p>
+ <div class="chart scroll" id="c-models"></div></div></section>
+<section id="teams" aria-labelledby="h-t"><h2 id="h-t">Teams</h2><p class="sub">Budgets, tokens, machines and the latest actions of each team.</p><div class="teams" id="tcards"></div></section>
+<section id="subagents" aria-labelledby="h-sa"><div class="card"><h2 id="h-sa">Sub-agents</h2><p class="sub" id="subsum"></p>
+ <div class="scroll"><table id="subs"></table></div><div class="pager" id="spager"></div></div></section>
+<section id="feed" aria-labelledby="h-f"><div class="card"><div class="chart-head"><div><h2 id="h-f">All actions</h2><p class="sub">Latest first, across the teams shown.</p></div>
+ <label>Kind <select id="fkind"><option value="">all</option></select></label></div>
+ <div class="scroll feed" tabindex="0" role="region" aria-label="All actions, scrollable"><table id="feedt"></table></div></div></section>
+</main><div id="tip" role="tooltip"></div>
+<script>
+"use strict";
+const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const NF=new Intl.NumberFormat('en-US'), CF=new Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1});
+const money=(x,cur='USD')=>x==null?'–':(Math.abs(x)<0.01&&x!==0?x.toFixed(4):NF.format(Math.round(x*100)/100))+' '+cur;
+const num=x=>x==null?'–':NF.format(x), compact=x=>x==null?'–':CF.format(x);
+function dur(s){if(s==null||isNaN(s))return '–';s=Math.max(0,Math.round(s));const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),x=s%60;
+ if(d)return `${d} d ${h} h ${String(m).padStart(2,'0')} min`;if(h)return `${h} h ${String(m).padStart(2,'0')} min`;if(m)return `${m} min ${String(x).padStart(2,'0')} s`;return `${x} s`}
+const clock=t=>{const d=new Date(t);return isNaN(d)?'':d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})};
+const day=t=>{const d=new Date(t);return isNaN(d)?'':d.toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false})};
+const SLOTS=8, color=i=>`var(--s${i%SLOTS+1})`, dashed=i=>i>=SLOTS;
+const S={d:null,hidden:new Set(),cost:'llm',sort:{k:'quality',dir:-1},page:0,paused:false};
+try{S.hidden=new Set(JSON.parse(localStorage.getItem('fd.hidden')||'[]'))}catch(e){}
+let TEAMS=[], IDX={};
+const shown=()=>TEAMS.filter(t=>!S.hidden.has(t.name));
+const teamKey=n=>`<span class="key${dashed(IDX[n])?' dash':''}" style="color:${color(IDX[n])}"></span>`;
+function status(t){if(t.delivered)return['good','Delivered'];const l=t.status.llm;if(l.cap_usd&&l.spent_usd>=l.cap_usd*0.999)return['bad','LLM budget spent'];
+ if(t.status.hours_left!=null&&t.status.hours_left<=0)return['bad','Deadline passed'];if(t.running)return['good run',`Session ${t.running.n} running`];return['','Between sessions']}
+const latestQ=t=>{const g=(t.snapshots||[]).filter(s=>s.quality!=null);return g.length?g[g.length-1].quality:null};
+const elapsed=t=>t.delivered?t.delivered.elapsed_hours*3600:(t.status.elapsed_hours??0)*3600;
+const cloudUsd=t=>(t.status.cloud.scaleway.spent||0)+(t.status.cloud.runpod.spent||0);
+
+/* tooltip: one element, filled with textContent from data-tip */
+const tip=$('tip');
+function showTip(text,x,y){tip.textContent='';text.split('\n').forEach((l,i)=>{const e=document.createElement(i?'div':'b');e.textContent=l;tip.appendChild(e)});tip.style.display='block';
+ const r=tip.getBoundingClientRect(),W=innerWidth,H=innerHeight;tip.style.left=Math.min(W-r.width-8,x+14)+'px';tip.style.top=Math.min(H-r.height-8,y+14)+'px'}
+const hideTip=()=>tip.style.display='none';
+document.addEventListener('pointerover',e=>{const el=e.target.closest('[data-tip]');if(el)showTip(el.dataset.tip,e.clientX,e.clientY)});
+document.addEventListener('pointermove',e=>{const el=e.target.closest('[data-tip]');if(el&&!e.target.closest('.xh'))showTip(el.dataset.tip,e.clientX,e.clientY);else if(!e.target.closest('.xh'))hideTip()});
+document.addEventListener('focusin',e=>{const el=e.target.closest('[data-tip]');if(el){const r=el.getBoundingClientRect();showTip(el.dataset.tip,r.left,r.bottom)}});
+document.addEventListener('focusout',hideTip);document.addEventListener('keydown',e=>{if(e.key==='Escape')hideTip()});
+
+/* scales and axes */
+function lin(d0,d1,r0,r1){const f=v=>r0+(r1-r0)*(v-d0)/((d1-d0)||1);f.ticks=n=>{const st=nice((d1-d0)/n),o=[];for(let v=Math.ceil(d0/st)*st;v<=d1+st*1e-9;v+=st)o.push(+v.toFixed(10));return o};return f}
+function nice(x){const p=Math.pow(10,Math.floor(Math.log10(x||1))),f=x/p;return (f<1.5?1:f<3?2:f<7?5:10)*p}
+function logs(d0,d1,r0,r1){const a=Math.log10(d0),b=Math.log10(d1),f=v=>r0+(r1-r0)*(Math.log10(Math.max(v,d0))-a)/((b-a)||1);
+ f.ticks=()=>{const o=[];for(let e=Math.floor(a);e<=Math.ceil(b);e++)for(const m of [1,2,5]){const v=m*Math.pow(10,e);if(v>=d0*0.999&&v<=d1*1.001)o.push(v)}return o};return f}
+const W0=el=>Math.max(320,el.clientWidth||600);
+function frame(el,h,{x,y,xt,yt,xl,yl,pad}){const w=W0(el),P=Object.assign({l:44,r:110,t:10,b:34},pad||{});
+ const X=x(P.l,w-P.r),Y=y(h-P.b,P.t);let s=`<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="${esc(el.dataset.label||'')}">`;
+ for(const v of Y.ticks(5))s+=`<line class="grid" x1="${P.l}" x2="${w-P.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${P.l-8}" y="${Y(v)+4}" text-anchor="end">${yt(v)}</text>`;
+ for(const v of X.ticks(6))s+=`<text x="${X(v)}" y="${h-P.b+18}" text-anchor="middle">${xt(v)}</text>`;
+ s+=`<line class="axis" x1="${P.l}" x2="${w-P.r}" y1="${h-P.b}" y2="${h-P.b}"/>`;
+ if(xl)s+=`<text x="${w-P.r}" y="${h-4}" text-anchor="end">${esc(xl)}</text>`;if(yl)s+=`<text x="${P.l}" y="${P.t-0}" dy="-2">${esc(yl)}</text>`;
+ return {w,h,P,X,Y,s}}
+function endLabels(f,ends){ends.sort((a,b)=>a.y-b.y);for(let i=1;i<ends.length;i++)if(ends[i].y-ends[i-1].y<13)ends[i].y=ends[i-1].y+13;
+ const bot=f.h-f.P.b;for(let i=ends.length-1;i>=0;i--){const lim=i===ends.length-1?bot:ends[i+1].y-13;if(ends[i].y>lim)ends[i].y=lim}
+ return ends.map(e=>`<text class="lab" x="${f.w-f.P.r+8}" y="${e.y+4}">${esc(e.name)}</text>`).join('')}
+function path(pts,X,Y,step){return pts.map((p,i)=>{const x=X(p[0]),y=Y(p[1]);if(!i)return `M${x},${y}`;return step?`H${x}V${y}`:`L${x},${y}`}).join('')}
+function legend(id,names){$(id).innerHTML=names.map(n=>`<span>${teamKey(n)}${esc(n)}</span>`).join('')}
+
+/* quality over time and against cost */
+function qualitySeries(costKind){return shown().map(t=>({t,pts:(t.snapshots||[]).filter(s=>s.quality!=null).map(s=>({s,min:s.minutes,cost:s.llm_usd+(costKind==='all'?s.simulation_usd:0),q:s.quality}))})).filter(x=>x.pts.length)}
+function chartQT(){const el=$('c-qt'),ser=qualitySeries('llm');if(!ser.length){el.innerHTML='<div class="empty">No graded snapshot yet</div>';$('lg-qt').innerHTML='';$('t-qt').innerHTML='';return}
+ const xmax=Math.max(...ser.flatMap(x=>x.pts.map(p=>p.min)))/60;el.dataset.label='Scientific quality over time, one line per team';
+ const f=frame(el,300,{x:(a,b)=>lin(0,Math.max(1,xmax),a,b),y:(a,b)=>lin(0,100,a,b),xt:v=>v+' h',yt:v=>v,xl:'hours since start',yl:'quality /100'});
+ let s=f.s,ends=[];for(const {t,pts} of ser){const i=IDX[t.name],P=pts.map(p=>[p.min/60,p.q]);
+  s+=`<path d="${path(P,f.X,f.Y)}" fill="none" stroke="${color(i)}" stroke-width="2" ${dashed(i)?'stroke-dasharray="5 3"':''}/>`;
+  for(const p of pts)s+=`<circle class="ring" cx="${f.X(p.min/60)}" cy="${f.Y(p.q)}" r="4" fill="${color(i)}"/><circle cx="${f.X(p.min/60)}" cy="${f.Y(p.q)}" r="12" fill="transparent" data-tip="${esc(`${p.q.toFixed(1)} / 100\n${t.name} · ${p.s.labels.join(', ')}\n${dur(p.min*60)} after the start\n${money(p.s.llm_usd)} model calls, ${money(p.s.simulation_usd)} simulations`)}"/>`;
+  const l=P[P.length-1];ends.push({name:t.name,y:f.Y(l[1])})}
+ el.innerHTML=s+endLabels(f,ends)+'</svg>';legend('lg-qt',ser.map(x=>x.t.name));
+ $('t-qt').innerHTML=qTable(ser)}
+function chartQC(){const el=$('c-qc'),ser=qualitySeries(S.cost);if(!ser.length){el.innerHTML='<div class="empty">No graded snapshot yet</div>';$('lg-qc').innerHTML='';$('t-qc').innerHTML='';return}
+ const cs=ser.flatMap(x=>x.pts.map(p=>p.cost)).filter(c=>c>0),lo=Math.max(0.01,Math.min(...cs)),hi=Math.max(lo*10,...cs);
+ el.dataset.label='Scientific quality against cost, one line per team';
+ const f=frame(el,300,{x:(a,b)=>logs(lo,hi,a,b),y:(a,b)=>lin(0,100,a,b),xt:v=>(v<1?v:NF.format(v))+' $',yt:v=>v,xl:S.cost==='all'?'USD, model calls + simulations':'USD, model calls',yl:'quality /100'});
+ let s=f.s,ends=[];for(const {t,pts} of ser){const i=IDX[t.name],P=pts.map(p=>[p.cost,p.q]);
+  s+=`<path d="${path(P,f.X,f.Y)}" fill="none" stroke="${color(i)}" stroke-width="2" ${dashed(i)?'stroke-dasharray="5 3"':''}/>`;
+  for(const p of pts)s+=`<circle class="ring" cx="${f.X(p.cost)}" cy="${f.Y(p.q)}" r="4" fill="${color(i)}"/><circle cx="${f.X(p.cost)}" cy="${f.Y(p.q)}" r="12" fill="transparent" data-tip="${esc(`${p.q.toFixed(1)} / 100 for ${money(p.cost)}\n${t.name} · ${p.s.labels.join(', ')}\n${money(p.s.llm_usd)} model calls, ${money(p.s.simulation_usd)} simulations\n${dur(p.min*60)} after the start`)}"/>`;
+  const l=P[P.length-1];ends.push({name:t.name,y:f.Y(l[1])})}
+ el.innerHTML=s+endLabels(f,ends)+'</svg>';legend('lg-qc',ser.map(x=>x.t.name));$('t-qc').innerHTML=qTable(ser)}
+function qTable(ser){return `<table><thead><tr><th>Team</th><th>Snapshot</th><th class="n">Time</th><th class="n">Model calls</th><th class="n">Simulations</th><th class="n">Quality</th></tr></thead><tbody>${
+ ser.flatMap(({t,pts})=>pts.map(p=>`<tr><td>${teamKey(t.name)} ${esc(t.name)}</td><td>${esc(p.s.labels.join(', '))}</td><td class="n">${dur(p.min*60)}</td><td class="n">${money(p.s.llm_usd)}</td><td class="n">${money(p.s.simulation_usd)}</td><td class="n">${p.q.toFixed(1)}</td></tr>`)).join('')}</tbody></table>`}
+
+/* cumulative spend with a crosshair that lists every team at the pointer's time */
+function chartSP(){const el=$('c-sp'),ser=shown().filter(t=>t.series.length);if(!ser.length){el.innerHTML='<div class="empty">No model call yet</div>';return}
+ const t0=Math.min(...ser.map(t=>Date.parse(t.series[0][0]))),t1=Math.max(Date.parse(S.d.time),...ser.map(t=>Date.parse(t.series[t.series.length-1][0])));
+ const ymax=Math.max(...ser.map(t=>Math.max(t.status.llm.cap_usd||0,t.series[t.series.length-1][1])));el.dataset.label='Cumulative model-call spend per team';
+ const f=frame(el,280,{x:(a,b)=>lin(0,(t1-t0)/3.6e6,a,b),y:(a,b)=>lin(0,ymax,a,b),xt:v=>v+' h',yt:v=>v+' $',xl:'hours since the first call'});
+ let s=f.s,ends=[];const caps=[...new Set(ser.map(t=>t.status.llm.cap_usd).filter(Boolean))];
+ for(const c of caps)s+=`<line x1="${f.P.l}" x2="${f.w-f.P.r}" y1="${f.Y(c)}" y2="${f.Y(c)}" stroke="var(--bad)" stroke-dasharray="2 4"/><text x="${f.P.l+4}" y="${f.Y(c)-5}" style="fill:var(--bad)">cap ${c} $</text>`;
+ const H=t=>(t-t0)/3.6e6;
+ for(const t of ser){const i=IDX[t.name],step=Math.max(1,Math.floor(t.series.length/400)),P=t.series.filter((_,k)=>k%step===0||k===t.series.length-1).map(([x,y])=>[H(Date.parse(x)),y]);
+  P.push([H(t1),P[P.length-1][1]]);s+=`<path d="${path(P,f.X,f.Y,true)}" fill="none" stroke="${color(i)}" stroke-width="2" ${dashed(i)?'stroke-dasharray="5 3"':''}/>`;ends.push({name:t.name,y:f.Y(P[P.length-1][1])})}
+ s+=`<line id="xhl" class="axis" y1="${f.P.t}" y2="${f.h-f.P.b}" visibility="hidden"/><rect class="xh" x="${f.P.l}" y="${f.P.t}" width="${f.w-f.P.l-f.P.r}" height="${f.h-f.P.t-f.P.b}" fill="transparent"/>`;
+ el.innerHTML=s+endLabels(f,ends)+'</svg>';legend('lg-sp',ser.map(t=>t.name));
+ const svg=el.querySelector('svg'),rect=el.querySelector('.xh'),xl=el.querySelector('#xhl');
+ rect.onpointermove=e=>{const b=svg.getBoundingClientRect(),px=(e.clientX-b.left)*f.w/b.width,h=(px-f.P.l)/(f.w-f.P.l-f.P.r)*H(t1),at=t0+h*3.6e6;
+  xl.setAttribute('x1',px);xl.setAttribute('x2',px);xl.setAttribute('visibility','visible');
+  const rows=ser.map(t=>{let v=0;for(const [x,y] of t.series){if(Date.parse(x)>at)break;v=y}return [t.name,v]}).sort((a,b)=>b[1]-a[1]);
+  showTip(`${dur(h*3600)} after the first call\n`+rows.map(([n,v])=>`${money(v)}  ${n}`).join('\n'),e.clientX,e.clientY)};
+ rect.onpointerleave=()=>{xl.setAttribute('visibility','hidden');hideTip()}}
+
+/* activity timeline and model-call ticks */
+function chartGantt(){const el=$('c-gantt'),by=$('gby').value,now=Date.parse(S.d.time),names=new Set(shown().map(t=>t.name));
+ const acts=(S.d.activities||[]).filter(a=>names.has(a.team));if(!acts.length){el.innerHTML='<div class="empty">No activity yet</div>';return}
+ const win=+$('gwin').value*1000,t0=win?now-win:Math.min(...acts.map(a=>Date.parse(a.start))),span=Math.max(now-t0,1000);
  const rows={};for(const a of acts){if((a.end?Date.parse(a.end):now)<t0)continue;const r=by==='team'?`${a.team} · ${a.kind}`:by==='kind'?a.kind:a.provider;(rows[r]=rows[r]||[]).push(a)}
- const names=Object.keys(rows).sort(),W=1100,L=170,RH=26,H=names.length*RH+30,x=t=>L+(W-L-10)*(t-t0)/span;
- let svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:700px;height:${H}px;font-size:11px">`;
- for(let i=0;i<=6;i++){const tt=t0+span*i/6,xx=x(tt);svg+=`<line x1="${xx}" x2="${xx}" y1="0" y2="${H-18}" stroke="var(--line)"/><text x="${xx}" y="${H-4}" fill="var(--mute)" text-anchor="middle">${new Date(tt).toISOString().slice(5,16).replace('T',' ')}</text>`}
- names.forEach((n,i)=>{const y=i*RH;svg+=`<text x="4" y="${y+17}" fill="var(--ink)">${esc(n)}</text>`;
-  for(const a of rows[n]){const s=x(Math.max(Date.parse(a.start),t0)),e=x(a.end?Date.parse(a.end):now),w=Math.max(e-s,3);
-   svg+=`<rect x="${s}" y="${y+5}" width="${w}" height="${RH-10}" rx="3" fill="${col(a[colorKey])}" opacity="${a.end?0.85:1}"${a.end?'':' stroke="var(--ink)" stroke-dasharray="3 2"'}><title>${esc(a.team)} · ${esc(a.kind)} · ${esc(a.label)}\n${esc(a.start)} → ${esc(a.end||'running')}\n${esc(a.detail||'')}</title></rect>`}});
- svg+='</svg>';el.innerHTML=svg+'<div class="mute">'+keys.map(k=>`<span style="color:${col(k)}">■</span> ${esc(k)}`).join(' &nbsp; ')+' &nbsp; (dashed: running)</div>'}
-function dur(s){if(s==null)return '–';return s<90?s+' s':s<5400?Math.round(s/60)+' min':(s/3600).toFixed(1)+' h'}
-function subs(d){const rows=d.subagents||[];const tot=rows.reduce((a,r)=>a+(r.usd||0),0);
- document.getElementById('subsum').textContent=`${rows.filter(r=>r.kind==='spawn_agent').length} spawn_agent run(s), ${fmt(tot)} USD; `+
-  `${rows.filter(r=>r.kind==='native').length} native harness sub-agent(s) (their cost is in the harness's traffic)`;
- document.getElementById('subs').innerHTML=rows.map(r=>`<tr title="${esc(r.answer||'')}"><td>${esc((r.start||'').slice(11,19))}</td><td>${esc(r.team)}</td>`+
-  `<td>${esc(r.agent)}${r.parent&&r.parent!=='harness'?`<div class="mute">← ${esc(r.parent)}</div>`:''}</td><td>${esc(r.model)}</td><td>${esc(r.effort||'')}</td><td>${r.mode&&r.mode!=='standard'&&r.mode!=='harness'?`<span class="tag" style="color:#be123c;border-color:#be123c">${esc(r.mode)}</span>`:esc(r.mode||'')}</td>`+
-  `<td>${dur(r.seconds)}</td><td>${r.calls??'–'}</td><td>${r.tool_calls??'–'}</td><td>${r.input??'–'}${r.cached?` (${r.cached})`:''}</td>`+
-  `<td>${r.output??'–'}${r.reasoning?` (${r.reasoning})`:''}</td><td>${r.usd==null?'–':fmt(r.usd)}</td>`+
-  `<td><span class="tag ${r.status==='done'?'ok':''}">${esc(r.status)}</span></td><td>${esc(r.task)}</td></tr>`).join('');}
-for(const id of ['gby','gwin'])document.getElementById(id).onchange=()=>window.__D__&&gantt(window.__D__);
-load();if(!window.__STATE__)setInterval(load,5000);
+ const keys=Object.keys(rows).sort(),w=Math.max(720,W0(el)),L=200,RH=24,h=keys.length*RH+30,X=t=>L+(w-L-12)*(t-t0)/span;
+ let s=`<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="Activity timeline"><defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="transparent"/><line y2="6" stroke="var(--surface)" stroke-width="2"/></pattern></defs>`;
+ for(let i=0;i<=6;i++){const tt=t0+span*i/6,x=X(tt);s+=`<line class="grid" x1="${x}" x2="${x}" y1="0" y2="${h-22}"/><text x="${x}" y="${h-6}" text-anchor="middle">${esc(day(tt))}</text>`}
+ keys.forEach((k,r)=>{const y=r*RH;s+=`<text class="lab" x="4" y="${y+16}">${esc(k.length>30?k.slice(0,29)+'…':k)}</text>`;
+  for(const a of rows[k]){const x0=X(Math.max(Date.parse(a.start),t0)),x1=X(a.end?Date.parse(a.end):now),i=IDX[a.team];
+   const d=`${a.team} · ${a.kind} · ${a.label}\n${day(a.start)} → ${a.end?day(a.end):'running'} (${dur(((a.end?Date.parse(a.end):now)-Date.parse(a.start))/1000)})\n${a.detail||''}`;
+   s+=`<rect x="${x0}" y="${y+5}" width="${Math.max(x1-x0-1,3)}" height="${RH-10}" rx="3" fill="${color(i)}" data-tip="${esc(d)}"/>`;
+   if(!a.end)s+=`<rect x="${x0}" y="${y+5}" width="${Math.max(x1-x0-1,3)}" height="${RH-10}" rx="3" fill="url(#hatch)" pointer-events="none"/>`}});
+ el.innerHTML=s+'</svg>'}
+const FAST=new Set(['fast','priority','ultrafast','highspeed','flashx']);
+function chartModels(){const el=$('c-models'),names=new Set(shown().map(t=>t.name)),cs=(S.d.model_calls||[]).filter(c=>c.source!=='launcher'&&names.has(c.team));
+ if(!cs.length){el.innerHTML='<div class="empty">No model call yet</div>';return}
+ const t0=Math.min(...cs.map(c=>Date.parse(c.t))),t1=Math.max(Date.parse(S.d.time),t0+1000),rows=[...new Set(cs.map(c=>`${c.team} · ${c.model}`))].sort();
+ const w=Math.max(720,W0(el)),L=300,RH=18,h=rows.length*RH+28,X=t=>L+(w-L-12)*(t-t0)/(t1-t0);
+ let s=`<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="Model calls over time">`;
+ for(let i=0;i<=6;i++){const tt=t0+(t1-t0)*i/6,x=X(tt);s+=`<line class="grid" x1="${x}" x2="${x}" y1="0" y2="${h-20}"/><text x="${x}" y="${h-5}" text-anchor="middle">${esc(day(tt))}</text>`}
+ rows.forEach((r,k)=>{s+=`<text class="lab" x="4" y="${k*RH+13}">${esc(r)}</text>`});
+ const bucket={};for(const c of cs){const k=rows.indexOf(`${c.team} · ${c.model}`),px=Math.round(X(Date.parse(c.t))),f=FAST.has(c.mode)?2:c.mode==='flex'?1:0,key=`${k}:${px}:${f}`;
+  const b=bucket[key]||(bucket[key]={k,px,f,n:0,usd:0,team:c.team,model:c.model,mode:c.mode,t:c.t});b.n++;b.usd+=c.usd}
+ for(const b of Object.values(bucket)){const col=b.f===2?'var(--bad)':b.f===1?'var(--mute)':color(IDX[b.team]);
+  s+=`<rect x="${b.px-1}" y="${b.k*RH+(b.f===2?1:4)}" width="2.5" height="${b.f===2?RH-2:RH-8}" fill="${col}" data-tip="${esc(`${money(b.usd)} · ${b.n} call${b.n>1?'s':''}\n${b.team} · ${b.model}\n${day(b.t)} · mode ${b.mode}`)}"/>`}
+ el.innerHTML=s+'</svg>'}
+
+/* KPIs, standings, team cards, sub-agents, feed */
+function kpis(){const ts=shown(),run=ts.filter(t=>!t.delivered).length,best=ts.map(t=>[t,latestQ(t)]).filter(x=>x[1]!=null).sort((a,b)=>b[1]-a[1])[0];
+ const llm=ts.reduce((a,t)=>a+t.status.llm.spent_usd,0),sim=ts.reduce((a,t)=>a+cloudUsd(t),0),calls=ts.reduce((a,t)=>a+t.series.length,0),alive=ts.reduce((a,t)=>a+t.alive.length,0);
+ const K=[['Teams',`${ts.length}`,`${run} running · ${ts.length-run} delivered`],['Best quality',best?best[1].toFixed(1):'–',best?best[0].name:'no grade yet'],
+  ['Model-call spend',money(llm),`${compact(calls)} calls`],['Simulation spend',money(sim),'Scaleway (EUR at par) + Runpod'],['Machines running',`${alive}`,'across all teams']];
+ $('kpis').innerHTML=K.map(([l,v,d])=>`<div class="card kpi"><div class="l">${esc(l)}</div><div class="v">${esc(v)}</div><div class="d">${esc(d)}</div></div>`).join('')}
+const COLS=[['team','Team'],['status','Status'],['quality','Quality','n'],['llm','Model calls','n'],['sim','Simulations','n'],['time','Time','n'],['subs','Sub-agents','n']];
+function board(){const rows=shown().map(t=>({t,team:t.name,status:status(t)[1],quality:latestQ(t),llm:t.status.llm.spent_usd,sim:cloudUsd(t),time:elapsed(t),subs:(t.subagents||[]).filter(s=>s.kind==='spawn_agent').length}));
+ const {k,dir}=S.sort;rows.sort((a,b)=>{const x=a[k],y=b[k];return (x==null)-(y==null)||(typeof x==='string'?x.localeCompare(y):x-y)*dir});
+ $('board').innerHTML=`<thead><tr><th class="n">#</th>${COLS.map(([key,l,c])=>`<th class="${c||''}" ${S.sort.k===key?`aria-sort="${dir>0?'ascending':'descending'}"`:''}><button data-sort="${key}">${l}</button></th>`).join('')}</tr></thead><tbody>${
+ rows.map((r,i)=>{const [cl,txt]=status(r.t),cap=r.t.status.llm.cap_usd;return `<tr><td class="n">${i+1}</td><td>${teamKey(r.team)} <b>${esc(r.team)}</b><div class="id">${esc(r.t.harness)} · ${esc(r.t.provider)}</div></td><td><span class="pill ${cl}">${esc(txt)}</span></td>
+ <td class="n"><b>${r.quality==null?'–':r.quality.toFixed(1)}</b></td><td class="n">${money(r.llm)}${cap?`<div class="id">${Math.round(100*r.llm/cap)} % of ${cap}</div>`:''}</td><td class="n">${money(r.sim)}</td><td class="n">${dur(r.time)}</td><td class="n">${r.subs}</td></tr>`}).join('')}</tbody>`}
+function meter(label,spent,committed,cap,cur){if(cap==null)return `<div class="meter"><div class="row"><b>${label}</b><span>${money(spent,cur)} · no cap</span></div></div>`;
+ const p=Math.min(100,100*spent/cap),c=Math.min(100-p,100*(committed||0)/cap),cls=p+c>90?'bad':p+c>70?'warn':'';
+ return `<div class="meter"><div class="row"><b>${label}</b><span>${money(spent,cur)} of ${NF.format(cap)} ${cur} · ${Math.round(p)} %${committed?` · ${money(committed,cur)} committed`:''}${cls?` · <strong>${cls==='bad'?'near the cap':'70 % used'}</strong>`:''}</span></div>
+ <div class="track ${cls}" role="img" aria-label="${label}: ${Math.round(p)} % spent${committed?`, ${Math.round(c)} % committed`:''}"><i style="width:${p}%"></i>${c?`<i class="c" style="width:${c}%"></i>`:''}</div></div>`}
+function card(t){const s=t.status,l=s.llm,c=s.cloud,tk=t.tokens,[cl,txt]=status(t),q=latestQ(t),id=t.name.replace(/\W/g,'_');
+ const subs=(t.subagents||[]).filter(x=>x.kind==='spawn_agent').length,models=Object.entries(l.by_model).sort((a,b)=>b[1].usd-a[1].usd);
+ const runners=(t.runners||[]).slice().sort((a,b)=>(a.state==='deleted')-(b.state==='deleted'));
+ return `<article class="card team"><div class="team-h"><h3>${teamKey(t.name)}${esc(t.name)}</h3><span class="pill ${cl}">${esc(txt)}</span></div>
+ <p class="meta">${esc(t.harness)} · ${esc(t.provider)} · ${esc(t.tier)} tier, reasoning ${esc(t.reasoning)} · ${Object.values(s.ledgers_intact||{}).every(v=>v===true)?'ledgers intact':'<strong style="color:var(--bad)">ledger tampered</strong>'}</p>
+ <div class="stats"><div class="stat"><div class="v">${q==null?'–':q.toFixed(1)}</div><div class="l">quality /100</div></div>
+ <div class="stat"><div class="v">${dur(elapsed(t)).replace(/ \d+ min$/,'')}</div><div class="l">${t.delivered?'to delivery':'elapsed'}</div></div>
+ <div class="stat"><div class="v">${t.running?t.running.n:'–'}</div><div class="l">session</div></div><div class="stat"><div class="v">${subs}</div><div class="l">sub-agents</div></div></div>
+ ${meter('Model calls',l.spent_usd,l.in_flight_usd,l.cap_usd,'USD')}${meter('Scaleway',c.scaleway.spent,c.scaleway.committed,c.scaleway.cap,'EUR')}${meter('Runpod',c.runpod.spent,c.runpod.committed,c.runpod.cap,'USD')}
+ <p class="meta" style="margin:10px 0">${compact(tk.input)} tokens in (${tk.input?Math.round(100*tk.cached/tk.input):0} % cached) · ${compact(tk.output)} out (${compact(tk.reasoning)} reasoning)${s.hours_left!=null&&!t.delivered?` · ${dur(s.hours_left*3600)} left`:''}</p>
+ <details id="d-${id}-models"><summary>Models (${models.length})</summary><div class="scroll"><table><thead><tr><th>Model</th><th class="n">Calls</th><th class="n">In</th><th class="n">Out</th><th class="n">USD</th></tr></thead><tbody>${
+  models.map(([m,v])=>`<tr><td>${esc(m)}</td><td class="n">${num(v.calls)}</td><td class="n">${compact(v.input)}</td><td class="n">${compact(v.output)}</td><td class="n">${money(v.usd,'')}</td></tr>`).join('')}</tbody></table></div></details>
+ <details id="d-${id}-machines"><summary>Machines (${t.alive.length} running, ${runners.length} in all)</summary><div class="scroll">${runners.length?`<table><thead><tr><th>Machine</th><th>State</th><th class="n">Time</th><th class="n">Cost</th><th class="n">Commands</th></tr></thead><tbody>${
+  runners.map(r=>`<tr><td>${esc(r.provider)} ${esc(r.type||'')}<div class="id" title="${esc(r.id)}">${esc(r.id.slice(0,12))}${r.id.length>12?'…':''}</div></td><td><span class="pill ${r.state==='deleted'?'':'good run'}">${esc(r.state||'')}</span></td><td class="n">${dur(r.hours*3600)}</td><td class="n">${money(r.cost,r.currency)}</td><td class="n">${r.commands}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">No machine</div>'}</div></details>
+ <details id="d-${id}-actions"><summary>Latest actions</summary><div class="scroll"><table><tbody>${t.actions.slice(-20).reverse().map(a=>`<tr><td><span class="kind">${esc(a.kind)}</span></td><td>${esc(a.text)}</td></tr>`).join('')}</tbody></table></div></details></article>`}
+function subagents(){const names=new Set(shown().map(t=>t.name)),rows=(S.d.subagents||[]).filter(r=>names.has(r.team)),N=25,pages=Math.max(1,Math.ceil(rows.length/N));S.page=Math.min(S.page,pages-1);
+ const tot=rows.reduce((a,r)=>a+(r.usd||0),0);$('subsum').textContent=`${rows.filter(r=>r.kind==='spawn_agent').length} spawn_agent runs, ${money(tot)}; ${rows.filter(r=>r.kind==='native').length} native harness sub-agents (their cost is in the harness traffic).`;
+ $('subs').innerHTML=`<thead><tr><th>Start</th><th>Team</th><th>Agent</th><th>Model</th><th>Effort</th><th>Mode</th><th class="n">Time</th><th class="n">Calls</th><th class="n">Tokens in</th><th class="n">Out</th><th class="n">USD</th><th>Status</th><th>Task</th></tr></thead><tbody>${
+ rows.slice(S.page*N,S.page*N+N).map(r=>`<tr><td>${esc(r.start?day(r.start):'')}</td><td>${teamKey(r.team)} ${esc(r.team)}</td><td class="id">${esc(r.agent)}</td><td>${esc(r.model)}</td><td>${esc(r.effort||'')}</td>
+ <td>${FAST.has(r.mode)?`<span class="pill bad">${esc(r.mode)}</span>`:esc(r.mode||'')}</td><td class="n">${dur(r.seconds)}</td><td class="n">${r.calls??'–'}</td><td class="n">${compact(r.input)}</td><td class="n">${compact(r.output)}</td><td class="n">${r.usd==null?'–':money(r.usd,'')}</td>
+ <td><span class="pill ${r.status==='done'?'':'good run'}">${esc(r.status)}</span></td><td style="min-width:260px" title="${esc(r.answer||'')}">${esc(r.task)}</td></tr>`).join('')}</tbody>`;
+ $('spager').innerHTML=`<span>Page ${S.page+1} of ${pages}</span><button data-pg="-1" ${S.page?'':'disabled'}>Previous</button><button data-pg="1" ${S.page<pages-1?'':'disabled'}>Next</button>`}
+function feed(){const names=new Set(shown().map(t=>t.name)),k=$('fkind').value,rows=(S.d.feed||[]).filter(a=>names.has(a.team)&&(!k||a.kind===k));
+ const kinds=[...new Set((S.d.feed||[]).map(a=>a.kind))].sort(),sel=$('fkind');if(sel.options.length-1!==kinds.length)sel.innerHTML='<option value="">all</option>'+kinds.map(x=>`<option${x===k?' selected':''}>${esc(x)}</option>`).join('');
+ $('feedt').innerHTML=`<thead><tr><th>Time</th><th>Team</th><th>Kind</th><th>Action</th></tr></thead><tbody>${rows.map(a=>`<tr><td>${esc(clock(a.t.slice(0,19)+'Z')||a.t.slice(11,19))}</td><td>${teamKey(a.team)} ${esc(a.team)}</td><td><span class="kind">${esc(a.kind)}</span></td><td>${esc(a.text)}</td></tr>`).join('')}</tbody>`}
+function chips(){$('chips').innerHTML=TEAMS.map(t=>`<button class="chip" data-team="${esc(t.name)}" aria-pressed="${!S.hidden.has(t.name)}" style="color:${color(IDX[t.name])}"><span class="key${dashed(IDX[t.name])?' dash':''}"></span><span style="color:var(--ink)">${esc(t.name)}</span></button>`).join('')}
+function head(){const d=S.d,ts=TEAMS;const st=Math.min(...ts.map(t=>Date.parse(t.status.time)-(t.status.elapsed_hours||0)*3.6e6)),dl=Math.max(...ts.map(t=>Date.parse(t.status.deadline||'')||0));
+ const now=Date.parse(d.time);$('clock').textContent=isFinite(st)?`${dur((now-st)/1000)} into the race${dl?` · ${dur((dl-now)/1000)} to the deadline`:''} · updated ${clock(d.time)}`:''}
+
+/* render without losing what the reader opened, focused or scrolled */
+function focusKey(f){if(!f||f===document.body)return null;if(f.id)return '#'+CSS.escape(f.id);if(f.tagName==='SUMMARY'&&f.parentElement.id)return '#'+CSS.escape(f.parentElement.id)+'>summary';
+ for(const a of ['team','sort','pg','cost'])if(f.dataset[a]!=null)return `[data-${a}="${CSS.escape(f.dataset[a])}"]`;return null}
+function render(){if(!S.d)return;const open=new Set([...document.querySelectorAll('details[id][open]')].map(e=>e.id)),fk=focusKey(document.activeElement),scroll=[...document.querySelectorAll('.scroll')].map(e=>[e,e.scrollLeft,e.scrollTop]);
+ head();chips();kpis();board();chartQT();chartQC();chartSP();chartGantt();chartModels();$('tcards').innerHTML=shown().map(card).join('');subagents();feed();
+ for(const id of open){const e=$(id);if(e)e.open=true}
+ for(const [e,x,y] of scroll)if(e.isConnected){e.scrollLeft=x;e.scrollTop=y}
+ if(fk&&document.activeElement===document.body){const e=document.querySelector(fk);if(e)e.focus({preventScroll:true})}}
+async function load(){try{const d=window.__STATE__||await (await fetch('api/state',{cache:'no-store'})).json();S.d=d;
+ TEAMS=d.teams.slice().sort((a,b)=>a.name.localeCompare(b.name));IDX=Object.fromEntries(TEAMS.map((t,i)=>[t.name,i]));render();
+ const del=TEAMS.filter(t=>t.delivered).length;$('live').textContent=`${TEAMS.length} teams, ${del} delivered`;document.body.classList.remove('stale')}catch(e){document.body.classList.add('stale')}}
+
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+ if(b.dataset.team){const n=b.dataset.team;S.hidden.has(n)?S.hidden.delete(n):S.hidden.add(n);try{localStorage.setItem('fd.hidden',JSON.stringify([...S.hidden]))}catch(x){}render()}
+ else if(b.id==='all'){S.hidden.clear();try{localStorage.removeItem('fd.hidden')}catch(x){}render()}
+ else if(b.dataset.cost){S.cost=b.dataset.cost;document.querySelectorAll('[data-cost]').forEach(x=>x.setAttribute('aria-pressed',x===b));chartQC()}
+ else if(b.dataset.sort){const k=b.dataset.sort;S.sort={k,dir:S.sort.k===k?-S.sort.dir:(k==='team'||k==='status'?1:-1)};render()}
+ else if(b.dataset.pg){S.page+=+b.dataset.pg;render()}
+ else if(b.id==='pause'){S.paused=!S.paused;b.setAttribute('aria-pressed',S.paused);b.textContent=S.paused?'Resume updates':'Pause updates';$('dot').classList.toggle('paused',S.paused)}});
+for(const id of ['gby','gwin'])$(id).onchange=()=>{chartGantt()};$('fkind').onchange=feed;
+let rs;new ResizeObserver(()=>{clearTimeout(rs);rs=setTimeout(()=>{if(S.d){chartQT();chartQC();chartSP();chartGantt();chartModels()}},120)}).observe($('main'));
+load();if(!window.__STATE__)setInterval(()=>{if(!S.paused&&document.visibilityState==='visible')load()},5000);
 </script></body></html>

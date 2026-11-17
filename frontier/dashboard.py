@@ -7,12 +7,15 @@ With FRONTIER_DASHBOARD_TOKEN set, every request needs that token: `?t=<token>` 
 the cookie. A dashboard reachable from the Internet (tools/race_vm.py) is served this way, behind HTTPS.
 
 Read-only: it reads the framework's ledgers (llm.jsonl, resources.json, events.jsonl, budgets.json, delivery.json)
-and the harness session logs; it writes nothing in the missions.
+and the harness session logs; it writes nothing in the missions. The scientific quality of each snapshot comes from
+<root>/jury/snapshots.json, {team: {snapshot commit: scientific quality out of 100}}, written by whoever grades the
+snapshots; a snapshot without a grade is shown with its time and spend only.
 """
 
 from __future__ import annotations
 
 import argparse
+import gzip
 import hmac
 import json
 import os
@@ -52,6 +55,9 @@ def _event_text(e: dict) -> tuple[str, str] | None:
         return "session", f"{k.replace('_', ' ')} {e.get('n')}{extra}"
     if k and k.startswith("resource_") or k == "watchdog_delete":
         return "cloud", f"{k.replace('_', ' ')} {_short({x: e[x] for x in e if x not in ('t', 'event', 'prev', 'hash')}, 120)}"
+    if k == "snapshot":
+        return "snapshot", (f"{', '.join(e.get('labels', []))}: {e.get('llm_usd', 0):.2f} USD model calls, "
+                            f"{e.get('simulation_usd', 0):.2f} USD simulations")
     if k in ("delivered", "hf_publish", "mission_prepared", "harness_setup", "session_unmetered"):
         return k.replace("_", " "), _short({x: e[x] for x in e if x not in ("t", "event", "prev", "hash", "settings")}, 140)
     return None
@@ -238,23 +244,31 @@ def team_state(d: pathlib.Path) -> dict:
     runners = runner_activity(d, b.resources(), at)
     jobs = [a for a in actions if a["kind"] == "tool" and a["text"].startswith(("rp_exec", "scw_create", "rp_create"))]
     delivered = read_json(d / "delivery.json")
+    snaps = [{"t": e["t"], "labels": e.get("labels", []), "commit": e.get("commit", ""), "minutes": e.get("minutes"),
+              "llm_usd": e.get("llm_usd", 0), "simulation_usd": e.get("simulation_usd", 0)}
+             for e in events if e.get("event") == "snapshot"]
     return {"name": settings.get("name", d.name), "harness": settings.get("harness"), "provider": settings.get("provider"),
             "tier": settings.get("tier"), "reasoning": settings.get("reasoning"), "status": st, "tokens": tokens,
             "series": series, "alive": alive, "jobs": jobs[-10:], "running": running, "delivered": delivered,
-            "actions": actions[-120:], "subagents": subs, "runners": runners,
+            "actions": actions[-120:], "subagents": subs, "runners": runners, "snapshots": snaps,
             "model_calls": [{"t": e["t"], "model": f"{e['gen_ai.provider.name']}/{e['gen_ai.request.model']}",
                              "mode": e.get("frontier.mode") or "standard", "source": e["frontier.source"],
-                             "usd": e["frontier.cost.usd"]} for e in llm[-600:]],
+                             "usd": e["frontier.cost.usd"]} for e in llm],
             "activities": activities(settings.get("name", d.name), settings, events, subs, b.resources())}
 
 
 def snapshot(root: pathlib.Path) -> dict:
+    grades = read_json(root / "jury" / "snapshots.json", {}) or {}
     teams = []
     for p in sorted(root.glob("*/mission.json")):
         try:
             teams.append(team_state(p.parent))
         except (OSError, ValueError, KeyError) as e:  # a file being rewritten: skip this team for this refresh
             print(f"dashboard: {p.parent.name}: {e}", file=sys.stderr)
+    for t in teams:
+        g = grades.get(t["name"], {})
+        for sn in t["snapshots"]:
+            sn["quality"] = g.get(sn["commit"])
     feed = sorted(({**a, "team": t["name"]} for t in teams for a in t["actions"] if a["t"]),
                   key=lambda a: a["t"])[-FEED:]
     history = sorted(({**r, "team": t["name"]} for t in teams for r in t["subagents"]),
@@ -290,11 +304,18 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         if self.path.startswith("/api/state"):
-            body, ctype = json.dumps(snapshot(self.root)).encode(), "application/json"
+            body, ctype = json.dumps(snapshot(self.root), separators=(",", ":")).encode(), "application/json"
         else:
             body, ctype = PAGE.encode(), "text/html; charset=utf-8"
+        zipped = "gzip" in self.headers.get("Accept-Encoding", "")
+        if zipped:  # the state of a long race is megabytes of JSON, fetched every few seconds
+            body = gzip.compress(body, 5)
         self.send_response(200)
         self.send_header("Content-Type", ctype)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Vary", "Accept-Encoding")
+        if zipped:
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(body)))
         if self.token and query:  # the page's own api/state calls then carry the cookie
             self.send_header("Set-Cookie", f"frontier_dashboard={self.token}; Path=/; HttpOnly; SameSite=Strict")
