@@ -86,7 +86,10 @@ token gets a 403. The keys come from the Key-value secret `frontier-keys` (Secre
 field per variable name (`OPENAI_API_KEY`, `HF_TOKEN`, …). The VM reads them with an IAM key made for this race,
 which expires a day after the mission ends. The mission and its harness run as a non-root user. Claude Code refuses
 to skip permissions as root. `python3 tools/race_vm.py log <id>` prints the VM's first-boot log, and
-`python3 tools/race_vm.py down <id>` deletes the VM, its volume, its IP, and its IAM key. A live Codex race on
+`python3 tools/race_vm.py down <id>` deletes the VM, its volume, its IP, and its IAM key. The VM archives the race's
+analysis data (ledgers, logs, jury, reports, milestone snapshots) at each evaluation and keeps only the latest checked
+archive (`frontier/archive.py`); `python3 tools/race_vm.py collect <id>` fetches it, and `down` fetches it first and
+stops if it cannot. A live Codex race on
 2026-11-16 delivered this way, and the dashboard was ready 1 min 40 s after boot.
 
 ## What the AI gets

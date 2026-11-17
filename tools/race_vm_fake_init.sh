@@ -30,13 +30,15 @@ unit() {  # name, user, command
 unit race-fake frontier "/usr/bin/python3 tools/fake_race.py $F/race/missions __FAKEARGS__"
 unit race-dashboard frontier "/usr/bin/python3 -m frontier dashboard --root $F/race/missions --port 8800"
 unit race-caddy root "/usr/local/bin/caddy run --config /etc/caddy/Caddyfile"
-touch /var/log/race-fake.log /var/log/race-dashboard.log && chown frontier: /var/log/race-fake.log /var/log/race-dashboard.log
+unit race-archive frontier "/usr/bin/python3 -m frontier archive --root $F/race/missions --watch"
+touch /var/log/race-fake.log /var/log/race-dashboard.log /var/log/race-archive.log
+chown frontier: /var/log/race-fake.log /var/log/race-dashboard.log /var/log/race-archive.log
 systemctl daemon-reload && systemctl enable --now race-fake
 # the generator writes the whole period before it goes live: the dashboard starts once the data is complete
 for i in $(seq 300); do grep -q '^live:' /var/log/race-fake.log && break; sleep 2; done
 grep -q '^live:' /var/log/race-fake.log || { echo '== the generator never went live'; tail -n 40 /var/log/race-fake.log;
   systemctl status race-fake --no-pager | tail -n 5; report; exit 1; }
-systemctl enable --now race-caddy race-dashboard
+systemctl enable --now race-caddy race-dashboard race-archive
 # the certificate comes from Let's Encrypt within a minute or two; the report says whether it came, with Caddy's log
 for i in $(seq 60); do [ "$(curl -s -o /dev/null -m 5 -w '%{http_code}' https://__HOST__/)" != 000 ] && break; sleep 5; done
 echo "== HTTPS: $(curl -s -o /dev/null -m 5 -w '%{http_code}' https://__HOST__/) (403 without the token is the expected answer)"

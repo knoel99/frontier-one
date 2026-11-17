@@ -5,7 +5,8 @@
     python3 tools/race_vm.py up --fake [--speed 100] [--doubling 1] [--hours 72] [--wait]   # a synthetic race from its start, no LLM
     python3 tools/race_vm.py link SERVER_ID                      # a new single-use login link to its dashboard
     python3 tools/race_vm.py log SERVER_ID [--zone nl-ams-1]     # the tail of the VM's first-boot log
-    python3 tools/race_vm.py down SERVER_ID [--zone nl-ams-1]
+    python3 tools/race_vm.py collect SERVER_ID [--out DIR]       # fetch the latest archive of the race's analysis data
+    python3 tools/race_vm.py down SERVER_ID [--zone nl-ams-1] [--no-collect]
 
 `up` creates, for this race only: an IAM application whose API key expires a day after the mission's end and may
 read the mission's keys (the Key-value secret `frontier-keys` at path / of Secret Manager) and, when the mission has
@@ -15,7 +16,10 @@ and serves the dashboard over HTTPS at https://<vm>.<ip>.sslip.io. Its random to
 and in ~/.frontier/race-vms/<server id>.json (mode 600) on this machine, and signs single-use login links valid 15 minutes
 (frontier/dashboard.py). `up` prints one; `link` makes another.
 The mission's [secrets] section is dropped: on the VM every key comes from `frontier-keys`.
-`down` deletes the VM, its volumes, its IP, and the IAM application with its key and policy.
+The VM archives the race's analysis data at each evaluation (frontier/archive.py); `collect` fetches the latest
+archive into ~/.frontier/race-archives/<server id>/, checks its SHA-256 and then deletes the copy fetched before.
+`down` collects first and stops if it cannot (`--no-collect` deletes anyway, and the data with it); then it deletes
+the VM, its volumes, its IP, and the IAM application with its key and policy. A fake race's VM is not collected.
 `up --fake` runs no mission: its VM gets no key and no IAM application, and serves the dashboard of a synthetic race
 (tools/fake_race.py, tools/race_vm_fake_init.sh) behind the same HTTPS and token.
 The operator's own Scaleway key comes from the usual sources (SCW_SECRET_KEY, or a proxy that injects it).
@@ -26,6 +30,7 @@ from __future__ import annotations
 import argparse
 import base64
 import datetime as dt
+import hashlib
 import json
 import pathlib
 import re
@@ -40,13 +45,14 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from frontier.budget import parse_time
-from frontier.dashboard import LINK_MINUTES, login_link
+from frontier.dashboard import LINK_MINUTES, _session, login_link
 from frontier.http import scw, scw_defaults, scw_raw
 
 INIT = ROOT / "tools" / "race_vm_init.sh"
 FAKE_INIT = ROOT / "tools" / "race_vm_fake_init.sh"
 SECRET, SECRET_REGION = "frontier-keys", "fr-par"
 VMS = pathlib.Path.home() / ".frontier" / "race-vms"  # each VM's host and dashboard token, readable by its owner only
+ARCHIVES = pathlib.Path.home() / ".frontier" / "race-archives"  # each VM's latest archive, fetched by collect
 DISK_BYTES = 40_000_000_000  # the harnesses' npm, uv and pnpm trees
 FAKE_DISK_BYTES = 10_000_000_000  # a fake race installs no harness
 
@@ -187,7 +193,7 @@ def up(a) -> int:
     VMS.mkdir(parents=True, exist_ok=True)
     saved = VMS / f"{server['id']}.json"
     saved.touch(mode=0o600)
-    saved.write_text(json.dumps({"zone": zone, "host": host, "token": token}))
+    saved.write_text(json.dumps({"zone": zone, "host": host, "token": token, "fake": a.fake}))
     print(f"server {server['id']} ({a.type}, {zone}, {ip['address']})\ndashboard https://{host}/\n"
           f"login link, single use, {LINK_MINUTES} min: {login_link('https://' + host, token)}\n"
           f"another one: python3 tools/race_vm.py link {server['id']}\n"
@@ -235,6 +241,39 @@ def teardown(zone: str, server_id: str, ip_id: str, app: str, sg: str = "") -> N
           f"firewall {sg or '-'}")
 
 
+def collect(base: str, token: str, dest: pathlib.Path) -> pathlib.Path:
+    """Fetch the dashboard's latest validated archive into `dest`, check its SHA-256, then delete the archives fetched
+    before: the new one is complete. Raises urllib.error.URLError (none yet: HTTP 404) or ValueError."""
+    req = urllib.request.Request(base + "/api/archive", headers={"Cookie": "frontier_dashboard=" + _session(token)})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        m = re.search(r'filename="(race-[0-9TZ]+\.tar\.gz)"', r.headers.get("Content-Disposition", ""))
+        sha = r.headers.get("X-Archive-Sha256", "")
+        if not m or not re.fullmatch(r"[0-9a-f]{64}", sha):
+            raise ValueError("the dashboard did not name its archive and its SHA-256")
+        dest.mkdir(parents=True, exist_ok=True)
+        part, h = dest / (m.group(1) + ".part"), hashlib.sha256()
+        with open(part, "wb") as f:
+            for chunk in iter(lambda: r.read(1 << 20), b""):
+                h.update(chunk)
+                f.write(chunk)
+    if h.hexdigest() != sha:
+        part.unlink()
+        raise ValueError(f"the archive fetched does not match its SHA-256 ({h.hexdigest()[:12]} != {sha[:12]})")
+    out = dest / m.group(1)
+    part.replace(out)
+    for old in dest.glob("race-*.tar.gz"):
+        if old != out:
+            old.unlink()
+    return out
+
+
+def saved_vm(server_id: str) -> dict:
+    saved = VMS / f"{server_id}.json"
+    if not saved.exists():
+        sys.exit(f"no token saved for {server_id} in {VMS}: it was created from another machine")
+    return json.loads(saved.read_text())
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -253,20 +292,31 @@ def main() -> int:
     lg = sub.add_parser("log", help="print the tail of the VM's first-boot log (written at the end or on a failure)")
     lg.add_argument("server_id")
     lg.add_argument("--zone", default="nl-ams-1")
-    d = sub.add_parser("down", help="delete the race VM, its volumes, its IP and its IAM application")
+    c = sub.add_parser("collect", help="fetch the latest archive of the race's analysis data")
+    c.add_argument("server_id")
+    c.add_argument("--out", help=f"directory (default {ARCHIVES}/<server id>)")
+    d = sub.add_parser("down", help="collect the race's archive, then delete the VM, its volumes, its IP and its IAM application")
     d.add_argument("server_id")
     d.add_argument("--zone", default="nl-ams-1")
+    d.add_argument("--no-collect", action="store_true", help="delete without fetching the archive: its data is lost")
     a = ap.parse_args()
     if a.cmd == "up":
         a.type = a.type or ("BASIC2-A2C-4G" if a.fake else "BASIC2-A4C-8G")
         return up(a)
     if a.cmd == "link":
-        saved = VMS / f"{a.server_id}.json"
-        if not saved.exists():
-            sys.exit(f"no token saved for {a.server_id} in {VMS}: it was created from another machine")
-        vm = json.loads(saved.read_text())
+        vm = saved_vm(a.server_id)
         print(login_link("https://" + vm["host"], vm["token"]))
         return 0
+    if a.cmd in ("collect", "down") and not (a.cmd == "down" and a.no_collect):
+        vm = saved_vm(a.server_id)
+        if a.cmd == "collect" or not vm.get("fake"):
+            try:
+                out = collect("https://" + vm["host"], vm["token"], pathlib.Path(getattr(a, "out", None) or ARCHIVES / a.server_id))
+            except (urllib.error.URLError, ValueError, OSError) as e:
+                sys.exit(f"archive not fetched ({e}); nothing deleted. `down --no-collect` deletes the VM and its data anyway")
+            print(f"archive: {out}")
+        if a.cmd == "collect":
+            return 0
     if a.cmd == "log":
         code, text = scw_raw("GET", f"/instance/v1/zones/{a.zone}/servers/{a.server_id}/user_data/race-log")
         print(text if code == 200 else f"no log yet (HTTP {code}): the VM writes it when its first boot ends or fails")
