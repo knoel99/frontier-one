@@ -759,6 +759,7 @@ def test_dashboard_compiles_a_report_s_latex_once_and_never_reads_outside_its_fo
     root = tmp_path / "m"
     pdf = dashboard.tex_pdf(root, "t1", "report/report.tex")
     assert pdf.read_bytes()[:5] == b"%PDF-" and dashboard.tex_pdf(root, "t1", "report/report.tex") == pdf  # kept
+    assert dashboard.reports(root, "t1")["files"][0]["compiled"]["current"] is True  # the page shows when it was made
     assert dashboard.tex_pdf(root, "t1", "../secret.tex") == "no such LaTeX file"
     (tmp_path / "secret.txt").write_text("s3cret")
     tex.write_text(f"\\documentclass{{article}}\\begin{{document}}\\input{{{tmp_path / 'secret.txt'}}}\\end{{document}}\n")

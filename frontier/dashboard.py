@@ -420,12 +420,28 @@ def reports(root: pathlib.Path, name: str) -> dict | None:
     def written(f: pathlib.Path) -> str:
         t = dt.datetime.fromtimestamp(f.stat().st_mtime, dt.UTC)
         return (race_clock(clock, t) if clock else t).isoformat(timespec="seconds")
-    files = [{"path": f.relative_to(ws).as_posix(), "kind": f.suffix[1:].lower(), "written": written(f),
+
+    def compiled(f: pathlib.Path) -> dict | None:
+        """When the latest PDF of a LaTeX file was compiled, and whether it is of the file's current version."""
+        if f.suffix.lower() != ".tex":
+            return None
+        cur = pdf_cache(root, name, f.relative_to(ws).as_posix(), f)
+        made = sorted(cur.parent.glob(cur.name.rsplit("-", 1)[0] + "-*.pdf"), key=lambda x: x.stat().st_mtime)
+        return {"at": written(made[-1]), "current": made[-1] == cur} if made else None
+    files = [{"path": f.relative_to(ws).as_posix(), "kind": f.suffix[1:].lower(), "written": written(f), "compiled": compiled(f),
               "text": f.read_text(errors="replace")[:REPORT_MAX]}
              for f in sorted(report_files(ws), key=lambda f: (f.suffix.lower() == ".tex", f.as_posix()))]
     # the team's own PDFs, and the one frontier/snapshots.py made at each milestone from the Markdown report
     pdfs = [f for f in [*ws.glob("report*.pdf"), *(ws / "report").rglob("*.pdf"), *(ws / "snapshots").glob("*.pdf")] if f.is_file()]
     return {"files": files, "pdfs": sorted(f.relative_to(ws).as_posix() for f in pdfs)}
+
+
+def pdf_cache(root: pathlib.Path, name: str, path: str, src: pathlib.Path) -> pathlib.Path:
+    """Where the PDF of this version of a LaTeX file is kept: a new version of the file is a new name."""
+    st = src.stat()
+    digest = hashlib.sha256(f"{path}|{st.st_mtime_ns}|{st.st_size}".encode()).hexdigest()[:20]
+    slug = re.sub(r"[^\w.-]", "_", path)
+    return root / ".pdf" / name / f"{slug}-{digest}.pdf"
 
 
 TEX_FILES = {".tex", ".bib", ".bst", ".sty", ".cls", ".png", ".jpg", ".jpeg", ".pdf", ".eps"}
@@ -441,8 +457,7 @@ def tex_pdf(root: pathlib.Path, name: str, path: str) -> pathlib.Path | str:
     if r is None or path not in [f["path"] for f in r["files"] if f["kind"] == "tex"]:
         return "no such LaTeX file"
     src = pathlib.Path(read_json(root / name / "mission.json", {}).get("workspace") or root / name / "ws") / path
-    st = src.stat()
-    out = root / ".pdf" / name / f"{hashlib.sha256(f'{path}|{st.st_mtime_ns}|{st.st_size}'.encode()).hexdigest()[:20]}.pdf"
+    out = pdf_cache(root, name, path, src)
     if out.is_file():
         return out
     if not shutil.which("pdflatex"):
@@ -541,7 +556,8 @@ PDF = re.compile(r"/report/([\w.-]+)/(.+\.pdf)")
 TEX = re.compile(r"/texpdf/([\w.-]+)/(.+)\.pdf")  # the PDF of <path>.tex: a URL ending in .pdf saves as one
 DIAGRAM_CSP = "default-src 'self' 'unsafe-inline' data: blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 CSP = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; "
-       "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+       "connect-src 'self'; frame-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+PDF_CSP = "frame-ancestors 'self'"  # the Results tab shows it in a frame; the browser's PDF viewer needs no more
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -612,12 +628,12 @@ class _Handler(BaseHTTPRequestHandler):
             if f is None:
                 return self._deny("no such report")
             # the browser's own PDF viewer draws it: nothing to compile or render on the server
-            body, ctype, csp = f.read_bytes(), "application/pdf", "default-src 'none'; frame-ancestors 'none'"
+            body, ctype, csp = f.read_bytes(), "application/pdf", PDF_CSP
         elif m := TEX.fullmatch(url.path):
             f = tex_pdf(self.root, urllib.parse.unquote(m.group(1)), urllib.parse.unquote(m.group(2)) + ".tex")
             if isinstance(f, str):
                 return self._reply(f"no PDF: {f}\n".encode(), "text/plain; charset=utf-8", status=503)
-            body, ctype, csp = f.read_bytes(), "application/pdf", "default-src 'none'; frame-ancestors 'none'"
+            body, ctype, csp = f.read_bytes(), "application/pdf", PDF_CSP
         elif url.path == "/api/report":
             r = reports(self.root, urllib.parse.parse_qs(url.query).get("team", [""])[0])
             if r is None:
@@ -646,7 +662,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Security-Policy", csp)
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-Frame-Options", "SAMEORIGIN" if ctype == "application/pdf" else "DENY")
         if https:
             self.send_header("Strict-Transport-Security", "max-age=31536000")
         self.send_header("Vary", "Accept-Encoding")
