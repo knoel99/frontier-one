@@ -34,5 +34,9 @@ systemctl daemon-reload && systemctl enable --now race-fake
 # the generator writes the whole period before it goes live: the dashboard starts once the data is complete
 until grep -q '^live:' /var/log/race-fake.log; do sleep 2; done
 systemctl enable --now race-caddy race-dashboard
+# the certificate comes from Let's Encrypt within a minute or two; the report says whether it came, with Caddy's log
+for i in $(seq 60); do [ "$(curl -s -o /dev/null -m 5 -w '%{http_code}' https://__HOST__/)" != 000 ] && break; sleep 5; done
+echo "== HTTPS: $(curl -s -o /dev/null -m 5 -w '%{http_code}' https://__HOST__/) (403 without the token is the expected answer)"
+tail -n 15 /var/log/race-caddy.log || true
 echo "== ready https://__HOST__/ $(date -u +%FT%TZ)"
 report

@@ -141,7 +141,9 @@ def up(a) -> int:
         created["sg"] = create_firewall(zone, project, vm)
         ip = scw("POST", f"/instance/v1/zones/{zone}/ips", {"project": project, "type": "routed_ipv4"})["ip"]
         created["ip"] = ip["id"]
-        host = ip["address"].replace(".", "-") + ".sslip.io"
+        # a name of this VM's own: Scaleway hands the same IP back, and Let's Encrypt allows 5 certificates a week per name
+        label = re.sub(r"[^a-z0-9-]+", "-", vm.lower()).strip("-")[:63]  # a DNS label
+        host = f"{label}.{ip['address'].replace('.', '-')}.sslip.io"
         token = secrets.token_urlsafe(24)
         if a.fake:
             script = fill(FAKE_INIT.read_text(), {"BRANCH": a.branch, "TOKEN": token, "HOST": host, "HOURS": str(a.hours)})
