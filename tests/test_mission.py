@@ -546,6 +546,11 @@ def test_dashboard_with_a_token_serves_only_the_link_that_holds_it(tmp_path):
             import gzip
             assert r.headers["Content-Encoding"] == "gzip" and json.loads(gzip.decompress(r.read()))["teams"] == []
         assert get("/api/state", "frontier_dashboard=wrong")[0] == 403
+        req = urllib.request.Request(base + "/?t=s3cret-token", headers={"X-Forwarded-Proto": "https"})
+        with urllib.request.urlopen(req, timeout=10) as r:  # behind the race VM's HTTPS proxy
+            assert "Secure" in r.headers["Set-Cookie"] and "max-age" in r.headers["Strict-Transport-Security"]
+            assert "frame-ancestors 'none'" in r.headers["Content-Security-Policy"] and r.headers["Referrer-Policy"] == "no-referrer"
+            assert b'<symbol id="logo-openai"' in r.read()
     finally:
         srv.shutdown()
 

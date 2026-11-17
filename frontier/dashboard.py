@@ -26,6 +26,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .budget import Budget, now, parse_time, read_json, read_jsonl
+from .config import load_config
 from .mission import STATE_ROOT as ROOT_DEFAULT
 
 FEED = 300  # actions kept in the global feed
@@ -247,7 +248,9 @@ def team_state(d: pathlib.Path) -> dict:
     snaps = [{"t": e["t"], "labels": e.get("labels", []), "commit": e.get("commit", ""), "minutes": e.get("minutes"),
               "llm_usd": e.get("llm_usd", 0), "simulation_usd": e.get("simulation_usd", 0)}
              for e in events if e.get("event") == "snapshot"]
+    logos = load_config()["providers"].get(settings.get("provider"), {}).get("logos", [])
     return {"name": settings.get("name", d.name), "harness": settings.get("harness"), "provider": settings.get("provider"),
+            "logos": logos,
             "tier": settings.get("tier"), "reasoning": settings.get("reasoning"), "status": st, "tokens": tokens,
             "series": series, "alive": alive, "jobs": jobs[-10:], "running": running, "delivered": delivered,
             "actions": actions[-120:], "subagents": subs, "runners": runners, "snapshots": snaps,
@@ -278,12 +281,17 @@ def snapshot(root: pathlib.Path) -> dict:
             "model_calls": [{**c, "team": t["name"]} for t in teams for c in t.get("model_calls", [])]}
 
 
-PAGE = (pathlib.Path(__file__).with_name("dashboard.html")).read_text()
+PAGE = pathlib.Path(__file__).with_name("dashboard.html").read_text().replace(
+    "<!--LOGOS-->", pathlib.Path(__file__).with_name("logos.svg").read_text())
+# The page runs its own inline script and style only, talks to its own origin only, and is never framed.
+CSP = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; "
+       "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 
 
 class _Handler(BaseHTTPRequestHandler):
     root: pathlib.Path = ROOT_DEFAULT
     token: str = ""
+    server_version, sys_version = "frontier-dashboard", ""
 
     def log_message(self, *a):
         pass
@@ -307,18 +315,26 @@ class _Handler(BaseHTTPRequestHandler):
             body, ctype = json.dumps(snapshot(self.root), separators=(",", ":")).encode(), "application/json"
         else:
             body, ctype = PAGE.encode(), "text/html; charset=utf-8"
+        https = self.headers.get("X-Forwarded-Proto") == "https"  # behind Caddy (tools/race_vm.py)
         zipped = "gzip" in self.headers.get("Accept-Encoding", "")
         if zipped:  # the state of a long race is megabytes of JSON, fetched every few seconds
             body = gzip.compress(body, 5)
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Security-Policy", CSP)
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        if https:
+            self.send_header("Strict-Transport-Security", "max-age=31536000")
         self.send_header("Vary", "Accept-Encoding")
         if zipped:
             self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(body)))
         if self.token and query:  # the page's own api/state calls then carry the cookie
-            self.send_header("Set-Cookie", f"frontier_dashboard={self.token}; Path=/; HttpOnly; SameSite=Strict")
+            self.send_header("Set-Cookie", f"frontier_dashboard={self.token}; Path=/; HttpOnly; SameSite=Strict"
+                             + ("; Secure" if https else ""))
         self.end_headers()
         self.wfile.write(body)
 

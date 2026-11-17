@@ -75,6 +75,8 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 .teams{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr));gap:16px}
 .team-h{display:flex;gap:10px;align-items:baseline;justify-content:space-between}
 .team-h h3{margin:0;font-size:15px;display:flex;gap:8px;align-items:center}
+.logos{display:inline-flex;gap:4px;align-items:center;color:var(--ink);vertical-align:-0.25em}.logos svg{width:1.25em;height:1.25em;flex:none}
+.team-logos{display:flex;gap:6px;font-size:22px;margin-bottom:8px;color:var(--ink)}.team-logos svg{width:1em;height:1em}
 .meta{color:var(--mute);font-size:12.5px;margin:2px 0 12px;overflow-wrap:anywhere}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
 .stat .v{font-weight:650;font-size:16px;font-variant-numeric:tabular-nums}.stat .l{color:var(--mute);font-size:11.5px}
@@ -97,6 +99,7 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 @media (max-width:640px){header.top{position:static}.bar-in,main{padding-left:16px;padding-right:16px}
 nav.sections{margin-left:0;flex-wrap:nowrap;overflow-x:auto;max-width:100%;order:3}section{scroll-margin-top:8px}.stats{grid-template-columns:repeat(2,1fr)}.kpi .v{font-size:22px}}
 </style></head><body>
+<!--LOGOS-->
 <a class="skip" href="#main">Skip to content</a>
 <header class="top"><div class="bar-in">
  <h1 class="brand"><i id="dot" aria-hidden="true"></i>Race dashboard</h1>
@@ -151,6 +154,9 @@ try{S.hidden=new Set(JSON.parse(localStorage.getItem('fd.hidden')||'[]'))}catch(
 let TEAMS=[], IDX={};
 const shown=()=>TEAMS.filter(t=>!S.hidden.has(t.name));
 const teamKey=n=>`<span class="key${dashed(IDX[n])?' dash':''}" style="color:${color(IDX[n])}"></span>`;
+const NAMES={'openai':'OpenAI','anthropic':'Anthropic','claude':'Claude','google':'Google','gemini':'Gemini','xai':'xAI','grok':'Grok','mistral-ai':'Mistral AI',
+ 'deepseek':'DeepSeek','moonshot-ai':'Moonshot AI','kimi':'Kimi','alibaba':'Alibaba','qwen':'Qwen','zhipu-ai':'Zhipu AI','glm':'GLM','cursor':'Cursor'};
+const logos=(t,cls='logos')=>(t&&t.logos&&t.logos.length)?`<span class="${cls}">${t.logos.map(l=>`<svg role="img" aria-label="${esc(NAMES[l]||l)}"><title>${esc(NAMES[l]||l)}</title><use href="#logo-${esc(l)}"/></svg>`).join('')}</span>`:'';
 function status(t){if(t.delivered)return['good','Delivered'];const l=t.status.llm;if(l.cap_usd&&l.spent_usd>=l.cap_usd*0.999)return['bad','LLM budget spent'];
  if(t.status.hours_left!=null&&t.status.hours_left<=0)return['bad','Deadline passed'];if(t.running)return['good run',`Session ${t.running.n} running`];return['','Between sessions']}
 const latestQ=t=>{const g=(t.snapshots||[]).filter(s=>s.quality!=null);return g.length?g[g.length-1].quality:null};
@@ -259,14 +265,14 @@ function chartModels(){const el=$('c-models'),names=new Set(shown().map(t=>t.nam
 /* KPIs, standings, team cards, sub-agents, feed */
 function kpis(){const ts=shown(),run=ts.filter(t=>!t.delivered).length,best=ts.map(t=>[t,latestQ(t)]).filter(x=>x[1]!=null).sort((a,b)=>b[1]-a[1])[0];
  const llm=ts.reduce((a,t)=>a+t.status.llm.spent_usd,0),sim=ts.reduce((a,t)=>a+cloudUsd(t),0),calls=ts.reduce((a,t)=>a+t.series.length,0),alive=ts.reduce((a,t)=>a+t.alive.length,0);
- const K=[['Teams',`${ts.length}`,`${run} running · ${ts.length-run} delivered`],['Best quality',best?best[1].toFixed(1):'–',best?best[0].name:'no grade yet'],
+ const K=[['Teams',`${ts.length}`,`${run} running · ${ts.length-run} delivered`],['Best quality',best?best[1].toFixed(1):'–',best?best[0].name:'no grade yet',best&&best[0]],
   ['Model-call spend',money(llm),`${compact(calls)} calls`],['Simulation spend',money(sim),'Scaleway (EUR at par) + Runpod'],['Machines running',`${alive}`,'across all teams']];
- $('kpis').innerHTML=K.map(([l,v,d])=>`<div class="card kpi"><div class="l">${esc(l)}</div><div class="v">${esc(v)}</div><div class="d">${esc(d)}</div></div>`).join('')}
+ $('kpis').innerHTML=K.map(([l,v,d,t])=>`<div class="card kpi"><div class="l">${esc(l)}</div><div class="v">${esc(v)}</div><div class="d">${t?logos(t)+' ':''}${esc(d)}</div></div>`).join('')}
 const COLS=[['team','Team'],['status','Status'],['quality','Quality','n'],['llm','Model calls','n'],['sim','Simulations','n'],['time','Time','n'],['subs','Sub-agents','n']];
 function board(){const rows=shown().map(t=>({t,team:t.name,status:status(t)[1],quality:latestQ(t),llm:t.status.llm.spent_usd,sim:cloudUsd(t),time:elapsed(t),subs:(t.subagents||[]).filter(s=>s.kind==='spawn_agent').length}));
  const {k,dir}=S.sort;rows.sort((a,b)=>{const x=a[k],y=b[k];return (x==null)-(y==null)||(typeof x==='string'?x.localeCompare(y):x-y)*dir});
  $('board').innerHTML=`<thead><tr><th class="n">#</th>${COLS.map(([key,l,c])=>`<th class="${c||''}" ${S.sort.k===key?`aria-sort="${dir>0?'ascending':'descending'}"`:''}><button data-sort="${key}">${l}</button></th>`).join('')}</tr></thead><tbody>${
- rows.map((r,i)=>{const [cl,txt]=status(r.t),cap=r.t.status.llm.cap_usd;return `<tr><td class="n">${i+1}</td><td>${teamKey(r.team)} <b>${esc(r.team)}</b><div class="id">${esc(r.t.harness)} · ${esc(r.t.provider)}</div></td><td><span class="pill ${cl}">${esc(txt)}</span></td>
+ rows.map((r,i)=>{const [cl,txt]=status(r.t),cap=r.t.status.llm.cap_usd;return `<tr><td class="n">${i+1}</td><td>${teamKey(r.team)} ${logos(r.t)} <b>${esc(r.team)}</b><div class="id">${esc(r.t.harness)} · ${esc(r.t.provider)}</div></td><td><span class="pill ${cl}">${esc(txt)}</span></td>
  <td class="n"><b>${r.quality==null?'–':r.quality.toFixed(1)}</b></td><td class="n">${money(r.llm)}${cap?`<div class="id">${Math.round(100*r.llm/cap)} % of ${cap}</div>`:''}</td><td class="n">${money(r.sim)}</td><td class="n">${dur(r.time)}</td><td class="n">${r.subs}</td></tr>`}).join('')}</tbody>`}
 function meter(label,spent,committed,cap,cur){if(cap==null)return `<div class="meter"><div class="row"><b>${label}</b><span>${money(spent,cur)} · no cap</span></div></div>`;
  const p=Math.min(100,100*spent/cap),c=Math.min(100-p,100*(committed||0)/cap),cls=p+c>90?'bad':p+c>70?'warn':'';
@@ -275,7 +281,7 @@ function meter(label,spent,committed,cap,cur){if(cap==null)return `<div class="m
 function card(t){const s=t.status,l=s.llm,c=s.cloud,tk=t.tokens,[cl,txt]=status(t),q=latestQ(t),id=t.name.replace(/\W/g,'_');
  const subs=(t.subagents||[]).filter(x=>x.kind==='spawn_agent').length,models=Object.entries(l.by_model).sort((a,b)=>b[1].usd-a[1].usd);
  const runners=(t.runners||[]).slice().sort((a,b)=>(a.state==='deleted')-(b.state==='deleted'));
- return `<article class="card team"><div class="team-h"><h3>${teamKey(t.name)}${esc(t.name)}</h3><span class="pill ${cl}">${esc(txt)}</span></div>
+ return `<article class="card team">${logos(t,'team-logos')}<div class="team-h"><h3>${teamKey(t.name)}${esc(t.name)}</h3><span class="pill ${cl}">${esc(txt)}</span></div>
  <p class="meta">${esc(t.harness)} · ${esc(t.provider)} · ${esc(t.tier)} tier, reasoning ${esc(t.reasoning)} · ${Object.values(s.ledgers_intact||{}).every(v=>v===true)?'ledgers intact':'<strong style="color:var(--bad)">ledger tampered</strong>'}</p>
  <div class="stats"><div class="stat"><div class="v">${q==null?'–':q.toFixed(1)}</div><div class="l">quality /100</div></div>
  <div class="stat"><div class="v">${dur(elapsed(t)).replace(/ \d+ min$/,'')}</div><div class="l">${t.delivered?'to delivery':'elapsed'}</div></div>
@@ -322,5 +328,6 @@ document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)r
  else if(b.id==='pause'){S.paused=!S.paused;b.setAttribute('aria-pressed',S.paused);b.textContent=S.paused?'Resume updates':'Pause updates';$('dot').classList.toggle('paused',S.paused)}});
 for(const id of ['gby','gwin'])$(id).onchange=()=>{chartGantt()};$('fkind').onchange=feed;
 let rs;new ResizeObserver(()=>{clearTimeout(rs);rs=setTimeout(()=>{if(S.d){chartQT();chartQC();chartSP();chartGantt();chartModels()}},120)}).observe($('main'));
+if(location.search.includes('t='))history.replaceState(null,'',location.pathname);  // the token stays in the cookie, not in the address bar or the history
 load();if(!window.__STATE__)setInterval(()=>{if(!S.paused&&document.visibilityState==='visible')load()},5000);
 </script></body></html>

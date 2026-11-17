@@ -87,6 +87,20 @@ def create_iam(name: str, org: str, project: str, perms: list[str], expires: dt.
     return app, key["secret_key"]
 
 
+def create_firewall(zone: str, project: str, name: str) -> str:
+    """A security group of the VM's own: every inbound connection dropped but HTTPS and the HTTP that Let's Encrypt and
+    the redirect to HTTPS need; SSH included, since nobody logs in (`log` reads the boot log from the user data)."""
+    sg = scw("POST", f"/instance/v1/zones/{zone}/security_groups", {
+        "name": name, "project": project, "stateful": True, "inbound_default_policy": "drop",
+        "outbound_default_policy": "accept", "enable_default_security": True,
+        "description": "race VM: inbound 80 and 443 only; deleted by tools/race_vm.py down"})["security_group"]["id"]
+    for port in (80, 443):
+        for ip_range in ("0.0.0.0/0", "::/0"):
+            scw("POST", f"/instance/v1/zones/{zone}/security_groups/{sg}/rules", {
+                "protocol": "TCP", "direction": "inbound", "action": "accept", "ip_range": ip_range, "dest_port_from": port})
+    return sg
+
+
 def wait_ready(url: str, minutes: float) -> bool:
     t0 = time.time()
     while time.time() - t0 < minutes * 60:
@@ -124,6 +138,7 @@ def up(a) -> int:
         if not a.fake:
             org = scw("GET", f"/account/v3/projects/{project}")["organization_id"]
             created["app"], key = create_iam(vm, org, project, perms, mission_end(m, now) + dt.timedelta(days=1))
+        created["sg"] = create_firewall(zone, project, vm)
         ip = scw("POST", f"/instance/v1/zones/{zone}/ips", {"project": project, "type": "routed_ipv4"})["ip"]
         created["ip"] = ip["id"]
         host = ip["address"].replace(".", "-") + ".sslip.io"
@@ -142,6 +157,7 @@ def up(a) -> int:
             raise ValueError(f"no ubuntu_noble image for {a.type} in {zone}")
         server = scw("POST", f"/instance/v1/zones/{zone}/servers", {
             "name": vm, "commercial_type": a.type, "image": img["id"], "project": project, "public_ips": [ip["id"]],
+            "security_group": created["sg"],
             "tags": ["frontier", "race-vm"] + ([f"iam-app:{created['app']}"] if created.get("app") else []),
             "volumes": {"0": {"size": FAKE_DISK_BYTES if a.fake else DISK_BYTES, "volume_type": "sbs_volume"}}})["server"]
         created["server"] = server["id"]
@@ -150,7 +166,7 @@ def up(a) -> int:
         scw("POST", f"/instance/v1/zones/{zone}/servers/{server['id']}/action", {"action": "poweron"})
     except Exception as e:  # noqa: BLE001 - whatever failed, nothing created may be left billing
         print(f"up failed: {e}; deleting what was created", file=sys.stderr)
-        teardown(zone, created.get("server", ""), created.get("ip", ""), created.get("app", ""))
+        teardown(zone, created.get("server", ""), created.get("ip", ""), created.get("app", ""), created.get("sg", ""))
         return 1
     url = f"https://{host}/?t={token}"
     print(f"server {server['id']} ({a.type}, {zone}, {ip['address']})\ndashboard {url}\n"
@@ -160,7 +176,7 @@ def up(a) -> int:
     return 0
 
 
-def teardown(zone: str, server_id: str, ip_id: str, app: str) -> None:
+def teardown(zone: str, server_id: str, ip_id: str, app: str, sg: str = "") -> None:
     """Delete the IAM application, then the server with its Block Storage volumes and its flexible IP; a second run
     after a partial failure finishes the job."""
     vols: list[str] = []
@@ -170,6 +186,8 @@ def teardown(zone: str, server_id: str, ip_id: str, app: str) -> None:
         vols = [v["id"] for v in (s.get("volumes") or {}).values() if v.get("volume_type") == "sbs_volume"]
         ip_id = ip_id or next((i["id"] for i in s.get("public_ips") or []), "")
         app = app or next((t.split(":", 1)[1] for t in s.get("tags", []) if t.startswith("iam-app:")), "")
+        own = s.get("security_group") or {}
+        sg = sg or (own.get("id", "") if own.get("name") == s["name"] else "")  # never the project's default group
     # the IAM application first: its id is in the server's tags, lost once the server is gone
     if app and (application := scw("GET", f"/iam/v1alpha1/applications/{app}", ok404=True)):
         for p in scw("GET", "/iam/v1alpha1/policies", query={"application_ids": app,
@@ -190,7 +208,10 @@ def teardown(zone: str, server_id: str, ip_id: str, app: str) -> None:
             time.sleep(5)
     if ip_id and scw("GET", f"/instance/v1/zones/{zone}/ips/{ip_id}", ok404=True):
         scw("DELETE", f"/instance/v1/zones/{zone}/ips/{ip_id}")
-    print(f"deleted: server {server_id or '-'}, volumes {vols or '-'}, ip {ip_id or '-'}, IAM application {app or '-'}")
+    if sg and scw("GET", f"/instance/v1/zones/{zone}/security_groups/{sg}", ok404=True):
+        scw("DELETE", f"/instance/v1/zones/{zone}/security_groups/{sg}")
+    print(f"deleted: server {server_id or '-'}, volumes {vols or '-'}, ip {ip_id or '-'}, IAM application {app or '-'}, "
+          f"firewall {sg or '-'}")
 
 
 def main() -> int:
