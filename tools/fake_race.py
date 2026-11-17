@@ -559,7 +559,8 @@ def main() -> int:
             tm.simulate(end)
             tm.snapshots(end)
         jcalls, jevents = jury_rows(teams, cfg, rng, end)
-        clock = {"real_start": iso(start), "race_start": iso(start), "speed": a.speed, "doubling_minutes": a.doubling}
+        clock = {"real_start": iso(start), "race_start": iso(start), "race_end": iso(end), "speed": a.speed,
+                 "doubling_minutes": a.doubling}
         root.mkdir(parents=True, exist_ok=True)
         budget.write_json(root / "clock.json", clock)
         real = (real_time(clock, end) - start).total_seconds() / 60

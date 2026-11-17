@@ -140,10 +140,14 @@ def _harness_actions(log: pathlib.Path) -> list[dict]:
 
 def race_clock(c: dict, real: dt.datetime) -> dt.datetime:
     """The race's time at the real time `real`, for a replayed race: SPEED race minutes per real minute at its start,
-    the speed doubling every DOUBLING minutes (0: constant)."""
+    the speed doubling every DOUBLING minutes (0: constant), until the race's end (race_end); then the real clock's pace,
+    so that a finished race stays at its end instead of running away."""
+    end = parse_time(c.get("race_end"))
+    if end and real >= real_time(c, end):
+        return end + (real - real_time(c, end))
     r = max(0.0, (real - parse_time(c["real_start"])).total_seconds() / 60)
     s0, d = float(c["speed"]), float(c.get("doubling_minutes") or 0)
-    race = s0 * d / math.log(2) * (2 ** (r / d) - 1) if d else s0 * r
+    race = s0 * d / math.log(2) * (2 ** min(r / d, 20) - 1) if d else s0 * r  # capped: a clock without race_end
     return parse_time(c["race_start"]) + dt.timedelta(minutes=race)
 
 

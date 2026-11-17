@@ -680,6 +680,10 @@ def test_the_race_clock_doubles_its_speed_and_inverts():
     assert race[0] == 0 and 0.9 < race[1] < 1.1 and race[2] > 72  # x10 at the start, 72 h in about 50 min
     end = t0 + dt.timedelta(hours=72)
     assert abs((race_clock(c, real_time(c, end)) - end).total_seconds()) < 1
+    ended = dict(c, race_end=end.isoformat())  # a finished race keeps the real clock's pace from its end
+    after = real_time(c, end) + dt.timedelta(hours=5)
+    assert race_clock(ended, after) == end + dt.timedelta(hours=5)
+    assert race_clock(c, t0 + dt.timedelta(days=30)) > t0  # an old clock without race_end does not overflow
     flat = dict(c, doubling_minutes=0)
     assert race_clock(flat, t0 + dt.timedelta(minutes=6)) == t0 + dt.timedelta(minutes=60)
 

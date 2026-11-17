@@ -154,10 +154,10 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
  <div class="right"><details class="picker" id="picker"><summary><span>Teams</span> <b id="pk-n"></b> <span class="faces" id="pk-faces"></span></summary>
   <div class="pop" role="group" aria-label="Teams shown"><div class="acts"><button id="pk-all">All</button><button id="pk-none">None</button><span class="sub" style="margin:0 0 0 auto">"only" keeps one</span></div><div id="pk-list"></div></div></details><button id="theme" title="Follow the device, or always light, or always dark"></button><button id="pause" aria-pressed="false" title="Stop or resume the refresh every 5 seconds">Pause</button></div>
  <div role="tablist" aria-label="Views" id="tabs">
-  <button role="tab" id="tab-overview" data-group="overview" aria-controls="p-overview" aria-selected="true">Overview</button>
-  <button role="tab" id="tab-teams" data-group="teams" aria-controls="p-teams" aria-selected="false" tabindex="-1">Teams</button>
-  <button role="tab" id="tab-activity" data-group="activity" aria-controls="p-activity" aria-selected="false" tabindex="-1">Activity</button>
-  <button role="tab" id="tab-jury" data-group="jury" aria-controls="p-jury" aria-selected="false" tabindex="-1">Jury</button>
+  <button role="tab" id="tab-overview" data-group="overview" aria-controls="p-overview" aria-selected="true">Race overview</button>
+  <button role="tab" id="tab-details" data-group="details" aria-controls="p-teams" aria-selected="false" tabindex="-1">Race details</button>
+  <button role="tab" id="tab-results" data-group="results" aria-controls="p-reports" aria-selected="false" tabindex="-1">Results</button>
+  <button role="tab" id="tab-analysis" data-group="analysis" aria-controls="p-activity" aria-selected="false" tabindex="-1">Race analysis</button>
   <button role="tab" id="tab-about" data-group="about" aria-controls="p-about" aria-selected="false" tabindex="-1">How it works</button>
  </div>
  <div role="tablist" class="subtabs" id="subtabs" hidden></div>
@@ -191,7 +191,7 @@ The jury grades a snapshot of the work taken at milestones only: 5, 15, 30 min, 
 
 <section role="tabpanel" id="p-teams" aria-labelledby="sub-teams" hidden>
  <div class="card" style="margin-bottom:16px"><h2>Standings in detail</h2><p class="sub">Global = 50 % scientific quality + 25 % code and data + 25 % efficiency (see How it works). Select a column to sort.</p><div class="scroll"><table id="board2"></table></div></div>
- <div class="chart-head"><div><h2>Teams</h2><p class="sub">Scores, budgets, tokens, machines and the latest actions of each team.</p></div>
+ <div class="chart-head"><div><h2>Competitors</h2><p class="sub">Scores, budgets, tokens, machines and the latest actions of each team.</p></div>
  <div class="ctrls"><label>Sort by <select id="tsort"><option value="final">global standing</option><option value="science">scientific quality</option><option value="artifacts">code and data</option><option value="efficiency">efficiency</option><option value="llm">model-call spend</option><option value="sim">simulation spend</option><option value="model">name</option></select></label></div></div>
  <div class="teams" id="tcards"></div>
 </section>
@@ -213,7 +213,7 @@ The jury grades a snapshot of the work taken at milestones only: 5, 15, 30 min, 
  <div class="ctrls"><label>Team <select id="steam"><option value="">all teams</option></select></label><label>Role <select id="srole"><option value="">all roles</option></select></label></div></div>
  <div id="sdetail"></div><div class="scroll"><table id="subs"></table></div><div class="pager" id="spager"></div></div></section>
 
-<section role="tabpanel" id="p-jury" aria-labelledby="tab-jury" hidden>
+<section role="tabpanel" id="p-jury" aria-labelledby="sub-jury" hidden>
  <div class="card" style="margin-bottom:16px"><h2>Jury activity</h2><p class="sub">The judges grade each snapshot blind; a judge never grades the team of its own provider. Each grade is the median of the judges.</p>
  <div class="facts" id="jfacts"></div><div class="scroll"><table id="jjudges"></table></div></div>
  <div class="card" style="margin-bottom:16px"><div class="chart-head"><div><h2>Verdicts over time</h2><p class="sub">One bar per verdict, from the judge's first call to its answer. Hover for the grade.</p></div>
@@ -226,7 +226,7 @@ The jury grades a snapshot of the work taken at milestones only: 5, 15, 30 min, 
  <label>Kind <select id="fkind"><option value="">all</option></select></label></div>
  <div class="scroll feed" tabindex="0" role="region" aria-label="All actions, scrollable"><table id="feedt"></table></div></div></section>
 
-<section role="tabpanel" id="p-reports" aria-labelledby="sub-reports" hidden><div class="card"><div class="chart-head"><div><h2>Reports</h2><p class="sub">Each team's report as its agent writes it (report* and report/ in its workspace), refreshed live: Markdown rendered with its equations, LaTeX as source and as a PDF compiled on request.</p></div></div>
+<section role="tabpanel" id="p-reports" aria-labelledby="tab-results" hidden><div class="card"><div class="chart-head"><div><h2>Results: the reports</h2><p class="sub">Each team's report as its agent writes it (report* and report/ in its workspace), refreshed live: Markdown rendered with its equations, LaTeX as source and as a PDF compiled on request.</p></div></div>
  <div class="tpick" id="rteam" role="group" aria-label="Team"></div>
  <div class="ctrls rbar"><label>File <select id="rfile"></select></label><span id="rpdf"></span><span class="sub" id="rerr" role="status"></span></div>
  <div class="scroll report" id="rbody" tabindex="0" role="region" aria-label="The report, scrollable"></div></div></section>
@@ -608,8 +608,8 @@ function render(){if(!S.d)return;const open=new Set([...document.querySelectorAl
  for(const [id,y] of scroll){const h=$(id),e=h&&(h.matches('.feed')?h:h.querySelector('div'));if(e)e.scrollTop=y}
  if(fk&&document.activeElement===document.body){const e=document.querySelector(fk);if(e)e.focus({preventScroll:true})}}
 /* views: a tab per group, and a sub-tab per view in a group of several */
-const GROUPS={overview:['overview'],teams:['teams','reports'],activity:['activity','subagents','feed'],jury:['jury'],about:['about']};
-const SUBNAME={teams:'Team cards',reports:'Reports',activity:'Timeline',subagents:'Sub-agents',feed:'Event log'};
+const GROUPS={overview:['overview'],details:['teams','jury'],results:['reports'],analysis:['activity','subagents','feed'],about:['about']};
+const SUBNAME={teams:'Competitors',jury:'Judging',activity:'Timeline',subagents:'Sub-agents',feed:'Event log'};
 const groupOf=tab=>Object.keys(GROUPS).find(g=>GROUPS[g].includes(tab));
 function show(tab,focus){S.tab=tab;const g=groupOf(tab),views=GROUPS[g];S.sub=S.sub||{};S.sub[g]=tab;
  document.querySelectorAll('#tabs [role=tab]').forEach(b=>{const on=b.dataset.group===g;b.setAttribute('aria-selected',on);b.tabIndex=on?0:-1;
