@@ -124,13 +124,15 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
  .card{padding:12px;border-radius:10px}.stats{grid-template-columns:repeat(2,1fr)}
  td,th{padding:7px 6px}.st{display:none}.who .mob{display:block}.budget{min-width:72px}
  .chart-head{flex-direction:column}.ctrls{width:100%}}
-</style></head><body>
+</style>
+<script>try{const t=localStorage.getItem('fd.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
+</head><body>
 <!--LOGOS-->
 <a class="skip" href="#main">Skip to content</a>
 <header class="top"><div class="bar-in">
  <h1 class="brand"><i id="dot" aria-hidden="true"></i>Race dashboard</h1>
  <span class="clock" id="clock"></span>
- <div class="right"><button id="pause" aria-pressed="false" title="Stop or resume the refresh every 5 seconds">Pause</button></div>
+ <div class="right"><button id="theme" title="Follow the device, or always light, or always dark"></button><button id="pause" aria-pressed="false" title="Stop or resume the refresh every 5 seconds">Pause</button></div>
  <div role="tablist" aria-label="Views">
   <button role="tab" id="tab-overview" aria-controls="p-overview" aria-selected="true">Overview</button>
   <button role="tab" id="tab-teams" aria-controls="p-teams" aria-selected="false" tabindex="-1">Teams</button>
@@ -531,6 +533,12 @@ $('metric').onchange=e=>{S.metric=e.target.value;chartQT();chartQC()};
 for(const id of ['gby','gkind','gwin'])$(id).onchange=chartGantt;for(const id of ['msrc','mmode','mwin'])$(id).onchange=chartModels;
 $('tsort').onchange=cards;$('jwin').onchange=jury;$('fkind').onchange=feed;for(const id of ['steam','srole'])$(id).onchange=()=>{S.page=0;subagents()};
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',render);
+/* theme: auto (the device's), light or dark, kept per browser */
+const THEMES={auto:'◐ Auto',light:'☀ Light',dark:'☾ Dark'};
+function theme(t){const r=document.documentElement;if(t==='auto')delete r.dataset.theme;else r.dataset.theme=t;try{localStorage.setItem('fd.theme',t)}catch(e){}
+ const b=$('theme');b.textContent=THEMES[t];b.setAttribute('aria-label',`Theme: ${t}. Change it`);render()}
+$('theme').onclick=()=>{const cur=document.documentElement.dataset.theme||'auto';theme(cur==='auto'?'light':cur==='light'?'dark':'auto')};
+theme(document.documentElement.dataset.theme||'auto');
 let rs;new ResizeObserver(()=>{clearTimeout(rs);rs=setTimeout(()=>{if(S.d)VIEWS[S.tab]()},150)}).observe($('main'));
 const first=location.hash.slice(1);if(VIEWS[first])show(first);
 load();if(!window.__STATE__)setInterval(()=>{if(!S.paused&&document.visibilityState==='visible')load()},5000);
