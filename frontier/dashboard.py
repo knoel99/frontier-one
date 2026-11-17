@@ -430,12 +430,14 @@ class _Handler(BaseHTTPRequestHandler):
             self.used.add(nonce)
         if not fresh:
             return self._deny("this login link has expired or was already used; ask for a new one (tools/race_vm.py link)")
+        # Lax, not Strict: a link opened from another site (a chat, a mail) is a cross-site navigation, and a Strict cookie
+        # set on it is not sent on the redirect that follows. The dashboard only answers GET: Lax keeps it from other sites.
         self.send_response(303)
         self.send_header("Location", "/")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Set-Cookie", f"frontier_dashboard={_session(self.token)}; Path=/; Max-Age={SESSION_DAYS * 86400}; "
-                         "HttpOnly; SameSite=Strict" + ("; Secure" if https else ""))
+                         "HttpOnly; SameSite=Lax" + ("; Secure" if https else ""))
         self.send_header("Content-Length", "0")
         self.end_headers()
 
