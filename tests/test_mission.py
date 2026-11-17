@@ -714,9 +714,9 @@ def test_dashboard_serves_a_team_report_and_takes_an_evaluation_request_only_fro
     port = srv.server_address[1]
     cookie = "frontier_dashboard=" + dashboard._session("s3cret-token")
 
-    def req(method, path, cookie=cookie, **headers):
+    def req(method, path, cookie=cookie, body=None, **headers):
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-        c.request(method, path, headers={**({"Cookie": cookie} if cookie else {}), **headers})
+        c.request(method, path, body=body, headers={**({"Cookie": cookie} if cookie else {}), **headers})
         r = c.getresponse()
         return r.status, r.headers, r.read()
 
@@ -737,6 +737,10 @@ def test_dashboard_serves_a_team_report_and_takes_an_evaluation_request_only_fro
         assert req("POST", "/api/evaluate", Origin=f"http://127.0.0.1:{port}")[0] == 200
         assert req("POST", "/api/evaluate")[0] == 409  # one pending at a time
         assert len(dashboard.evaluate_state(root)["pending"]) == 1
+        assert req("POST", "/api/panel", body=json.dumps({"judges": ["xai"]}), cookie="")[0] == 403
+        assert req("POST", "/api/panel", body="not json")[0] == 400
+        code, _, body = req("POST", "/api/panel", body=json.dumps({"judges": ["xai", "google"]}))
+        assert code == 200 and json.loads(body)["judges"] == ["xai", "google"] == dashboard.panel(root)["judges"]
     finally:
         srv.shutdown()
 
@@ -764,3 +768,24 @@ def test_dashboard_compiles_a_report_s_latex_once_and_never_reads_outside_its_fo
     (tmp_path / "secret.txt").write_text("s3cret")
     tex.write_text(f"\\documentclass{{article}}\\begin{{document}}\\input{{{tmp_path / 'secret.txt'}}}\\end{{document}}\n")
     assert dashboard.tex_pdf(root, "t1", "report/report.tex").startswith("pdflatex failed")  # paranoid: no file outside
+
+
+def test_the_jury_panel_is_changed_from_the_dashboard_and_read_by_the_jury(tmp_path, monkeypatch):
+    from frontier import dashboard, jury
+
+    assert dashboard.panel(tmp_path)["judges"] == list(dashboard.DEFAULT_JUDGES)
+    for bad in (["openai", "nope"], [], "openai", ["openai", "openai"]):  # distinct providers of the config only
+        assert dashboard.set_panel(tmp_path, bad)
+    assert dashboard.set_panel(tmp_path, ["openai", "mistral", "xai"]) is None
+    p = dashboard.panel(tmp_path)
+    assert p["judges"] == ["openai", "mistral", "xai"]
+    assert [h["judges"] for h in p["history"]] == [list(dashboard.DEFAULT_JUDGES), p["judges"]]
+    c = {x["provider"]: x for x in dashboard.panel_state(tmp_path)["candidates"]}
+    assert c["openai"]["usd"] > 0 and c["openai"]["observed"] == 0  # priced from the price list until a judge answers
+    seen = {}
+    monkeypatch.setattr(jury, "run", lambda root, subject, context, out, judges, *a: seen.setdefault("judges", judges) and {})
+    monkeypatch.setattr(jury, "markdown", lambda res: "")
+    (tmp_path / "s.md").write_text("subject")
+    s = str(tmp_path / "s.md")
+    jury.main(["--root", str(tmp_path), "--subject", s, "--context", s, "--out", str(tmp_path / "jury")])
+    assert seen["judges"] == ["openai", "mistral", "xai"]  # frontier jury grades with the panel the dashboard set

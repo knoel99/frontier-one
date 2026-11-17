@@ -27,6 +27,7 @@ header.top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--b
 .subtabs{margin-top:0;border-top:1px solid var(--line)}.subtabs [role=tab]{min-height:34px;padding:6px 12px;font-size:13px}
 button,select{font:inherit;color:var(--ink);background:var(--raised);border:1px solid var(--line2);border-radius:8px;padding:5px 10px;min-height:32px;cursor:pointer}
 button:hover{border-color:var(--mute)}
+button:disabled{opacity:.5;cursor:default}button:disabled:hover{border-color:var(--line2)}
 :focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 label{color:var(--ink2);font-size:12.5px;display:inline-flex;gap:6px;align-items:center}
 main{max-width:1480px;margin:auto;padding:14px 20px 48px}
@@ -128,6 +129,9 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 .why{border-bottom:1px dotted currentColor;cursor:help;white-space:nowrap}
 .tpick{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}.tpick button{display:inline-flex;align-items:center;gap:6px;padding:4px 10px}
 .tpick svg{width:20px;height:20px}.tpick button[aria-pressed=true]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);font-weight:600}
+.evgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:16px}.evgrid>.wide{grid-column:1/-1}
+@media (max-width:900px){.evgrid{grid-template-columns:1fr}}.steps{margin:6px 0 0;padding-left:20px;line-height:1.55;color:var(--ink2)}.steps li{margin-bottom:4px}
+.tpick .usd{color:var(--mute);font-size:12px}.warn{color:var(--ink)}
 .rtabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:10px}.rtabs [role=tab]{min-height:34px;padding:6px 14px}
 .report iframe{width:100%;height:calc(100vh - 330px);min-height:420px;border:1px solid var(--line);border-radius:8px;background:#fff}
 .rbar{margin-bottom:8px;flex-wrap:wrap;gap:10px}.rbar a{white-space:nowrap}.report math[display=block]{margin:8px 0}
@@ -172,7 +176,7 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 
 <section role="tabpanel" id="p-overview" aria-labelledby="tab-overview">
  <div class="home">
-  <div class="card lb"><div class="chart-head"><div><h2>Live leaderboard</h2><p class="sub">Global score out of 100, from the latest graded snapshot. Budget: spent of all the caps together.</p></div><button id="evaluate" hidden>Evaluate now</button></div><p class="sub" id="evline" role="status" hidden></p>
+  <div class="card lb"><div class="chart-head"><div><h2>Live leaderboard</h2><p class="sub">Global score out of 100, from the latest graded snapshot. Budget: spent of all the caps together.</p></div></div>
    <div class="scroll"><table id="board"></table></div>
    <div class="legend"><span><i class="sw" style="background:var(--c-llm)"></i>model calls</span><span><i class="sw" style="background:var(--c-sim)"></i>simulations</span><span><i class="sw" style="background:var(--line)"></i>left</span></div>
    <p class="sub" id="jline" style="margin:12px 0 0"></p></div>
@@ -218,6 +222,20 @@ The jury grades a snapshot of the work taken at milestones only: 5, 15, 30 min, 
  <div id="sdetail"></div><div class="scroll"><table id="subs"></table></div><div class="pager" id="spager"></div></div></section>
 
 <section role="tabpanel" id="p-jury" aria-labelledby="tab-evaluation" hidden>
+ <div class="evgrid">
+ <div class="card"><h2>How the jury judges</h2>
+  <ol class="steps"><li><b>Snapshot.</b> At each milestone (5, 15, 30 min, 1, 2, 4, 8 h…; 5, 10, 20, 50 USD… of spend), or when you ask, the watchdog copies each team's workspace: its report, code and data.</li>
+  <li><b>Blind.</b> Names of providers, models and harnesses are redacted: a judge sees a pseudonym.</li>
+  <li><b>Independent.</b> Each judge reads the snapshot alone, in parallel, and grades scientific quality and code and data out of 100. A judge never grades its own provider's team.</li>
+  <li><b>Median.</b> A criterion's grade is the median of the judges; efficiency comes from spend and time, and global = 50 % science + 25 % code and data + 25 % efficiency.</li></ol></div>
+ <div class="card"><h2>Evaluate now</h2>
+  <p class="sub" id="evhelp"></p>
+  <div class="ctrls"><button id="evaluate">Evaluate now</button><span class="sub" id="evline" role="status"></span></div></div>
+ <div class="card wide"><div class="chart-head"><div><h2>Judges</h2><p class="sub">The panel that grades the next snapshots. Pick the providers whose frontier model judges; an odd number keeps the median a judge's own grade.</p></div>
+  <div class="ctrls"><button id="panelsave" disabled>Apply this panel</button><button id="panelreset" disabled>Undo</button></div></div>
+  <div class="tpick" id="jpick" role="group" aria-label="Judges"></div>
+  <p class="sub warn" id="jwarn"></p><p class="sub" id="jhist"></p></div>
+ </div>
  <div class="card" style="margin-bottom:16px"><h2>Jury activity</h2><p class="sub">The judges grade each snapshot blind; a judge never grades the team of its own provider. Each grade is the median of the judges.</p>
  <div class="facts" id="jfacts"></div><div class="scroll"><table id="jjudges"></table></div></div>
  <div class="card" style="margin-bottom:16px"><div class="chart-head"><div><h2>Verdicts over time</h2><p class="sub">One bar per verdict, from the judge's first call to its answer. Hover for the grade.</p></div>
@@ -604,12 +622,22 @@ function reports(){const rt=$('rteam'),cur=S.rteam&&BY[S.rteam]?S.rteam:(TEAMS[0
   if(mode==='pdf'){const fr=b.querySelector('iframe')||(b.innerHTML='<iframe title="The report as a PDF"></iframe>',b.querySelector('iframe'));
    fr.onload=()=>{if(S.tab==='reports')reports()};fr.src=it.url;return}
   const top=b.scrollTop;b.innerHTML=mode==='tex'?`<pre>${esc(f.text)}</pre>`:`<div class="md">${md(f.text)}</div>`;b.scrollTop=top}).catch(()=>{RQ=null})}
-/* on-demand evaluation: offered only when something honors it (DIR/requests) */
-function evline(){const E=S.d.evaluate,b=$('evaluate'),l=$('evline');b.hidden=!E;l.hidden=!(E&&E.pending.length);
- if(E){b.disabled=!!E.pending.length;if(E.pending.length)l.textContent='Evaluation asked: every running team is snapshotted now; its grades come when the judges answer.'}}
-const VIEWS={overview:()=>{feature();evline();board();jline();chartQT();chartQC();chartSP()},teams:()=>{board2();cards()},activity:()=>{chartGantt();chartModels()},subagents:subagents,jury:jury,feed:feed,reports:reports,about:()=>{}};
+/* the jury's panel and on-demand evaluation: the page prices it from the judges' cost per verdict */
+function panelView(){const P=S.d.panel,E=S.d.evaluate;if(!P)return;const C=Object.fromEntries(P.candidates.map(c=>[c.provider,c]));
+ if(!S.pj||!S.pjDirty)S.pj=P.judges.slice();const sel=new Set(S.pj),pk=$('jpick');
+ if(pk.childElementCount!==P.candidates.length)pk.innerHTML=P.candidates.map(c=>`<button data-judge="${esc(c.provider)}" aria-pressed="false" aria-label="${esc(NAMES[c.logos[0]]||c.provider)}, ${esc(c.model)}" data-tip="${esc(c.model)}\n${money(c.usd)} per verdict, ${c.observed?`the mean of its ${c.observed} calls`:'from the price list'}">${c.logos[0]?icon(c.logos[0]):''}<span>${esc(c.model)}</span><span class="usd">${money(c.usd)}</span></button>`).join('');
+ pk.querySelectorAll('[data-judge]').forEach(b=>b.setAttribute('aria-pressed',sel.has(b.dataset.judge)));
+ const changed=S.pj.join()!==P.judges.join();$('panelsave').disabled=!changed||!S.pj.length;$('panelreset').disabled=!changed;
+ $('jwarn').textContent=!S.pj.length?'Pick at least one judge.':changed?`Not applied yet. Grades given by another panel are not strictly comparable: snapshots graded before and after the change mix the two panels' medians.`:'';
+ $('jhist').textContent=P.history.length>1?'Panel changes: '+P.history.map(h=>`${h.at?dur((Date.parse(h.at)-T0)/1000)+' into the race':'at the start'}: ${h.judges.join(', ')}`).join(' → '):`The panel the race started with: ${P.judges.join(', ')}.`;
+ const running=TEAMS.filter(t=>!t.delivered),v=running.flatMap(t=>S.pj.filter(j=>j!==t.provider)),usd=v.reduce((a,j)=>a+(C[j]?C[j].usd:0),0);
+ $('evhelp').textContent=E?`Takes a snapshot of each running team now, then each judge of the panel grades it, as at a milestone: ${running.length} teams, ${v.length} verdicts, about ${money(usd)} of the jury's budget${S.d.jury&&S.d.jury.cap?` (${money(S.d.jury.usd)} of ${S.d.jury.cap} USD spent so far)`:''}. The grades join the charts as an "on demand" point once the judges have answered, a few minutes of race later. A team in its first 15 minutes has no report yet and gets no grade.`
+  :'Not available in this race: its jury grades at the milestones only. A replayed race (tools/fake_race.py --replay) takes on-demand evaluations.';
+ const b=$('evaluate');b.disabled=!E||!!(E&&E.pending.length)||!S.pj.length||changed;
+ $('evline').textContent=E&&E.pending.length?'Asked: every running team is snapshotted now; its grades come when the judges answer.':changed?'Apply the panel first.':''}
+const VIEWS={overview:()=>{feature();board();jline();chartQT();chartQC();chartSP()},teams:()=>{board2();cards()},activity:()=>{chartGantt();chartModels()},subagents:subagents,jury:()=>{panelView();jury()},feed:feed,reports:reports,about:()=>{}};
 function focusKey(f){if(!f||f===document.body)return null;if(f.id)return '#'+CSS.escape(f.id);if(f.tagName==='SUMMARY'&&f.parentElement.id)return '#'+CSS.escape(f.parentElement.id)+'>summary';
- for(const a of ['sort','pg','jpg','ax','v','only','pick','feat','rteam','dl'])if(f.dataset[a]!=null)return `[data-${a}="${CSS.escape(f.dataset[a])}"]`;return null}
+ for(const a of ['sort','pg','jpg','ax','v','only','pick','feat','rteam','dl','judge'])if(f.dataset[a]!=null)return `[data-${a}="${CSS.escape(f.dataset[a])}"]`;return null}
 /* a table that can scroll sideways is reachable by keyboard, named after its card */
 function scrollables(){document.querySelectorAll('.scroll:not([tabindex])').forEach(e=>{const h=e.closest('.card')&&e.closest('.card').querySelector('h2');
  e.tabIndex=0;e.setAttribute('role','region');e.setAttribute('aria-label',(h?h.textContent:'Table')+', scrollable')})}
@@ -649,6 +677,9 @@ document.addEventListener('click',e=>{const g=e.target.closest('[data-goto]');if
  else if(b.dataset.rteam){S.rteam=b.dataset.rteam;RK='';$('rerr').textContent='';reports()}
  else if(b.dataset.dl)dl(b.dataset.dl,b.dataset.name);
  else if(b.id==='evaluate'){b.disabled=true;fetch('api/evaluate',{method:'POST'}).then(()=>load())}
+ else if(b.dataset.judge){const j=b.dataset.judge;S.pj=S.pj.includes(j)?S.pj.filter(x=>x!==j):[...S.pj,j].sort();S.pjDirty=true;panelView()}
+ else if(b.id==='panelreset'){S.pjDirty=false;panelView()}
+ else if(b.id==='panelsave'){b.disabled=true;fetch('api/panel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({judges:S.pj})}).then(r=>r.json()).then(r=>{if(r.error)$('jwarn').textContent=r.error;else S.pjDirty=false;load()})}
  else if(b.dataset.feat){S.feat=b.dataset.feat;try{localStorage.setItem('fd.feat',S.feat)}catch(e){}VIEWS.overview();b.focus()}
  else if(b.dataset.sort){const k=b.dataset.sort;S.sort={k,dir:S.sort.k===k?-S.sort.dir:(k==='model'||k==='status'?1:-1)};board2()}
  else if(b.dataset.pg){S.page+=+b.dataset.pg;subagents()}

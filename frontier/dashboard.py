@@ -43,7 +43,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import llm as llm_mod
 from . import scoring
-from .budget import Budget, now, parse_time, read_json, read_jsonl, write_json
+from .budget import Budget, llm_cost, now, parse_time, read_json, read_jsonl, write_json
 from .config import ROOT, load_config
 from .mission import STATE_ROOT as ROOT_DEFAULT
 from .mission import report_files
@@ -375,10 +375,55 @@ def snapshot(root: pathlib.Path) -> dict:
             "feed": feed[::-1],
             "subagents": history, "activities": [a for t in teams for a in t["activities"]],
             "model_calls": [{**c, "team": t["name"]} for t in teams for c in t.get("model_calls", [])],
-            "evaluate": evaluate_state(root)}
+            "evaluate": evaluate_state(root), "panel": panel_state(root)}
 
 
 REPORT_MAX = 400_000  # characters of one report file sent to the page
+
+
+DEFAULT_JUDGES = ("openai", "anthropic", "google")  # frontier/jury.py's default panel
+JUDGE_USAGE = {"input": 30000, "cached": 15000, "output": 4000}  # one verdict's tokens, until the jury has answered once
+
+
+def panel(root: pathlib.Path) -> dict:
+    """The jury's panel (DIR/jury/panel.json): the providers whose frontier model judges, and each change with its race
+    time. frontier/jury.py and tools/fake_race.py read it; the dashboard writes it."""
+    p = read_json(root / "jury" / "panel.json", {}) or {}
+    return {"judges": p.get("judges") or list(DEFAULT_JUDGES), "history": p.get("history", [])}
+
+
+def set_panel(root: pathlib.Path, judges: object) -> str | None:
+    """Change the panel; returns why not, or None."""
+    providers = load_config()["providers"]
+    if not (isinstance(judges, list) and judges and all(isinstance(j, str) and j in providers for j in judges)
+            and len(set(judges)) == len(judges)):
+        return "the judges are one or more distinct providers of config/providers.toml"
+    p = panel(root)
+    if judges == p["judges"]:
+        return None
+    (root / "jury").mkdir(parents=True, exist_ok=True)
+    history = p["history"] or [{"at": None, "judges": p["judges"]}]  # the panel the race started with
+    write_json(root / "jury" / "panel.json", {"judges": judges,
+                                             "history": [*history, {"at": race_now(root).isoformat(timespec="seconds"), "judges": judges}]})
+    return None
+
+
+def panel_state(root: pathlib.Path) -> dict:
+    """The panel, and the providers that could judge with their model and the cost of one verdict: the mean of the
+    jury's calls so far, else priced on JUDGE_USAGE. The page prices an evaluation from it."""
+    cfg, ledger = load_config(), read_jsonl(root / "jury" / "llm.jsonl")
+    seen: dict[str, list[float]] = {}
+    for e in ledger:
+        seen.setdefault(e["gen_ai.agent.name"].split(":", 1)[-1], []).append(e["frontier.cost.usd"])
+    candidates = []
+    for prov, c in sorted(cfg["providers"].items()):
+        model = c.get("tiers", {}).get("frontier")
+        if not model:
+            continue
+        usd = sum(seen[prov]) / len(seen[prov]) if seen.get(prov) else llm_cost(prov, model, JUDGE_USAGE)[0]
+        candidates.append({"provider": prov, "model": model, "logos": c.get("logos", []), "usd": round(usd, 4),
+                           "observed": len(seen.get(prov, []))})
+    return {**panel(root), "candidates": candidates}
 
 
 def evaluate_state(root: pathlib.Path) -> dict | None:
@@ -601,15 +646,25 @@ class _Handler(BaseHTTPRequestHandler):
         return not self.token or bool(cookie and _valid_session(self.token, cookie.value))
 
     def do_POST(self):
-        """The one write: ask for an on-demand evaluation. A session cookie (SameSite=Lax: never sent by a cross-site
-        POST) and, when the browser states it, an Origin of this host."""
+        """The two writes: ask for an on-demand evaluation, change the jury's panel. A session cookie (SameSite=Lax:
+        never sent by a cross-site POST) and, when the browser states it, an Origin of this host."""
         origin = urllib.parse.urlsplit(self.headers.get("Origin", "")).netloc
         if not self._session_ok() or (origin and origin != self.headers.get("Host", "")):
             return self._deny("no session")
-        if urllib.parse.urlsplit(self.path).path != "/api/evaluate":
-            return self._deny("no such action")
-        ok = request_evaluation(self.root)
-        self._reply(json.dumps({"requested": ok}).encode(), "application/json", status=200 if ok else 409)
+        path = urllib.parse.urlsplit(self.path).path
+        if path == "/api/evaluate":
+            ok = request_evaluation(self.root)
+            return self._reply(json.dumps({"requested": ok}).encode(), "application/json", status=200 if ok else 409)
+        if path == "/api/panel":
+            n = int(self.headers.get("Content-Length") or 0)
+            try:
+                body = json.loads(self.rfile.read(n)) if 0 < n <= 4096 else {}
+            except ValueError:
+                body = {}
+            why = set_panel(self.root, body.get("judges") if isinstance(body, dict) else None)
+            return self._reply(json.dumps({"error": why} if why else panel(self.root)).encode(), "application/json",
+                               status=400 if why else 200)
+        return self._deny("no such action")
 
     def do_GET(self):
         https = self.headers.get("X-Forwarded-Proto") == "https"  # behind Caddy (tools/race_vm.py)

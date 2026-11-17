@@ -377,13 +377,13 @@ def jury_rows(teams: list[Team], cfg: dict, rng: random.Random, end: dt.datetime
     return verdicts([(tm, *g) for tm in teams for g in tm.graded], cfg, rng, end)
 
 
-def verdicts(graded: list, cfg: dict, rng: random.Random, end: dt.datetime) -> tuple[list[dict], list[dict]]:
+def verdicts(graded: list, cfg: dict, rng: random.Random, end: dt.datetime, judges=JUDGES) -> tuple[list[dict], list[dict]]:
     """Each judge's calls and verdicts for these (team, time, commit, label), a few minutes after the snapshot, never
     on its own provider."""
     calls, events = [], []
     for tm, t, commit, lab in graded:
         g = tm.grades[commit]
-        for j in [p for p in JUDGES if p != tm.p and p in cfg["providers"]]:
+        for j in [p for p in judges if p != tm.p and p in cfg["providers"]]:
             start = t + dt.timedelta(minutes=rng.uniform(2, 10))
             secs = rng.uniform(30, 150)
             stop = start + dt.timedelta(seconds=secs)
@@ -417,7 +417,7 @@ def replay(root: pathlib.Path, teams: list[Team], jcalls: list[dict], jevents: l
     asked = 0
     jd = root / "jury"
     jd.mkdir(exist_ok=True)
-    for f in [jd / "llm.jsonl", jd / "events.jsonl", jd / ".llm.jsonl.head", jd / ".events.jsonl.head"]:
+    for f in [jd / "llm.jsonl", jd / "events.jsonl", jd / ".llm.jsonl.head", jd / ".events.jsonl.head", jd / "panel.json"]:
         f.unlink(missing_ok=True)
     budget.write_json(jd / "budgets.json", {"llm_usd": 100.0})
     budget.write_json(jd / "snapshots.json", {})
@@ -446,10 +446,29 @@ def replay(root: pathlib.Path, teams: list[Team], jcalls: list[dict], jevents: l
                            "i": {"llm": 0, "events": 0}, "res": "", "logs": set(), "delivered": False, "report": None}
     jq = {"llm": sorted(jcalls, key=lambda e: e["t"]), "events": sorted(jevents, key=lambda e: e["t"]), "i": {"llm": 0, "events": 0}}
     published: dict[str, dict] = {}
+    judges, panel_seen = list(JUDGES), None
+    graded = {g[1]: (tm, *g) for tm in teams for g in tm.graded}  # commit -> (team, time, commit, label)
     print(f"live: replaying {len(teams)} teams; Ctrl-C to stop", flush=True)
     while True:
         at = race_clock(clock, budget.now())
         now = iso(at)
+        pf = jd / "panel.json"
+        if pf.exists() and pf.stat().st_mtime != panel_seen:  # the dashboard changed the panel: it judges what is not yet judged
+            panel_seen, judges = pf.stat().st_mtime, budget.read_json(pf)["judges"]
+            todo = [c for c, r in ready.items() if r > now and c in graded]
+            gone = {(v["t"], v["judge"]) for v in jq["events"][jq["i"]["events"]:] if v["commit"] in todo}
+            jq["events"] = jq["events"][:jq["i"]["events"]] + [v for v in jq["events"][jq["i"]["events"]:] if v["commit"] not in todo]
+            jq["llm"] = jq["llm"][:jq["i"]["llm"]] + [c for c in jq["llm"][jq["i"]["llm"]:]
+                                                       if (c["t"], c["gen_ai.agent.name"].split(":", 1)[1]) not in gone]
+            calls, verdict = verdicts([graded[c] for c in todo], cfg, rng, end, judges)
+            for kind, rows in (("llm", calls), ("events", verdict)):
+                i = jq["i"][kind]
+                jq[kind] = jq[kind][:i] + sorted(jq[kind][i:] + rows, key=lambda e: e["t"])
+            for c in todo:
+                ready[c] = iso(max(graded[c][1], at))
+            for v in verdict:
+                ready[v["commit"]] = max(ready[v["commit"]], v["t"])
+            print(f"{now}: panel {', '.join(judges)} for the {len(todo)} snapshots not judged yet", flush=True)
         for f in sorted(rq.glob("evaluate-*.json")):
             asked += 1
             new = []
@@ -461,8 +480,9 @@ def replay(root: pathlib.Path, teams: list[Team], jcalls: list[dict], jevents: l
                 bisect.insort(q["events"], ev, lo=q["i"]["events"], key=lambda e: e["t"])
                 if tm.graded[-1][1] == ev["commit"]:
                     new.append((tm, *tm.graded[-1]))
+                    graded[ev["commit"]] = new[-1]
                     ready[ev["commit"]] = now
-            calls, verdict = verdicts(new, cfg, rng, end)
+            calls, verdict = verdicts(new, cfg, rng, end, judges)
             for kind, rows in (("llm", calls), ("events", verdict)):
                 i = jq["i"][kind]
                 jq[kind] = jq[kind][:i] + sorted(jq[kind][i:] + rows, key=lambda e: e["t"])
