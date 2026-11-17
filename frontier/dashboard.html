@@ -47,11 +47,14 @@ h2{font-size:15px;font-weight:650;margin:0 0 2px}h3{font-size:14px;margin:0 0 4p
 .key.dash{border-top-style:dashed}.key.dot{border-top-style:dotted}
 .sw{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;margin-right:4px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--shadow);min-width:0}
-.home{display:grid;grid-template-columns:minmax(330px,27%) minmax(0,1fr);gap:12px;align-items:start}
-.stack{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.stack>.wide{grid-column:1/-1}
+.home{display:grid;grid-template-columns:minmax(330px,27%) minmax(0,1fr);gap:12px}
+/* the leaderboard takes the height of the charts beside it and scrolls inside */
+.home>.lb{height:0;min-height:100%;display:flex;flex-direction:column}.home>.lb>.scroll{flex:1;min-height:0;overflow:auto}
+.stack{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.stack{align-content:start}.stack>.big{grid-column:1/-1}
+.feat{min-height:32px;font-size:12.5px}.feat[aria-pressed=true]{background:var(--ink);color:var(--surface)}
 .home .card{padding:12px 14px}.home h2{font-size:14px}.home .sub{margin-bottom:6px;font-size:12px}
 .home .chart-head{margin-bottom:2px}#board td,#board th{padding:6px 5px}#board .who{gap:8px}#board .id{font-size:11px}#board .budget{min-width:58px}
-@media (max-width:1200px){.home{grid-template-columns:1fr}}
+@media (max-width:1200px){.home{grid-template-columns:1fr}.home>.lb{height:auto;min-height:0}}
 @media (max-width:900px){.stack{grid-template-columns:1fr}}
 .chart-head{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:flex-start;justify-content:space-between;margin-bottom:6px}
 .ctrls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -115,7 +118,7 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 .feed td:first-child{white-space:nowrap;color:var(--mute)}
 .kind{font-size:11.5px;color:var(--ink2);border:1px solid var(--line2);border-radius:6px;padding:1px 6px;white-space:nowrap}
 .pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px;color:var(--mute);font-size:12.5px}
-.empty{color:var(--mute);padding:24px;text-align:center}
+.empty{color:var(--mute);padding:24px;text-align:center;box-sizing:border-box;display:grid;place-items:center}
 .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:4px 0 12px}
 .facts .v{font-weight:650;font-size:17px;font-variant-numeric:tabular-nums}.facts .l{color:var(--mute);font-size:12px}
 .doc{max-width:980px}.doc p,.doc li{color:var(--ink2);line-height:1.6}.doc .card{margin-bottom:16px}
@@ -157,21 +160,21 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 
 <section role="tabpanel" id="p-overview" aria-labelledby="tab-overview">
  <div class="home">
-  <div class="card"><div class="chart-head"><div><h2>Live leaderboard</h2><p class="sub">Global score out of 100, now. Budget: spent of all the caps together.</p></div></div>
+  <div class="card lb"><div class="chart-head"><div><h2>Live leaderboard</h2><p class="sub">Global score out of 100, now. Budget: spent of all the caps together.</p></div></div>
    <div class="scroll"><table id="board"></table></div>
    <div class="legend"><span><i class="sw" style="background:var(--c-llm)"></i>model calls</span><span><i class="sw" style="background:var(--c-sim)"></i>simulations</span><span><i class="sw" style="background:var(--line)"></i>left</span></div>
    <p class="sub" id="jline" style="margin:12px 0 0"></p></div>
   <div class="stack">
-   <div class="card"><div class="chart-head"><div><h2 id="h-qt">Score over time</h2><p class="sub">Out of 100, a point per graded snapshot; each line ends on the live score.</p></div>
+   <div class="card" data-chart="qt"><div class="chart-head"><div><h2 id="h-qt">Score over time</h2><p class="sub">Out of 100, a point per graded snapshot; each line ends on the live score.</p></div>
     <div class="ctrls"><label>Score <select id="metric"><option value="final">global</option><option value="science">scientific quality</option><option value="artifacts">code and data</option><option value="efficiency">efficiency</option></select></label>
-    <div class="seg" role="group" aria-label="Time axis scale"><button data-ax="qt" data-v="lin" aria-pressed="true">Linear</button><button data-ax="qt" data-v="log" aria-pressed="false">Log</button></div></div></div>
+    <div class="seg" role="group" aria-label="Time axis scale"><button data-ax="qt" data-v="lin" aria-pressed="true">Linear</button><button data-ax="qt" data-v="log" aria-pressed="false">Log</button></div><button class="feat" data-feat="qt" aria-pressed="false" aria-label="Show score over time large">⤢ Enlarge</button></div></div>
     <div class="chart" id="c-qt"></div><details class="tv" id="tv-qt"><summary>Table view</summary><div class="scroll" id="t-qt" tabindex="0" role="region" aria-label="Score over time, as a table"></div></details></div>
-   <div class="card"><div class="chart-head"><div><h2 id="h-qc">Score against cost</h2><p class="sub">The same snapshots, against what the team had spent then.</p></div>
+   <div class="card" data-chart="qc"><div class="chart-head"><div><h2 id="h-qc">Score against cost</h2><p class="sub">The same snapshots, against what the team had spent then.</p></div>
     <div class="ctrls"><label>Cost <select data-cost="qc"><option value="all">model calls + simulations</option><option value="llm">model calls</option><option value="sim">simulations</option></select></label>
-    <div class="seg" role="group" aria-label="Cost axis scale"><button data-ax="qc" data-v="lin" aria-pressed="false">Linear</button><button data-ax="qc" data-v="log" aria-pressed="true">Log</button></div></div></div>
+    <div class="seg" role="group" aria-label="Cost axis scale"><button data-ax="qc" data-v="lin" aria-pressed="false">Linear</button><button data-ax="qc" data-v="log" aria-pressed="true">Log</button></div><button class="feat" data-feat="qc" aria-pressed="false" aria-label="Show score against cost large">⤢ Enlarge</button></div></div>
     <div class="chart" id="c-qc"></div><details class="tv" id="tv-qc"><summary>Table view</summary><div class="scroll" id="t-qc" tabindex="0" role="region" aria-label="Score against cost, as a table"></div></details></div>
-   <div class="card wide"><div class="chart-head"><div><h2>Spend over time</h2><p class="sub">Cumulative USD, on the time axis of the score over time; hover for every team.</p></div>
-    <div class="ctrls"><label>Cost <select data-cost="sp"><option value="all">model calls + simulations</option><option value="llm">model calls</option><option value="sim">simulations</option></select></label></div></div>
+   <div class="card" data-chart="sp"><div class="chart-head"><div><h2>Spend over time</h2><p class="sub">Cumulative USD, on the time axis of the score over time; hover for every team.</p></div>
+    <div class="ctrls"><label>Cost <select data-cost="sp"><option value="all">model calls + simulations</option><option value="llm">model calls</option><option value="sim">simulations</option></select></label><button class="feat" data-feat="sp" aria-pressed="false" aria-label="Show spend over time large">⤢ Enlarge</button></div></div>
     <div class="chart" id="c-sp"></div></div>
   </div></div>
 </section>
@@ -269,7 +272,7 @@ function dur(s){if(s==null||isNaN(s))return '–';s=Math.max(0,Math.round(s));co
  if(d)return `${d} d ${h} h ${String(m).padStart(2,'0')} min`;if(h)return `${h} h ${String(m).padStart(2,'0')} min`;if(m)return `${m} min ${String(x).padStart(2,'0')} s`;return `${x} s`}
 const clock=t=>{const d=new Date(t);return isNaN(d)?'':d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})};
 const day=t=>{const d=new Date(t);return isNaN(d)?'':d.toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false})};
-const S={d:null,hidden:new Set(),cost:{qc:'all',sp:'all'},ax:{qt:'lin',qc:'log'},metric:'final',sort:{k:'final',dir:-1},page:0,paused:false,tab:'overview'};
+const S={d:null,hidden:new Set(),cost:{qc:'all',sp:'all'},ax:{qt:'lin',qc:'log'},metric:'final',feat:(()=>{try{return localStorage.getItem('fd.feat')||'qt'}catch(e){return 'qt'}})(),sort:{k:'final',dir:-1},page:0,paused:false,tab:'overview'};
 try{S.hidden=new Set(JSON.parse(localStorage.getItem('fd.hidden')||'[]'))}catch(e){}
 let TEAMS=[], BY={}, T0=0;
 const shown=()=>TEAMS.filter(t=>!S.hidden.has(t.name));
@@ -280,7 +283,7 @@ const col=t=>{const c=t.brand&&t.brand.color;return c?c[dark()?1:0]:FALLBACK[TEA
 const dash=t=>(t.brand&&t.brand.dash)||'';
 const key=t=>`<span class="key${dash(t).startsWith('2')?' dot':dash(t)?' dash':''}" style="color:${col(t)}"></span>`;
 const NAMES={'openai':'OpenAI','anthropic':'Anthropic','claude':'Claude','google':'Google','gemini':'Gemini','xai':'xAI','grok':'Grok','mistral-ai':'Mistral AI',
- 'deepseek':'DeepSeek','moonshot-ai':'Moonshot AI','kimi':'Kimi','alibaba':'Alibaba','qwen':'Qwen','zai':'Z.ai','glm':'GLM','cursor':'Cursor'};
+ 'deepseek':'DeepSeek','moonshot-ai':'Moonshot AI','kimi':'Kimi','alibaba':'Alibaba','qwen':'Qwen','zai':'Z.ai','glm':'GLM','cerebras':'Cerebras','cursor':'Cursor'};
 const icon=l=>`<svg role="img" aria-label="${esc(NAMES[l]||l)}"><title>${esc(NAMES[l]||l)}</title><use href="#logo-${esc(l)}"/></svg>`;
 const logos=(t,cls='logos',n=9)=>(t&&t.logos&&t.logos.length)?`<span class="${cls}">${t.logos.slice(0,n).map(icon).join('')}</span>`:'';
 function status(t){if(t.delivered)return['good','Delivered'];const l=t.status.llm;if(l.cap_usd&&l.spent_usd>=l.cap_usd*0.999)return['bad','LLM budget spent'];
@@ -355,10 +358,10 @@ const livePoint=t=>{const sc=t.scores;if(sc.science==null)return [];return [{liv
 const val=s=>s[METRIC[S.metric][1]];
 function scoreChart(id,xOf,{log,xt,xl,lo,xmax}){const el=$('c-'+id),mn=METRIC[S.metric][0];
  const ser=shown().map(t=>({t,pts:graded(t).concat(livePoint(t)).map(s=>({s,x:xOf(s),q:val(s)})).filter(p=>p.q!=null&&(!log||p.x>0))})).filter(x=>x.pts.length);
- if(!ser.length){el.innerHTML='<div class="empty">No graded snapshot yet</div>';$('t-'+id).innerHTML='';return}
+ if(!ser.length){el.innerHTML=`<div class="empty" style="height:${chartH(id)}px">No graded snapshot yet</div>`;$('t-'+id).innerHTML='';return}
  const xs=ser.flatMap(x=>x.pts.map(p=>p.x)),x0=log?Math.max(lo,Math.min(...xs)):0,x1=Math.max(xmax||0,...xs,x0*10||1);
  el.dataset.label=`${mn} out of 100 ${id==='qt'?'over time':'against cost'}, one line per team`;
- const f=frame(el,chartH(),{x:(a,b)=>log?logs(x0,x1,a,b):lin(0,x1,a,b),y:(a,b)=>lin(0,100,a,b),xt,yt:v=>v,xl});
+ const f=frame(el,chartH(id),{x:(a,b)=>log?logs(x0,x1,a,b):lin(0,x1,a,b),y:(a,b)=>lin(0,100,a,b),xt,yt:v=>v,xl});
  let s=f.s;for(const {t,pts} of ser){const c=col(t),P=pts.map(p=>[p.x,p.q]),last=pts[pts.length-1];
   for(const p of pts.slice(0,-1))s+=`<circle class="ring" cx="${f.X(p.x)}" cy="${f.Y(p.q)}" r="3" fill="${c}" data-team="${esc(t.name)}" data-tip="${esc(ptTip(t,p,mn))}"/>`;
   s+=line(f,t,P,`${t.model} · ${t.harness_title}\n${mn} ${sc(last.q)} ${last.s.live?'now, as in the leaderboard':'at its latest snapshot'}\n${dur(last.s.minutes*60)} after the start · ${money(last.s.llm_usd+last.s.simulation_usd)} spent`)}
@@ -367,7 +370,7 @@ const ptTip=(t,p,mn)=>`${mn} ${sc(p.q)} · ${t.model}\nsnapshot ${p.s.labels.joi
 function qTable(ser){return `<table><thead><tr><th>Team</th><th>Snapshot</th><th class="n">Time</th><th class="n">Model calls</th><th class="n">Simulations</th><th class="n">Science</th><th class="n">Code and data</th><th class="n">Efficiency</th><th class="n">Global</th></tr></thead><tbody>${
  ser.flatMap(({t,pts})=>pts.filter(p=>!p.s.live).map(({s})=>`<tr><td>${key(t)} ${esc(t.model)}</td><td>${esc(s.labels.join(', '))}</td><td class="n">${dur(s.minutes*60)}</td><td class="n">${money(s.llm_usd)}</td><td class="n">${money(s.simulation_usd)}</td><td class="n">${sc(s.quality)}</td><td class="n">${sc(s.artifacts)}</td><td class="n">${sc(s.efficiency)}</td><td class="n">${sc(s.final)}</td></tr>`)).join('')}</tbody></table>`}
 const raceHours=()=>(Date.parse(S.d.time)-T0)/3.6e6;
-const chartH=()=>narrow()?240:Math.round(Math.max(190,Math.min(360,(innerHeight-345)*0.58)));
+const chartH=id=>narrow()?240:Math.round(Math.max(id===S.feat?220:150,(innerHeight-440)*(id===S.feat?0.6:0.4)));
 // hours as d/h/min: 0.5 → 30 min, 30 → 1 d 6 h
 const HT=v=>{const m=Math.round(v*60),d=Math.floor(m/1440),h=Math.floor(m%1440/60),n=m%60;return [d&&d+' d',h&&h+' h',n&&n+' min'].filter(Boolean).join(' ')||'0';};
 const chartQT=()=>scoreChart('qt',s=>s.minutes/60,{log:S.ax.qt==='log',lo:5/60,xmax:S.ax.qt==='log'?0:raceHours(),xt:HT,xl:'time since the start'});
@@ -380,7 +383,7 @@ function spendSeries(t,k,t1){const L=(t.series||[]).map(([x,y])=>[Date.parse(x),
 function chartSP(){const el=$('c-sp'),k=S.cost.sp,t1=Date.parse(S.d.time),ser=shown().map(t=>({t,P:spendSeries(t,k,t1)})).filter(x=>x.P.length);
  if(!ser.length){el.innerHTML=`<div class="empty">No ${COSTL[k]} yet</div>`;return}
  const H=x=>(x-T0)/3.6e6,ymax=Math.max(...ser.map(x=>x.P[x.P.length-1][1]),1);el.dataset.label='Cumulative spend per team: '+COSTL[k];
- const f=frame(el,Math.round(chartH()*0.72),{x:(a,b)=>lin(0,raceHours(),a,b),y:(a,b)=>lin(0,ymax,a,b),xt:HT,yt:v=>v+' $',xl:'time since the start'});
+ const f=frame(el,chartH('sp'),{x:(a,b)=>lin(0,raceHours(),a,b),y:(a,b)=>lin(0,ymax,a,b),xt:HT,yt:v=>v+' $',xl:'time since the start'});
  let s=f.s;for(const {t,P} of ser){const st=Math.max(1,Math.floor(P.length/400)),Q=P.filter((_,i)=>i%st===0||i===P.length-1).map(([x,y])=>[H(x),y]);
   s+=line(f,t,Q,`${t.model} · ${t.harness_title}\n${money(Q[Q.length-1][1])} of ${COSTL[k]}`,k==='llm')}
  s+=ends(f)+`<line class="xhl axis" y1="${f.P.t}" y2="${f.h-f.P.b}" visibility="hidden"/><rect class="xh" x="${f.P.l}" y="${f.P.t}" width="${f.w-f.P.l-f.P.r}" height="${f.h-f.P.t-f.P.b}" fill="transparent"/>`;
@@ -515,7 +518,10 @@ function head(){const now=Date.parse(S.d.time),dl=Math.max(...TEAMS.map(t=>Date.
  $('clock').textContent=T0?`${dur((now-T0)/1000)} into the race${dl?` · ${dur((dl-now)/1000)} to the deadline`:''} · updated ${clock(S.d.time)}`:''}
 
 /* tabs: only the shown one is drawn */
-const VIEWS={overview:()=>{board();jline();chartQT();chartQC();chartSP()},teams:()=>{board2();cards()},activity:()=>{chartGantt();chartModels()},subagents:subagents,jury:jury,feed:feed,about:()=>{}};
+// the enlarged chart goes first, across the column; the two others share the row below
+function feature(){const st=document.querySelector('.stack');document.querySelectorAll('.stack>[data-chart]').forEach(c=>{const on=c.dataset.chart===S.feat;
+ c.classList.toggle('big',on);c.querySelector('[data-feat]').setAttribute('aria-pressed',on);if(on)st.prepend(c)})}
+const VIEWS={overview:()=>{feature();board();jline();chartQT();chartQC();chartSP()},teams:()=>{board2();cards()},activity:()=>{chartGantt();chartModels()},subagents:subagents,jury:jury,feed:feed,about:()=>{}};
 function focusKey(f){if(!f||f===document.body)return null;if(f.id)return '#'+CSS.escape(f.id);if(f.tagName==='SUMMARY'&&f.parentElement.id)return '#'+CSS.escape(f.parentElement.id)+'>summary';
  for(const a of ['sort','pg','jpg','ax','v','only','pick'])if(f.dataset[a]!=null)return `[data-${a}="${CSS.escape(f.dataset[a])}"]`;return null}
 /* a table that can scroll sideways is reachable by keyboard, named after its card */
@@ -542,6 +548,7 @@ document.addEventListener('click',e=>{const g=e.target.closest('[data-goto]');if
  else if(b.dataset.only)setHidden(new Set(TEAMS.map(t=>t.name).filter(n=>n!==b.dataset.only)));
  else if(b.id==='pk-all')setHidden(new Set());else if(b.id==='pk-none')setHidden(new Set(TEAMS.map(t=>t.name)));
  else if(b.dataset.ax){S.ax[b.dataset.ax]=b.dataset.v;document.querySelectorAll(`[data-ax="${b.dataset.ax}"]`).forEach(x=>x.setAttribute('aria-pressed',x===b));b.dataset.ax==='qt'?chartQT():chartQC()}
+ else if(b.dataset.feat){S.feat=b.dataset.feat;try{localStorage.setItem('fd.feat',S.feat)}catch(e){}VIEWS.overview();b.focus()}
  else if(b.dataset.sort){const k=b.dataset.sort;S.sort={k,dir:S.sort.k===k?-S.sort.dir:(k==='model'||k==='status'?1:-1)};board2()}
  else if(b.dataset.pg){S.page+=+b.dataset.pg;subagents()}
  else if(b.dataset.jpg){S.jpage=(S.jpage||0)+ +b.dataset.jpg;jury()}

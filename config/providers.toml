@@ -168,6 +168,9 @@ tiers = { frontier = "qwen-3.8-27b", light = "gpt-oss-120b" }
 # unsupported", checked 2026-11-15 with OpenCode): the gateway drops these message fields before sending.
 strip_message_fields = ["reasoning_content", "reasoning"]
 reasoning = { low = "low", medium = "medium", high = "high", max = "high" }
+logos = ["cerebras", "qwen"]  # company, then model family: frontier/logos.svg symbols, shown by the dashboard
+color = ["#F15A29", "#F47A52"]  # line colour on light and dark backgrounds, from the brand
+dash = "2 3"  # this brand shares its hue with another
 
 [providers.zhipu]
 names = ["Zhipu", "Z.ai", "GLM", "ZCode", "ChatGLM"]  # brands, model families, harness: what the jury redacts

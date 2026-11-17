@@ -463,7 +463,7 @@ def main() -> int:
     rng = random.Random(a.seed)
     if a.replay:
         start, end = end, end + dt.timedelta(hours=hours)
-        teams = [Team(root, p, cfg, random.Random(rng.random()), start, hours) for p in NATIVE_HARNESS if p in cfg["providers"]]
+        teams = [Team(root, p, cfg, random.Random(rng.random()), start, hours) for p in cfg["providers"]]
         for tm in teams:
             tm.simulate(end)
             tm.snapshots(end)
@@ -475,7 +475,7 @@ def main() -> int:
         print(f"replay: {hours:g} h of race in {real:.0f} min, from {iso(start)}", flush=True)
         replay(root, teams, jcalls, jevents, clock)
         return 0
-    teams = [Team(root, p, cfg, random.Random(rng.random()), start, hours) for p in NATIVE_HARNESS if p in cfg["providers"]]
+    teams = [Team(root, p, cfg, random.Random(rng.random()), start, hours) for p in cfg["providers"]]
     for tm in teams:
         tm.simulate(end)
         tm.snapshots(end)
