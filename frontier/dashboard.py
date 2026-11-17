@@ -313,7 +313,8 @@ def snapshot(root: pathlib.Path) -> dict:
 
 def standings(teams: list[dict]) -> None:
     """Live scores of each team from its latest graded snapshot, with frontier/scoring.py: the efficiency on the spend
-    (model calls + simulations) and the time so far, against the teams of comparable science, then the final score."""
+    (model calls + simulations) and the time so far, against the teams of comparable science, then the final score. Each graded
+    snapshot gets the same scores against the other teams' snapshots of its milestone, for the charts over time."""
     live = {}
     for t in teams:
         last = next((x for x in reversed(t["snapshots"]) if x.get("quality") is not None), None)
@@ -322,6 +323,17 @@ def standings(teams: list[dict]) -> None:
         usd = st["llm"]["spent_usd"] + sum(c["spent"] for c in st["cloud"].values())  # EUR at par, as the jury does
         live[t["name"]] = {"quality": last and last["quality"], "artifacts": last and last.get("artifacts"),
                            "usd": usd, "minutes": hours * 60, "classified": last is not None}
+    by_label: dict[str, dict] = {}  # every graded snapshot, scored against the other teams at the same milestone
+    for t in teams:
+        for x in t["snapshots"]:
+            if x.get("quality") is not None and x["labels"]:
+                by_label.setdefault(x["labels"][0], {})[t["name"]] = x
+    for snaps in by_label.values():
+        e = scoring.efficiency({n: {"quality": x["quality"], "usd": x["llm_usd"] + x["simulation_usd"],
+                                    "minutes": x.get("minutes") or 0, "classified": True} for n, x in snaps.items()})
+        for n, x in snaps.items():
+            x["efficiency"] = e[n]["efficiency"]
+            x["final"] = scoring.final(x["quality"], x.get("artifacts"), x["efficiency"])
     eff = scoring.efficiency(live)
     for t in teams:
         x = live[t["name"]]
