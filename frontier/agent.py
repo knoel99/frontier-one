@@ -164,6 +164,7 @@ class Agent:
         self.spec = llm.resolve(run.cfg, provider, tier, reasoning, mode)
         self.depth = depth
         self.parent = parent
+        self.name = name  # the role preset, "sub" for one defined by its instructions only, "main" for the root
         self.id = f"{name}-{uuid.uuid4().hex[:6]}"
         self.max_turns = min(int(max_turns or 10**9), run.limits.get("max_turns", 40))
         names = expand_tools(all_tools() if tools is None else tools)
@@ -191,7 +192,7 @@ class Agent:
 
     def run_task(self, task: str) -> str:
         self.messages.append({"role": "user", "content": task})
-        self.run.log(event="agent_start", agent=self.id, parent=self.parent, depth=self.depth, model=self.spec.model,
+        self.run.log(event="agent_start", agent=self.id, role=self.name, parent=self.parent, depth=self.depth, model=self.spec.model,
                      provider=self.spec.provider, tier=self.spec.tier, reasoning=self.spec.reasoning,
                      effort_value=self.spec.effort_value, mode=self.spec.mode or "standard", tools=list(self.tools),
                      task=task[:2000])

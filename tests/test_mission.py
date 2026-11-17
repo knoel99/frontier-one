@@ -453,6 +453,22 @@ def test_dashboard_joins_each_snapshot_with_its_grade_and_shows_an_ungraded_one_
     snaps = dashboard.snapshot(tmp_path)["teams"][0]["snapshots"]
     assert [(x["commit"], x["quality"]) for x in snaps] == [("aaa", 42.5), ("bbb", None)]
     assert snaps[0]["llm_usd"] == 1.5 and snaps[0]["simulation_usd"] == 0.5
+    (tmp_path / "jury" / "snapshots.json").write_text(json.dumps({"t": {"aaa": 40, "bbb": {"scientific_quality": 60, "artifacts": 50}}}))
+    t = dashboard.snapshot(tmp_path)["teams"][0]
+    assert t["scores"]["science"] == 60 and t["scores"]["artifacts"] == 50 and t["scores"]["final"] is not None
+    assert t["model"] and t["brand"]["color"] and t["harness_title"]
+
+
+def test_dashboard_simulation_spend_grows_with_each_machine_alive():
+    import datetime as dt
+
+    from frontier import dashboard
+
+    at = dt.datetime(2026, 11, 17, 12, tzinfo=dt.UTC)
+    res = [{"created": "2026-11-17T10:00:00+00:00", "deleted_at": "2026-11-17T11:00:00+00:00", "usd_per_hour": 2.0},
+           {"created": "2026-11-17T10:30:00+00:00", "eur_per_hour": 1.0}]
+    series = dict(dashboard.simulation_series(res, at))
+    assert series["2026-11-17T11:00:00+00:00"] == 2.5 and series["2026-11-17T12:00:00+00:00"] == 3.5
 
 
 def test_dashboard_subagent_history(tmp_path, cfg):

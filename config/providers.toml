@@ -26,6 +26,7 @@ default_provider = "openai"
 [providers.openai]
 names = ["OpenAI", "GPT", "ChatGPT", "Codex"]  # brands, model families, harness: what the jury redacts
 logos = ["openai"]  # company, then model family: frontier/logos.svg symbols, shown by the dashboard
+color = ["#10A37F", "#19C394"]  # line colour on light and dark backgrounds, from the brand
 style = "openai-responses"   # Chat Completions refuses function tools together with reasoning_effort on gpt-6*
 base_url = "https://api.openai.com/v1"
 key_env = "OPENAI_API_KEY"
@@ -52,6 +53,7 @@ note = "fastest tier, separate rate limits"
 [providers.anthropic]
 names = ["Anthropic", "Claude", "Sonnet", "Opus", "Haiku", "Fable"]  # brands, model families, harness: what the jury redacts
 logos = ["anthropic", "claude"]  # company, then model family: frontier/logos.svg symbols, shown by the dashboard
+color = ["#D97757", "#E08A6D"]  # line colour on light and dark backgrounds, from the brand
 style = "anthropic"
 base_url = "https://api.anthropic.com/v1"
 key_env = "ANTHROPIC_API_KEY"
@@ -68,6 +70,7 @@ note = "up to 2.5x output tokens per second, same time to first token; own rate 
 [providers.google]
 names = ["Google", "Gemini", "Antigravity", "agy", "DeepMind"]  # brands, model families, harness: what the jury redacts
 logos = ["google", "gemini"]  # company, then model family: frontier/logos.svg symbols, shown by the dashboard
+color = ["#4285F4", "#5B9BF8"]  # line colour on light and dark backgrounds, from the brand
 style = "gemini"
 base_url = "https://generativelanguage.googleapis.com/v1beta"
 key_env = "GEMINI_API_KEY"
@@ -86,6 +89,7 @@ note = "preview; latency in seconds, never shed; over its dynamic limit served a
 [providers.xai]
 names = ["xAI", "Grok"]  # brands, model families, harness: what the jury redacts
 logos = ["xai", "grok"]  # company, then model family: frontier/logos.svg symbols, shown by the dashboard
+color = ["#1D1D1B", "#ECEBE6"]  # line colour on light and dark backgrounds, from the brand
 style = "openai-chat"
 base_url = "https://api.x.ai/v1"
 key_env = "XAI_API_KEY"
@@ -100,6 +104,7 @@ note = "lower latency under load; billed 2x only when the response says service_
 [providers.mistral]
 names = ["Mistral", "Vibe", "Magistral", "Devstral"]  # brands, model families, harness: what the jury redacts
 logos = ["mistral-ai"]  # company, then model family: frontier/logos.svg symbols, shown by the dashboard
+color = ["#E69500", "#F5B417"]  # line colour on light and dark backgrounds, from the brand
 style = "openai-chat"
 base_url = "https://api.mistral.ai/v1"
 key_env = "MISTRAL_API_KEY"
@@ -112,6 +117,8 @@ model_reasoning = { "mistral-medium-3.5" = { none = "none", low = "none", medium
 [providers.deepseek]
 names = ["DeepSeek", "dsh"]  # brands, model families, harness: what the jury redacts
 logos = ["deepseek"]  # company, then model family: frontier/logos.svg symbols, shown by the dashboard
+color = ["#4D6BFE", "#7088FF"]  # line colour on light and dark backgrounds, from the brand
+dash = "6 3"  # this brand shares its hue with another
 style = "openai-chat"
 base_url = "https://api.deepseek.com"
 key_env = "DEEPSEEK_API_KEY"
@@ -124,6 +131,8 @@ extra = { thinking = { type = "enabled" } }
 [providers.moonshot]
 names = ["Moonshot", "Kimi"]  # brands, model families, harness: what the jury redacts
 logos = ["moonshot-ai", "kimi"]  # company, then model family: frontier/logos.svg symbols, shown by the dashboard
+color = ["#1783FF", "#4A9DFF"]  # line colour on light and dark backgrounds, from the brand
+dash = "2 3"  # this brand shares its hue with another
 style = "openai-chat"
 base_url = "https://api.moonshot.ai/v1"
 key_env = "MOONSHOT_API_KEY"
@@ -137,6 +146,7 @@ note = "about 2-3x the speed at 2x the price (a separate model, priced in prices
 [providers.alibaba]
 names = ["Alibaba", "Qwen", "DashScope", "Tongyi"]  # brands, model families, harness: what the jury redacts
 logos = ["alibaba", "qwen"]  # company, then model family: frontier/logos.svg symbols, shown by the dashboard
+color = ["#615CED", "#8B87F5"]  # line colour on light and dark backgrounds, from the brand
 style = "openai-chat"
 base_url = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
 key_env = "DASHSCOPE_API_KEY"
@@ -161,7 +171,9 @@ reasoning = { low = "low", medium = "medium", high = "high", max = "high" }
 
 [providers.zhipu]
 names = ["Zhipu", "Z.ai", "GLM", "ZCode", "ChatGLM"]  # brands, model families, harness: what the jury redacts
-logos = ["zhipu-ai", "glm"]  # company, then model family: frontier/logos.svg symbols, shown by the dashboard
+logos = ["zai", "glm"]  # company, then model family: frontier/logos.svg symbols, shown by the dashboard
+color = ["#1D1D1B", "#ECEBE6"]  # line colour on light and dark backgrounds, from the brand
+dash = "6 3"  # this brand shares its hue with another
 style = "openai-chat"
 base_url = "https://api.z.ai/api/paas/v4"
 key_env = "ZAI_API_KEY"

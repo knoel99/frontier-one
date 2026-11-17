@@ -8,8 +8,10 @@ the cookie. A dashboard reachable from the Internet (tools/race_vm.py) is served
 
 Read-only: it reads the framework's ledgers (llm.jsonl, resources.json, events.jsonl, budgets.json, delivery.json)
 and the harness session logs; it writes nothing in the missions. The scientific quality of each snapshot comes from
-<root>/jury/snapshots.json, {team: {snapshot commit: scientific quality out of 100}}, written by whoever grades the
-snapshots; a snapshot without a grade is shown with its time and spend only.
+<root>/jury/snapshots.json, {team: {snapshot commit: {"scientific_quality": x, "artifacts": y}}} (or a bare number for
+the scientific quality alone), written by whoever grades the snapshots; a snapshot without a grade is shown with its time
+and spend only. From the latest graded snapshot of each team, the live standings apply frontier/scoring.py: efficiency
+from the spend and time so far, and the final score.
 """
 
 from __future__ import annotations
@@ -25,6 +27,8 @@ import urllib.parse
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from . import llm as llm_mod
+from . import scoring
 from .budget import Budget, now, parse_time, read_json, read_jsonl
 from .config import load_config
 from .mission import STATE_ROOT as ROOT_DEFAULT
@@ -107,7 +111,9 @@ def subagents(events: list[dict], llm: list[dict], logs: list[pathlib.Path]) -> 
         k, a = e.get("event"), e.get("agent")
         if k == "agent_start" and a and not a.startswith("harness"):
             kind = "spawn_agent" if e.get("depth") else "main (API agent)"
-            rows[a] = {"kind": kind, "agent": a, "parent": e.get("parent"), "depth": e.get("depth"),
+            role = e.get("role") or a.rsplit("-", 1)[0]  # older events: the role is the id's prefix
+            rows[a] = {"kind": kind, "agent": a, "role": "own instructions" if role == "sub" else role,
+                       "parent": e.get("parent"), "depth": e.get("depth"),
                        "model": f"{e.get('provider')}/{e.get('model')}", "effort": e.get("reasoning"),
                        "effort_value": e.get("effort_value"), "mode": e.get("mode") or "standard",
                        "start": e.get("t"), "end": None, "status": "running",
@@ -149,7 +155,8 @@ def subagents(events: list[dict], llm: list[dict], logs: list[pathlib.Path]) -> 
             for c in (e.get("message") or {}).get("content", []) if e.get("type") == "assistant" else []:
                 if c.get("type") == "tool_use" and c.get("name") in ("Agent", "Task"):
                     inp = c.get("input") or {}
-                    out.append({"kind": "native", "agent": inp.get("subagent_type") or "agent", "parent": "harness",
+                    out.append({"kind": "native", "agent": inp.get("subagent_type") or "agent",
+                                "role": inp.get("subagent_type") or "agent", "parent": "harness",
                                 "model": inp.get("model") or "harness model", "effort": "", "mode": "harness",
                                 "start": None, "end": None,
                                 "status": "native", "task": _short(inp.get("description") or inp.get("prompt", ""), 300),
@@ -202,6 +209,16 @@ def runner_activity(d: pathlib.Path, resources: list[dict], at) -> list[dict]:
     return out
 
 
+def simulation_series(resources: list[dict], at) -> list[list]:
+    """Cumulative spend of the rented machines over time, EUR counted at par with USD as the snapshots do: a point at
+    each creation and deletion, where the slope changes, and one now."""
+    spans = [(parse_time(r.get("created")), parse_time(r.get("deleted_at")) or at, r.get("eur_per_hour") or r.get("usd_per_hour") or 0)
+             for r in resources if r.get("created")]
+    times = sorted({t for a, b, _ in spans for t in (a, b) if t <= at} | ({at} if spans else set()))
+    return [[t.isoformat(timespec="seconds"), round(sum(max(0.0, (min(b, t) - a).total_seconds()) / 3600 * p
+                                                        for a, b, p in spans if a <= t), 4)] for t in times]
+
+
 def team_state(d: pathlib.Path) -> dict:
     settings = json.loads((d / "mission.json").read_text())
     b = Budget(d)
@@ -248,9 +265,19 @@ def team_state(d: pathlib.Path) -> dict:
     snaps = [{"t": e["t"], "labels": e.get("labels", []), "commit": e.get("commit", ""), "minutes": e.get("minutes"),
               "llm_usd": e.get("llm_usd", 0), "simulation_usd": e.get("simulation_usd", 0)}
              for e in events if e.get("event") == "snapshot"]
-    logos = load_config()["providers"].get(settings.get("provider"), {}).get("logos", [])
+    cfg = load_config()
+    prov = cfg["providers"].get(settings.get("provider"), {})
+    try:
+        model = llm_mod.resolve(cfg, settings.get("provider"), settings.get("tier") or "frontier",
+                                settings.get("reasoning") or "high").model
+    except (KeyError, llm_mod.LLMError):
+        model = ""
+    brand = {"logos": prov.get("logos", []), "color": prov.get("color"), "dash": prov.get("dash", "")}
+    from .harnesses import HARNESSES  # late: harnesses imports the agent and tool registry
+    h = HARNESSES.get(settings.get("harness") or "")
     return {"name": settings.get("name", d.name), "harness": settings.get("harness"), "provider": settings.get("provider"),
-            "logos": logos,
+            "model": model, "brand": brand, "harness_title": h.title if h else settings.get("harness"),
+            "logos": brand["logos"], "sim_series": simulation_series(b.resources(), at),
             "tier": settings.get("tier"), "reasoning": settings.get("reasoning"), "status": st, "tokens": tokens,
             "series": series, "alive": alive, "jobs": jobs[-10:], "running": running, "delivered": delivered,
             "actions": actions[-120:], "subagents": subs, "runners": runners, "snapshots": snaps,
@@ -271,7 +298,10 @@ def snapshot(root: pathlib.Path) -> dict:
     for t in teams:
         g = grades.get(t["name"], {})
         for sn in t["snapshots"]:
-            sn["quality"] = g.get(sn["commit"])
+            v = g.get(sn["commit"])
+            v = v if isinstance(v, dict) else {"scientific_quality": v}
+            sn["quality"], sn["artifacts"] = v.get("scientific_quality"), v.get("artifacts")
+    standings(teams)
     feed = sorted(({**a, "team": t["name"]} for t in teams for a in t["actions"] if a["t"]),
                   key=lambda a: a["t"])[-FEED:]
     history = sorted(({**r, "team": t["name"]} for t in teams for r in t["subagents"]),
@@ -279,6 +309,25 @@ def snapshot(root: pathlib.Path) -> dict:
     return {"time": now().isoformat(timespec="seconds"), "root": str(root), "teams": teams, "feed": feed[::-1],
             "subagents": history, "activities": [a for t in teams for a in t["activities"]],
             "model_calls": [{**c, "team": t["name"]} for t in teams for c in t.get("model_calls", [])]}
+
+
+def standings(teams: list[dict]) -> None:
+    """Live scores of each team from its latest graded snapshot, with frontier/scoring.py: the efficiency on the spend
+    (model calls + simulations) and the time so far, against the teams of comparable science, then the final score."""
+    live = {}
+    for t in teams:
+        last = next((x for x in reversed(t["snapshots"]) if x.get("quality") is not None), None)
+        st = t["status"]
+        hours = (t["delivered"] or {}).get("elapsed_hours", st.get("elapsed_hours")) or 0
+        usd = st["llm"]["spent_usd"] + sum(c["spent"] for c in st["cloud"].values())  # EUR at par, as the jury does
+        live[t["name"]] = {"quality": last and last["quality"], "artifacts": last and last.get("artifacts"),
+                           "usd": usd, "minutes": hours * 60, "classified": last is not None}
+    eff = scoring.efficiency(live)
+    for t in teams:
+        x = live[t["name"]]
+        e = eff[t["name"]]["efficiency"] if x["quality"] is not None else None
+        t["scores"] = {"science": x["quality"], "artifacts": x["artifacts"], "efficiency": e,
+                       "final": None if e is None else scoring.final(x["quality"], x["artifacts"], e)}
 
 
 PAGE = pathlib.Path(__file__).with_name("dashboard.html").read_text().replace(

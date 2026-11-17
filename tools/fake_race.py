@@ -43,6 +43,14 @@ TASKS = ["Survey the literature on the subject and list the 8 most relevant pape
          "Try to refute the result of table 2: rerun the evaluation logic by hand on 20 samples.",
          "Write the related-work section of the report from notes/related.md, 600 words.",
          "Derive the gradient of the loss in section 3 and check it with sympy."]
+ROLE_TASKS = {  # role preset (roles/*.md), "sub" for a sub-agent defined by its own instructions
+    "infra": ["Rent the cheapest GPU with 24 GB, run src/train.py for 3 seeds, collect the logs and delete the machine.",
+              "Price an H100 for 4 hours on Scaleway and Runpod and report the cheapest offer in stock."],
+    "reviewer": ["Try to refute the result of table 2: rerun the evaluation logic by hand on 20 samples.",
+                 "Review src/train.py for bugs and data leakage; answer with a list of findings."],
+    "sub": ["Survey the literature on the subject and list the 8 most relevant papers with one line each.",
+            "Write the related-work section of the report from notes/related.md, 600 words.",
+            "Derive the gradient of the loss in section 3 and check it with sympy."]}
 GPUS = {"scaleway": [("L4-1-24G", 0.7875), ("L40S-1-48G", 1.4699), ("H100-1-80G", 2.73)],
         "runpod": [("1x NVIDIA RTX 4090", 0.59), ("1x NVIDIA A100 80GB PCIe", 1.39), ("1x NVIDIA H100 80GB HBM3", 2.69)]}
 
@@ -67,7 +75,8 @@ class Team:
         self.cloud = rng.choice(["scaleway", "runpod", "both", "both", "none"])
         self.share = rng.uniform(0.2, 0.6) if provider != "openai" else 0.95  # of the LLM cap spent by the end; one team burns
         self.hours, self.refused = hours, False
-        self.skill, self.tau = rng.uniform(35, 85), rng.uniform(150, 700)  # where its science levels off, and how fast
+        self.skill, self.tau, self.code = rng.uniform(35, 85), rng.uniform(150, 700), rng.uniform(0.7, 1.25)
+        # where its science levels off, how fast, and how its code and data follow it
         self.grades: dict[str, float] = {}
         self.events: list[dict] = []
         self.llm: list[dict] = []
@@ -157,11 +166,12 @@ class Team:
 
     def subagent(self, t: dt.datetime, end: dt.datetime) -> None:
         r = self.rng
-        a = f"sub-{r.getrandbits(24):06x}"
+        role = r.choices(list(ROLE_TASKS), weights=[2, 3, 4])[0]
+        a = f"{role}-{r.getrandbits(24):06x}"
         reasoning = r.choice(["low", "medium", "high"])
         mode = self.fast if self.fast and r.random() < 0.25 else ""
-        self.ev(t, "agent_start", agent=a, parent="main", depth=1, provider=self.p, model=self.sub, reasoning=reasoning,
-                effort_value=reasoning, mode=mode, task=r.choice(TASKS))
+        self.ev(t, "agent_start", agent=a, role=role, parent="main", depth=1, provider=self.p, model=self.sub,
+                reasoning=reasoning, effort_value=reasoning, mode=mode, task=r.choice(ROLE_TASKS[role]))
         u, usd = t, 0.0
         for _ in range(r.randint(2, 12)):
             u += dt.timedelta(seconds=r.uniform(8, 90))
@@ -267,7 +277,8 @@ class Team:
             work = m - (180 if self.harness == "vibe" else 0)  # minutes of real work: Vibe's first sessions failed
             if m >= 15:  # before, there is no report to grade
                 q = max(q - 4, min(100, self.skill * (1 - math.exp(-max(0, work) / self.tau)) + r.gauss(0, 2.5)))
-                self.grades[commit] = round(max(0.0, q), 1)
+                arts = min(100, max(0.0, q * self.code + r.gauss(0, 3)))  # code and data follow the science, loosely
+                self.grades[commit] = {"scientific_quality": round(max(0.0, q), 1), "artifacts": round(arts, 1)}
 
     def write(self) -> None:
         s = {"name": self.name, "harness": self.harness, "provider": self.p, "providers": [self.p], "tier": "frontier",
