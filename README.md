@@ -232,6 +232,21 @@ node <archify>/bin/archify.mjs finalize <workflow|architecture|sequence> docs/di
 
 `race` and `run-order` are `workflow` diagrams, `processes` is `architecture`, and `session` is `sequence`.
 
+Four more diagrams show one launch for OpenAI (harness Codex) at four levels of detail. Their numbers come from a
+traced run on 2026-11-16: `docs/diagrams/launch-sim/run.sh` runs `mission start` with the real launcher and Codex
+recipe, and replaces only the `codex` binary with a stand-in. Their boxes link to commit `db900a0`.
+
+5. [The campaign](docs/diagrams/launch-1-campaign.html) ([PNG](docs/diagrams/launch-1-campaign.png)), `workflow`:
+   from the mission file to the jury, one box per stage.
+6. [The timeline](docs/diagrams/launch-2-timeline.html) ([PNG](docs/diagrams/launch-2-timeline.png)), `waterfall`:
+   every command, subprocess and thread on one measured clock.
+7. [Prompts, skills and files](docs/diagrams/launch-3-prompts.html) ([PNG](docs/diagrams/launch-3-prompts.png)),
+   `dataflow`: where each file the AI reads comes from, and the order of the reads.
+8. [One session](docs/diagrams/launch-4-session.html) ([PNG](docs/diagrams/launch-4-session.png)), `sequence`:
+   session 1, function by function, in the order of the trace.
+9. [The jury](docs/diagrams/launch-5-jury.html) ([PNG](docs/diagrams/launch-5-jury.png)), `workflow`: from the teams'
+   files to the ranking; each judge grades one anonymised file on its own, and the verdicts meet only in the median.
+
 ## Repository layout
 
 | Path | What it holds |
@@ -241,7 +256,7 @@ node <archify>/bin/archify.mjs finalize <workflow|architecture|sequence> docs/di
 | `catalog/` | the Scaleway and Runpod API catalog (one signature per operation) and a guide per provider |
 | `prompts/`, `roles/` | the brief, the system prompts, the two role presets |
 | `docs/` | `HARNESSES.md` (what each harness reads and gets), `STANDARDS.md` (industry standards and where Frontier stands), `TEST-PLAN.md`, `TEST-RESULTS.md`, `diagrams/` |
-| `tools/` | `build_catalog.py`, `update_prices.py`, `sync_harnesses.py`, `verify_live.py` (the live checks), `check_model.py` |
+| `tools/` | `build_catalog.py`, `update_prices.py`, `sync_harnesses.py`, `verify_live.py` (the live checks), `check_model.py`, `fake_race.py` (a race of plausible fake data for the dashboard, no model call) |
 | `formal/` | the TLA+ model of the LLM reservations and how to check it |
 | `tests/` | the unit tests, the code rules (`test_rules.py`), and every order of parallel model calls (`test_call_orders.py`) |
 | `bin/` | `frontier`, `frontier-mcp`: run from anywhere |

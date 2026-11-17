@@ -431,8 +431,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--subject", required=True, help="the subject as text (a .pdf is converted with pdftotext)")
     ap.add_argument("--context", required=True, help="Markdown file: the race's budgets, time and incidents")
     ap.add_argument("--out", required=True, help="the jury's directory: its ledger, jury.json, JURY.md")
-    ap.add_argument("--judge", action="append", default=[], help="provider of a judge (repeat); default: openai, "
-                    "anthropic, google")
+    ap.add_argument("--judge", action="append", default=[], help="provider of a judge (repeat); default: the panel "
+                    "the dashboard set (OUT/panel.json), else openai, anthropic, google")
     ap.add_argument("--team", action="append", default=[], help="grade only these missions (repeat)")
     ap.add_argument("--cap-usd", type=float, default=15.0, help="cap on the jury's own model calls")
     ap.add_argument("--calibration", help="Markdown file: a study of known means that fixes the scale (redacted too)")
@@ -441,7 +441,8 @@ def main(argv: list[str] | None = None) -> int:
     subject = (subprocess.run(["pdftotext", "-layout", str(subj), "-"], capture_output=True, text=True, check=True).stdout
                if subj.suffix.lower() == ".pdf" else subj.read_text())
     res = run(pathlib.Path(a.root), subject, pathlib.Path(a.context).read_text(), pathlib.Path(a.out),
-              a.judge or ["openai", "anthropic", "google"], a.cap_usd, a.team or None,
+              a.judge or (read_json(pathlib.Path(a.out) / "panel.json", {}) or {}).get("judges") or ["openai", "anthropic", "google"],
+              a.cap_usd, a.team or None,
               pathlib.Path(a.calibration).read_text() if a.calibration else "")
     out = pathlib.Path(a.out)
     write_json(out / "jury.json", res)

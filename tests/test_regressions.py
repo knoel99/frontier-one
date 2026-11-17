@@ -1525,3 +1525,22 @@ def test_hermes_does_not_call_github_by_itself(tmp_path):
     info = mission.prepare(_mission(tmp_path, harness="hermes", provider="deepseek"), ping=False, offers=False)
     text = (pathlib.Path(info["state"]) / "hermes" / "config.yaml").read_text()
     assert "updates:\n  check: false\n" in text and "model_catalog:\n  enabled: false\n" in text
+
+
+def test_a_ledger_written_while_it_is_checked_is_not_reported_cut(tmp_path, monkeypatch):
+    """The dashboard checks live ledgers: a line appended between the head's read and the lines' must not look like a
+    cut log (seen as "ledger tampered" while a fake race was replayed fast, 2026-11-17)."""
+    from frontier import budget
+
+    log = tmp_path / "llm.jsonl"
+    for i in range(3):
+        budget.append_chained(log, {"n": i})
+    read = budget.read_jsonl
+
+    def appending(path):
+        rows = read(path)
+        budget.append_chained(log, {"n": 99})  # lands after the head was read, before this check ends
+        return rows
+
+    monkeypatch.setattr(budget, "read_jsonl", appending)
+    assert budget.verify_chain(log) is True

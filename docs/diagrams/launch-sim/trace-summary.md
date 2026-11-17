@@ -1,0 +1,587 @@
+# Simulated launch, traced
+
+2871 events from 5 processes.
+
+## Level 2: steps, subprocesses and files, in order
+
+-   0.00s **launcher/MainThread** PROCESS pid 590 -m mission start OUT/mission.toml
+-   0.12s launcher/MainThread READ config/providers.toml
+-   0.13s launcher/MainThread READ pyproject.toml
+-   0.14s **launcher/MainThread** SPAWN `git init -q OUT/ws`
+-   0.15s launcher/MainThread WRITE OUT/ws/subject/subject.md
+-   0.15s launcher/MainThread WRITE OUT/state/budgets.json.9cdfeb10.tmp
+-   0.15s launcher/MainThread WRITE OUT/state/budgets.json
+-   0.15s launcher/MainThread WRITE OUT/state/mission.json.e9d4cd36.tmp
+-   0.15s launcher/MainThread WRITE OUT/state/mission.json
+-   0.15s launcher/MainThread READ config/prices.toml
+-   0.15s launcher/MainThread READ OUT/state/budgets.json
+-   0.15s launcher/MainThread WRITE OUT/state/reservations.json.70075c13.tmp
+-   0.15s launcher/MainThread WRITE OUT/state/reservations.json
+-   1.19s launcher/MainThread WRITE OUT/state/llm.jsonl
+-   1.19s launcher/MainThread READ OUT/state/llm.jsonl
+-   1.19s launcher/MainThread WRITE OUT/state/.llm.jsonl.head.1841194d.tmp
+-   1.19s launcher/MainThread WRITE OUT/state/.llm.jsonl.head
+-   1.19s launcher/MainThread READ OUT/state/reservations.json
+-   1.19s launcher/MainThread WRITE OUT/state/reservations.json.89a7ea29.tmp
+-   1.19s launcher/MainThread READ OUT/state/mission.json
+-   1.19s launcher/MainThread READ prompts/system.md
+-   1.20s launcher/MainThread READ prompts/cloud.md
+-   1.20s launcher/MainThread READ prompts/subagents.md
+-   1.20s launcher/MainThread READ roles/infra.md
+-   1.20s launcher/MainThread READ roles/reviewer.md
+-  12.43s launcher/MainThread WRITE OUT/ws/TOOLS.md
+-  12.43s launcher/MainThread READ prompts/mission.md
+-  12.43s launcher/MainThread WRITE OUT/ws/MISSION.md
+-  12.43s launcher/MainThread WRITE OUT/ws/AGENTS.md
+-  12.44s launcher/MainThread WRITE OUT/ws/.codex/config.toml
+-  12.44s launcher/MainThread WRITE OUT/ws/.codex/agents/infra.toml
+-  12.44s launcher/MainThread WRITE OUT/ws/.codex/agents/reviewer.toml
+-  12.44s launcher/MainThread WRITE OUT/ws/.agents/skills/frontier/SKILL.md
+-  12.44s launcher/MainThread WRITE OUT/ws/.gitignore
+-  12.44s launcher/MainThread WRITE OUT/state/events.jsonl
+-  12.44s launcher/MainThread READ OUT/state/events.jsonl
+-  12.44s launcher/MainThread WRITE OUT/state/.events.jsonl.head.8a707a09.tmp
+-  12.44s launcher/MainThread WRITE OUT/state/.events.jsonl.head
+-  12.44s launcher/MainThread READ config/harnesses.toml
+-  12.45s launcher/MainThread WRITE OUT/state/snapshots.json.5b5e5b36.tmp
+-  12.45s launcher/MainThread WRITE OUT/state/snapshots.json
+-  12.45s launcher/Thread-1 (_watchdog) READ OUT/state/snapshots.json
+-  12.47s **launcher/MainThread** SPAWN `bash -c printenv OPENAI_API_KEY | codex login --with-api-key`
+-  12.50s **launcher/MainThread** PROCESS pid 600 OUT/bin/codex login --with-api-key
+-  12.59s **harness/MainThread** STEP codex login --with-api-key {"note": "recipe `setup`: the key arrives on stdin"}
+-  12.60s launcher/MainThread READ OUT/state/.events.jsonl.head
+-  12.60s launcher/MainThread WRITE OUT/state/.events.jsonl.head.79bfcac6.tmp
+-  12.60s launcher/MainThread WRITE OUT/state/reservations.json.672e8905.tmp
+-  12.60s launcher/MainThread READ OUT/state/.llm.jsonl.head
+-  12.60s launcher/MainThread WRITE OUT/state/reservations.json.7506e9bf.tmp
+-  12.61s launcher/MainThread WRITE OUT/state/.events.jsonl.head.a68e25a9.tmp
+-  12.61s launcher/MainThread WRITE OUT/state/sessions/01.log
+-  12.61s **launcher/MainThread** SPAWN `codex exec --trust --add-dir OUT/state -m gpt-6-astra -c model_reasoning_effort="high" -c features.plugins=false --sandbox workspace-write -c sandbox_workspace_write.network_access=true --json -c model_providers.fron`
+-  12.66s **launcher/MainThread** PROCESS pid 601 OUT/bin/codex exec --trust --add-dir OUT/state
+-  12.76s **harness/MainThread** STEP codex exec starts {"model": "gpt-6-astra", "effort": "high", "base_url": "http://127.0.0.1:34472/openai/v1", "prompt": "Read MISSION.md and TOOLS.md, then carry out the mission. You work autonomously: nobody will answer questions. Record your strategy and decisions in DECISIONS
+-  12.76s harness/MainThread READ OUT/ws/.codex/config.toml
+-  12.76s **harness/MainThread** STEP loads project config {"file": ".codex/config.toml"}
+-  12.76s harness/MainThread READ OUT/ws/AGENTS.md
+-  12.77s **harness/MainThread** STEP loads instructions {"file": "AGENTS.md"}
+-  12.77s harness/MainThread READ OUT/ws/.agents/skills/frontier/SKILL.md
+-  12.77s **harness/MainThread** STEP loads skill {"file": ".agents/skills/frontier/SKILL.md"}
+-  12.77s harness/MainThread READ OUT/ws/.codex/agents/infra.toml
+-  12.77s **harness/MainThread** STEP loads sub-agent definition {"file": ".codex/agents/infra.toml"}
+-  12.77s harness/MainThread READ OUT/ws/.codex/agents/reviewer.toml
+-  12.77s **harness/MainThread** STEP loads sub-agent definition {"file": ".codex/agents/reviewer.toml"}
+-  12.77s **harness/MainThread** SPAWN `bin/frontier-mcp --state OUT/state`
+-  12.77s **harness/MainThread** STEP starts MCP server {"cmd": "bin/frontier-mcp --state OUT/state"}
+-  12.80s **mcp-server/MainThread** PROCESS pid 602 -m --state OUT/state
+-  12.94s mcp-server/MainThread READ pyproject.toml
+-  12.95s mcp-server/MainThread READ config/providers.toml
+-  12.95s mcp-server/MainThread READ OUT/state/mission.json
+-  12.96s mcp-server/MainThread READ prompts/system.md
+-  12.96s mcp-server/MainThread READ prompts/cloud.md
+-  12.96s mcp-server/MainThread READ prompts/subagents.md
+-  12.96s mcp-server/MainThread READ roles/infra.md
+-  12.96s mcp-server/MainThread READ roles/reviewer.md
+-  12.96s **harness/MainThread** STEP tools/list {"tools": ["spawn_agent", "frontier_plan", "frontier_roles", "scw_offers", "scw_create_instance", "scw_instance", "scw_list_instances", "scw_delete_instance", "rp_offers", "rp_create_pod", "rp_pod", "rp_list_pods", "rp_exec", "rp_upload", "rp_logs", "rp_delete
+-  12.96s **harness/MainThread** STEP model call through the gateway {"url": "http://127.0.0.1:34472/openai/v1/responses"}
+-  12.98s launcher/Thread-4 (process_request_thread) WRITE OUT/state/reservations.json.b0edf029.tmp
+-  17.10s **harness/MainThread** STEP model answered {"status": "completed", "usage": {"input_tokens": 66, "input_tokens_details": {"cache_write_tokens": 0, "cache_write_tokens_details": {"ttl_12h_tokens": 0, "ttl_30m_tokens": 0}, "cached_tokens": 0}, "output_tokens": 34, "output_tokens_details": {"reasoning_tok
+-  17.10s harness/MainThread READ OUT/ws/MISSION.md
+-  17.10s launcher/Thread-4 (process_request_thread) WRITE OUT/state/.llm.jsonl.head.2c699ff8.tmp
+-  17.10s harness/MainThread READ OUT/ws/TOOLS.md
+-  17.10s **harness/MainThread** STEP model reads the brief and the inventory (shell tool) {"files": ["MISSION.md", "TOOLS.md"]}
+-  17.10s **harness/MainThread** STEP tools/call budget_status {"arguments": {}}
+-  17.10s launcher/Thread-4 (process_request_thread) WRITE OUT/state/reservations.json.b9e9758c.tmp
+-  17.10s mcp-server/ThreadPoolExecutor-0_1 READ OUT/state/budgets.json
+-  17.10s mcp-server/ThreadPoolExecutor-0_1 READ OUT/state/llm.jsonl
+-  17.11s mcp-server/ThreadPoolExecutor-0_1 READ OUT/state/reservations.json
+-  17.11s mcp-server/ThreadPoolExecutor-0_1 WRITE OUT/state/reservations.json.906a1f9e.tmp
+-  17.11s mcp-server/ThreadPoolExecutor-0_1 WRITE OUT/state/reservations.json
+-  17.11s mcp-server/ThreadPoolExecutor-0_1 READ OUT/state/events.jsonl
+-  17.11s mcp-server/ThreadPoolExecutor-0_1 READ OUT/state/.llm.jsonl.head
+-  17.11s mcp-server/ThreadPoolExecutor-0_1 READ OUT/state/.events.jsonl.head
+-  17.11s mcp-server/ThreadPoolExecutor-0_1 WRITE OUT/state/events.jsonl
+-  17.11s mcp-server/ThreadPoolExecutor-0_1 WRITE OUT/state/.events.jsonl.head.2057b3e4.tmp
+-  17.11s mcp-server/ThreadPoolExecutor-0_1 WRITE OUT/state/.events.jsonl.head
+-  17.11s **harness/MainThread** STEP result budget_status {"text": "{\n \"time\": \"2026-11-16T21:34:53+00:00\",\n \"llm\": {\n  \"spent_usd\": 0.002363,\n  \"in_flight_usd\": 0,\n  \"cap_usd\": 1.0,\n  \"by_model\": {\n   \"openai/gpt-6-luna\": {\n    \"calls\": 1,\n    \"input\": 10,\n    \"output\": 5,\n    \"usd\
+-  17.11s **harness/MainThread** STEP tools/call spawn_agent {"arguments": {"task": "Answer with the single word OK.", "tier": "light", "reasoning": "low", "tools": [], "max_turns": 1}}
+-  17.11s mcp-server/ThreadPoolExecutor-0_0 WRITE OUT/state/.events.jsonl.head.f8dde80b.tmp
+-  17.11s mcp-server/ThreadPoolExecutor-0_0 WRITE OUT/state/reservations.json.3af866e1.tmp
+-  17.11s mcp-server/ThreadPoolExecutor-0_0 READ config/prices.toml
+-  17.12s mcp-server/ThreadPoolExecutor-0_0 WRITE OUT/state/reservations.json.c98d164e.tmp
+-  17.16s launcher/Thread-5 (process_request_thread) WRITE OUT/state/.events.jsonl.head.1220bc4d.tmp
+-  18.09s mcp-server/ThreadPoolExecutor-0_0 WRITE OUT/state/llm.jsonl
+-  18.09s mcp-server/ThreadPoolExecutor-0_0 WRITE OUT/state/.llm.jsonl.head.191cf26b.tmp
+-  18.09s mcp-server/ThreadPoolExecutor-0_0 WRITE OUT/state/.llm.jsonl.head
+-  18.10s mcp-server/ThreadPoolExecutor-0_0 WRITE OUT/state/reservations.json.f9a0e10b.tmp
+-  18.10s mcp-server/ThreadPoolExecutor-0_0 WRITE OUT/state/.events.jsonl.head.4ecda584.tmp
+-  18.10s mcp-server/ThreadPoolExecutor-0_0 WRITE OUT/state/.events.jsonl.head.cf26de6c.tmp
+-  18.10s mcp-server/ThreadPoolExecutor-0_0 WRITE OUT/state/.events.jsonl.head.af3bd50c.tmp
+-  18.10s **harness/MainThread** STEP result spawn_agent {"text": "[sub-agent sub-da92eb: openai/gpt-6-luna@low, tier light, 1 calls, 229 in / 5 out tokens, 0.0000 USD]\nOK", "is_error": false}
+-  18.10s harness/MainThread WRITE OUT/ws/DECISIONS.md
+-  18.10s harness/MainThread WRITE OUT/ws/COMPLIANCE.md
+-  18.10s harness/MainThread WRITE OUT/ws/DELIVERY.md
+-  18.10s harness/MainThread WRITE OUT/ws/report.md
+-  18.10s **harness/MainThread** STEP writes DECISIONS.md, COMPLIANCE.md, DELIVERY.md, report.md 
+-  18.10s **harness/MainThread** STEP tools/call deliver {"arguments": {"summary": "simulated launch"}}
+-  18.12s mcp-server/ThreadPoolExecutor-0_1 READ OUT/ws/report.md
+-  18.13s mcp-server/ThreadPoolExecutor-0_1 WRITE OUT/state/reservations.json.fa725e57.tmp
+-  18.13s mcp-server/ThreadPoolExecutor-0_1 WRITE OUT/ws/COSTS.md
+-  18.13s mcp-server/ThreadPoolExecutor-0_1 WRITE OUT/state/delivery.json.08ffbca1.tmp
+-  18.13s mcp-server/ThreadPoolExecutor-0_1 WRITE OUT/state/delivery.json
+-  18.13s mcp-server/ThreadPoolExecutor-0_1 WRITE OUT/state/budgets.json.0ae729e1.tmp
+-  18.13s mcp-server/ThreadPoolExecutor-0_1 WRITE OUT/state/budgets.json
+-  18.13s **mcp-server/ThreadPoolExecutor-0_1** SPAWN `git -C OUT/ws add -A`
+-  18.14s **mcp-server/ThreadPoolExecutor-0_1** SPAWN `git -C OUT/ws -c user.name=frontier -c user.email=frontier@localhost commit -q -m Delivery
+
+simulated launch`
+-  18.21s **mcp-server/ThreadPoolExecutor-0_1** SPAWN `git -C OUT/ws tag -f delivery`
+-  18.21s mcp-server/ThreadPoolExecutor-0_1 WRITE OUT/state/delivery.json.0b6d3f66.tmp
+-  18.21s mcp-server/ThreadPoolExecutor-0_1 WRITE OUT/state/.events.jsonl.head.ec060ba4.tmp
+-  18.21s mcp-server/ThreadPoolExecutor-0_1 WRITE OUT/state/.events.jsonl.head.7b7b8133.tmp
+-  18.21s **harness/MainThread** STEP result deliver {"text": "{\n \"delivered_at\": \"2026-11-16T21:34:54+00:00\",\n \"elapsed_hours\": 0.005,\n \"deadline\": \"2026-11-16T22:34:36+00:00\",\n \"llm_usd\": 0.002388,\n \"llm_cap_usd\": 1.0,\n \"scaleway_eur\": 0,\n \"scaleway_cap_eur\": 1.0,\n \"runpod_usd\": 0,\
+-  18.24s **harness/MainThread** STEP codex exec ends 
+-  18.26s launcher/MainThread READ OUT/state/sessions/01.log
+-  18.26s launcher/MainThread WRITE OUT/state/.events.jsonl.head.b986b597.tmp
+-  18.26s **launcher/MainThread** SPAWN `git -C OUT/ws add -A`
+-  18.26s **launcher/MainThread** SPAWN `git -C OUT/ws -c user.name=frontier -c user.email=frontier@localhost commit -q -m Session 1`
+-  18.26s **launcher/MainThread** SPAWN `git -C OUT/ws status --porcelain`
+-  18.50s launcher/MainThread WRITE OUT/state/reservations.json.69014171.tmp
+-  18.50s launcher/MainThread WRITE OUT/ws/COSTS.md
+-  18.50s launcher/MainThread READ OUT/state/delivery.json
+-  18.50s launcher/MainThread WRITE OUT/state/delivery.json.8ac42550.tmp
+-  18.50s launcher/MainThread WRITE OUT/state/delivery.json
+-  18.50s **launcher/MainThread** SPAWN `git -C OUT/ws add -A`
+-  18.50s **launcher/MainThread** SPAWN `git -C OUT/ws -c user.name=frontier -c user.email=frontier@localhost commit -q -m Delivery`
+-  18.57s **launcher/MainThread** SPAWN `git -C OUT/ws tag -f delivery`
+-  18.62s **launcher/MainThread** PROCESS pid 641 -m mission status OUT/mission.toml
+-  18.76s launcher/MainThread WRITE OUT/state/reservations.json.0e6d5364.tmp
+
+## Level 3: frontier/ calls up to depth 6 (repeats folded)
+
+-   0.11s launcher/MainThread frontier.__main__.main  `frontier/__main__.py:171`
+-   0.12s launcher/MainThread   frontier.__main__.cmd_mission  `frontier/__main__.py:108`
+-   0.13s launcher/MainThread     frontier.launcher.start  `frontier/launcher.py:382`
+-   0.13s launcher/MainThread       frontier.mission.prepare  `frontier/mission.py:310`
+-   0.13s launcher/MainThread         frontier.mission.load  `frontier/mission.py:42`
+-   0.15s launcher/MainThread         frontier.mission._copy_subject  `frontier/mission.py:274`
+-   0.15s launcher/MainThread         frontier.budget.Budget.__init__  `frontier/budget.py:218`
+-   0.15s launcher/MainThread         frontier.budget.Budget.caps  `frontier/budget.py:222`
+-   0.15s launcher/MainThread         frontier.mission._deadline  `frontier/mission.py:62`
+-   0.15s launcher/MainThread         frontier.budget.Budget.set_caps  `frontier/budget.py:227`
+-   0.15s launcher/MainThread           frontier.budget.update_json  `frontier/budget.py:92`
+-   0.15s launcher/MainThread             frontier.budget.Budget.set_caps.<locals>.merge  `frontier/budget.py:228`
+-   0.15s launcher/MainThread         frontier.credentials.load  `frontier/credentials.py:105`
+-   0.15s launcher/MainThread           frontier.credentials.sources  `frontier/credentials.py:68`
+-   0.15s launcher/MainThread             frontier.credentials.used  `frontier/credentials.py:59`
+-   0.15s launcher/MainThread           frontier.credentials.resolve  `frontier/credentials.py:81`  (x7)
+-   0.15s launcher/MainThread         frontier.credentials.services  `frontier/credentials.py:46`
+-   0.15s launcher/MainThread         frontier.mission._free_port  `frontier/mission.py:387`
+-   0.15s launcher/MainThread         frontier.mission.providers_of  `frontier/mission.py:86`
+-   0.15s launcher/MainThread         frontier.mission.sandbox_kind  `frontier/mission.py:70`
+-   0.15s launcher/MainThread         frontier.credentials.plain_settings  `frontier/credentials.py:123`
+-   0.15s launcher/MainThread           frontier.credentials.used  `frontier/credentials.py:59`
+-   0.15s launcher/MainThread             frontier.credentials.services  `frontier/credentials.py:46`
+-   0.15s launcher/MainThread         frontier.agent.Run.__post_init__  `frontier/agent.py:39`
+-   0.15s launcher/MainThread           frontier.budget.Budget.__init__  `frontier/budget.py:218`
+-   0.15s launcher/MainThread         frontier.mission._ping  `frontier/mission.py:293`
+-   0.15s launcher/MainThread             frontier.llm._merge  `frontier/llm.py:129`
+-   0.15s launcher/MainThread           frontier.budget.Budget.metered_chat  `frontier/budget.py:313`
+-   0.15s launcher/MainThread             frontier.budget.worst_case_usd  `frontier/budget.py:173`
+-   0.15s launcher/MainThread             frontier.llm.ModelSpec.label  `frontier/llm.py:60`
+-   0.15s launcher/MainThread             frontier.budget.Budget.call  `frontier/budget.py:306`
+-   0.15s launcher/MainThread             frontier.budget.Call.__enter__  `frontier/budget.py:206`
+-   0.15s launcher/MainThread             frontier.llm.chat  `frontier/llm.py:475`
+-   1.19s launcher/MainThread             frontier.budget.Call.charge  `frontier/budget.py:192`
+-   1.19s launcher/MainThread             frontier.budget.Call.__exit__  `frontier/budget.py:209`
+-   1.19s launcher/MainThread         frontier.mcp.Server.__init__  `frontier/mcp.py:83`
+-   1.19s launcher/MainThread           frontier.agent.Run.__post_init__  `frontier/agent.py:39`
+-   1.19s launcher/MainThread             frontier.budget.Budget.__init__  `frontier/budget.py:218`
+-   1.19s launcher/MainThread           frontier.agent.Agent.__init__  `frontier/agent.py:160`
+-   1.19s launcher/MainThread             frontier.agent.Run.limits  `frontier/agent.py:47`
+-   1.19s launcher/MainThread             frontier.tools.all_tools  `frontier/tools.py:322`
+-   1.19s launcher/MainThread             frontier.agent.expand_tools  `frontier/agent.py:143`
+-   1.19s launcher/MainThread             frontier.agent.Run.limits  `frontier/agent.py:47`
+-   1.19s launcher/MainThread             frontier.agent.Agent._system  `frontier/agent.py:176`
+-   1.20s launcher/MainThread         frontier.mcp.Server.tool_specs  `frontier/mcp.py:108`
+-   1.20s launcher/MainThread           frontier.mcp.annotations  `frontier/mcp.py:54`  (x27)
+-   1.20s launcher/MainThread         frontier.mission.tools_inventory  `frontier/mission.py:185`
+-   1.20s launcher/MainThread           frontier.budget.Budget.caps  `frontier/budget.py:222`
+-   1.20s launcher/MainThread           frontier.mission._main_spec  `frontier/mission.py:154`
+-   1.20s launcher/MainThread           frontier.mission._paths  `frontier/mission.py:77`
+-   1.20s launcher/MainThread             frontier.mission.sandbox_kind  `frontier/mission.py:70`
+-   1.20s launcher/MainThread           frontier.mission._paths  `frontier/mission.py:77`
+-   1.20s launcher/MainThread             frontier.mission.sandbox_kind  `frontier/mission.py:70`
+-   1.20s launcher/MainThread           frontier.mission.providers_of  `frontier/mission.py:86`
+-   1.20s launcher/MainThread           frontier.mission._models_section  `frontier/mission.py:91`
+-   1.20s launcher/MainThread           frontier.mission._offers_section  `frontier/mission.py:128`
+-   1.20s launcher/MainThread             frontier.infra.scw_offers  `frontier/infra.py:72`
+-  10.52s launcher/MainThread             frontier.infra.rp_offers  `frontier/infra.py:243`  (x2)
+-  12.43s launcher/MainThread         frontier.budget.Budget.caps  `frontier/budget.py:222`
+-  12.43s launcher/MainThread         frontier.mission.mission_brief  `frontier/mission.py:242`
+-  12.43s launcher/MainThread           frontier.mission.providers_of  `frontier/mission.py:86`
+-  12.43s launcher/MainThread           frontier.mission._blocked  `frontier/mission.py:234`  (x2)
+-  12.43s launcher/MainThread         frontier.mission._paths  `frontier/mission.py:77`
+-  12.43s launcher/MainThread           frontier.mission.sandbox_kind  `frontier/mission.py:70`
+-  12.43s launcher/MainThread         frontier.mission._main_spec  `frontier/mission.py:154`
+-  12.43s launcher/MainThread             frontier.llm._merge  `frontier/llm.py:129`
+-  12.43s launcher/MainThread         frontier.gateway.base_url_for  `frontier/gateway.py:49`
+-  12.43s launcher/MainThread         frontier.harnesses.artifacts  `frontier/harnesses.py:170`
+-  12.43s launcher/MainThread           frontier.harnesses._roles  `frontier/harnesses.py:117`
+-  12.43s launcher/MainThread             frontier.agent.load_role  `frontier/agent.py:117`  (x2)
+-  12.43s launcher/MainThread           frontier.harnesses._toml_list  `frontier/harnesses.py:113`
+-  12.43s launcher/MainThread           frontier.harnesses.mcp_env_vars  `frontier/harnesses.py:37`
+-  12.43s launcher/MainThread             frontier.credentials.services  `frontier/credentials.py:46`
+-  12.43s launcher/MainThread           frontier.harnesses._toml_list  `frontier/harnesses.py:113`
+-  12.43s launcher/MainThread           frontier.harnesses._agent_files  `frontier/harnesses.py:274`  (x2)
+-  12.44s launcher/MainThread           frontier.harnesses.skill_text  `frontier/harnesses.py:141`
+-  12.44s launcher/MainThread         frontier.mission.install_skills  `frontier/mission.py:162`
+-  12.44s launcher/MainThread         frontier.agent.Run.log  `frontier/agent.py:51`
+-  12.44s launcher/MainThread           frontier.budget.append_chained  `frontier/budget.py:54`
+-  12.44s launcher/MainThread             frontier.budget._digest  `frontier/budget.py:42`
+-  12.44s launcher/MainThread       frontier.launcher.harness_conf  `frontier/launcher.py:42`
+-  12.45s launcher/MainThread       frontier.agent.Run.__post_init__  `frontier/agent.py:39`
+-  12.45s launcher/MainThread         frontier.budget.Budget.__init__  `frontier/budget.py:218`
+-  12.45s launcher/MainThread       frontier.snapshots.write_settings  `frontier/snapshots.py:46`
+-  12.45s launcher/Thread-1 (_watchdog) frontier.launcher._watchdog  `frontier/launcher.py:276`
+-  12.45s launcher/Thread-1 (_watchdog)   frontier.snapshots.CpuMeter.__init__  `frontier/snapshots.py:209`
+-  12.45s launcher/Thread-1 (_watchdog)     frontier.snapshots.core_seconds  `frontier/snapshots.py:65`
+-  12.45s launcher/Thread-1 (_watchdog)   frontier.snapshots.Snapshots.__init__  `frontier/snapshots.py:81`
+-  12.45s launcher/Thread-1 (_watchdog)     frontier.snapshots.settings  `frontier/snapshots.py:37`
+-  12.45s launcher/MainThread       frontier.egress._Handler  `frontier/egress.py:36`
+-  12.45s launcher/MainThread       frontier.egress.start  `frontier/egress.py:140`
+-  12.45s launcher/MainThread         frontier.egress.Egress.__init__  `frontier/egress.py:129`
+-  12.45s launcher/MainThread       frontier.egress.Egress.url  `frontier/egress.py:135`  (x2)
+-  12.45s launcher/MainThread       frontier.launcher.open_gateway  `frontier/launcher.py:306`
+-  12.45s launcher/MainThread         frontier.launcher.routable  `frontier/launcher.py:105`
+-  12.45s launcher/MainThread         frontier.launcher.model_map  `frontier/launcher.py:299`
+-  12.46s launcher/MainThread         frontier.gateway.serve  `frontier/gateway.py:329`
+-  12.46s launcher/MainThread           frontier.gateway.routes_from_config  `frontier/gateway.py:40`
+-  12.46s launcher/MainThread           frontier.budget.Budget.__init__  `frontier/budget.py:218`
+-  12.46s launcher/MainThread           frontier.gateway.Gateway.__init__  `frontier/gateway.py:156`
+-  12.46s launcher/MainThread             frontier.milestones.Milestones.__init__  `frontier/milestones.py:21`
+-  12.46s launcher/MainThread             frontier.snapshots.Snapshots.__init__  `frontier/snapshots.py:81`
+-  12.46s launcher/MainThread       frontier.launcher.harness_setup  `frontier/launcher.py:324`
+-  12.46s launcher/MainThread         frontier.launcher.build_session  `frontier/launcher.py:67`
+-  12.47s launcher/MainThread             frontier.llm._merge  `frontier/llm.py:129`
+-  12.47s launcher/MainThread           frontier.launcher._fill  `frontier/launcher.py:55`
+-  12.47s launcher/MainThread             frontier.launcher._fill  `frontier/launcher.py:55`
+-  12.47s launcher/MainThread           frontier.launcher._fill  `frontier/launcher.py:55`  (x2)
+-  12.47s launcher/MainThread             frontier.launcher._fill  `frontier/launcher.py:55`  (x17)
+-  12.47s launcher/MainThread           frontier.launcher._fill  `frontier/launcher.py:55`
+-  12.47s launcher/MainThread             frontier.launcher._fill  `frontier/launcher.py:55`  (x12)
+-  12.60s launcher/MainThread         frontier.agent.Run.log  `frontier/agent.py:51`
+-  12.60s launcher/MainThread           frontier.budget.append_chained  `frontier/budget.py:54`
+-  12.60s launcher/MainThread             frontier.budget._digest  `frontier/budget.py:42`
+-  12.60s launcher/MainThread       frontier.launcher._stop_reason  `frontier/launcher.py:474`
+-  12.60s launcher/MainThread         frontier.budget.Budget.status  `frontier/budget.py:387`
+-  12.60s launcher/MainThread           frontier.budget.Budget.caps  `frontier/budget.py:222`
+-  12.60s launcher/MainThread           frontier.budget.Budget.llm_entries  `frontier/budget.py:253`
+-  12.60s launcher/MainThread           frontier.budget.Budget.llm_spent  `frontier/budget.py:256`
+-  12.60s launcher/MainThread             frontier.budget.Budget.llm_entries  `frontier/budget.py:253`
+-  12.60s launcher/MainThread           frontier.budget.Budget.reserved  `frontier/budget.py:272`
+-  12.60s launcher/MainThread             frontier.budget.Budget._reservations  `frontier/budget.py:259`
+-  12.60s launcher/MainThread           frontier.budget.Budget.verify  `frontier/budget.py:335`
+-  12.60s launcher/MainThread             frontier.budget.verify_chain  `frontier/budget.py:108`  (x2)
+-  12.60s launcher/MainThread           frontier.budget.Budget.cloud_spent  `frontier/budget.py:349`
+-  12.60s launcher/MainThread             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  12.60s launcher/MainThread           frontier.budget.Budget.cloud_committed  `frontier/budget.py:354`
+-  12.60s launcher/MainThread             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  12.60s launcher/MainThread           frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  12.60s launcher/MainThread           frontier.budget.Budget.cloud_spent  `frontier/budget.py:349`
+-  12.60s launcher/MainThread             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  12.60s launcher/MainThread           frontier.budget.Budget.cloud_committed  `frontier/budget.py:354`
+-  12.60s launcher/MainThread             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  12.60s launcher/MainThread           frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  12.60s launcher/MainThread         frontier.budget.Budget.llm_allowed  `frontier/budget.py:331`
+-  12.60s launcher/MainThread           frontier.budget.Budget.reserved  `frontier/budget.py:272`
+-  12.60s launcher/MainThread             frontier.budget.Budget._reservations  `frontier/budget.py:259`
+-  12.60s launcher/MainThread           frontier.budget.Budget._fits  `frontier/budget.py:290`
+-  12.60s launcher/MainThread             frontier.budget.Budget.caps  `frontier/budget.py:222`
+-  12.60s launcher/MainThread             frontier.budget.Budget.llm_spent  `frontier/budget.py:256`
+-  12.60s launcher/MainThread         frontier.budget.Budget.llm_entries  `frontier/budget.py:253`
+-  12.60s launcher/MainThread       frontier.launcher.run_one  `frontier/launcher.py:332`
+-  12.61s launcher/MainThread         frontier.launcher.build_session  `frontier/launcher.py:67`
+-  12.61s launcher/MainThread             frontier.llm._merge  `frontier/llm.py:129`
+-  12.61s launcher/MainThread           frontier.launcher._fill  `frontier/launcher.py:55`
+-  12.61s launcher/MainThread             frontier.launcher._fill  `frontier/launcher.py:55`
+-  12.61s launcher/MainThread           frontier.launcher._fill  `frontier/launcher.py:55`  (x2)
+-  12.61s launcher/MainThread             frontier.launcher._fill  `frontier/launcher.py:55`  (x17)
+-  12.61s launcher/MainThread           frontier.launcher._fill  `frontier/launcher.py:55`
+-  12.61s launcher/MainThread             frontier.launcher._fill  `frontier/launcher.py:55`  (x12)
+-  12.61s launcher/MainThread         frontier.agent.Run.log  `frontier/agent.py:51`
+-  12.61s launcher/MainThread           frontier.budget.append_chained  `frontier/budget.py:54`
+-  12.61s launcher/MainThread             frontier.budget._digest  `frontier/budget.py:42`
+-  12.61s launcher/MainThread         frontier.launcher.seconds_left  `frontier/launcher.py:270`
+-  12.61s launcher/MainThread           frontier.budget.Budget.caps  `frontier/budget.py:222`
+-  12.61s launcher/MainThread         frontier.launcher.run_until  `frontier/launcher.py:256`
+-  12.94s mcp-server/MainThread frontier.mcp.main  `frontier/mcp.py:217`
+-  12.95s mcp-server/MainThread   frontier.mcp.Server.__init__  `frontier/mcp.py:83`
+-  12.95s mcp-server/MainThread     frontier.agent.Run.__post_init__  `frontier/agent.py:39`
+-  12.95s mcp-server/MainThread       frontier.budget.Budget.__init__  `frontier/budget.py:218`
+-  12.95s mcp-server/MainThread     frontier.agent.Agent.__init__  `frontier/agent.py:160`
+-  12.95s mcp-server/MainThread         frontier.llm._merge  `frontier/llm.py:129`
+-  12.95s mcp-server/MainThread       frontier.agent.Run.limits  `frontier/agent.py:47`
+-  12.95s mcp-server/MainThread       frontier.tools.all_tools  `frontier/tools.py:322`
+-  12.96s mcp-server/MainThread       frontier.agent.expand_tools  `frontier/agent.py:143`
+-  12.96s mcp-server/MainThread       frontier.agent.Run.limits  `frontier/agent.py:47`
+-  12.96s mcp-server/MainThread       frontier.agent.Agent._system  `frontier/agent.py:176`
+-  12.96s mcp-server/MainThread         frontier.llm.ModelSpec.label  `frontier/llm.py:60`
+-  12.96s mcp-server/MainThread         frontier.agent.Run.limits  `frontier/agent.py:47`
+-  12.96s mcp-server/MainThread         frontier.agent._fill  `frontier/agent.py:153`  (x2)
+-  12.96s mcp-server/MainThread         frontier.agent.roles_summary  `frontier/agent.py:135`
+-  12.96s mcp-server/MainThread           frontier.agent.load_role  `frontier/agent.py:117`  (x2)
+-  12.96s mcp-server/MainThread         frontier.agent._fill  `frontier/agent.py:153`
+-  12.96s mcp-server/Thread-1 (_watchdog) frontier.mcp._watchdog  `frontier/mcp.py:176`
+-  12.96s mcp-server/MainThread   frontier.mcp.serve_stdio  `frontier/mcp.py:185`
+-  12.96s mcp-server/ThreadPoolExecutor-0_0 frontier.mcp.serve_stdio.<locals>.answer  `frontier/mcp.py:190`
+-  12.96s mcp-server/ThreadPoolExecutor-0_0   frontier.mcp.Server.handle  `frontier/mcp.py:141`
+-  12.96s mcp-server/ThreadPoolExecutor-0_0 frontier.mcp.serve_stdio.<locals>.answer  `frontier/mcp.py:190`
+-  12.96s mcp-server/ThreadPoolExecutor-0_0   frontier.mcp.Server.handle  `frontier/mcp.py:141`
+-  12.96s mcp-server/ThreadPoolExecutor-0_0 frontier.mcp.serve_stdio.<locals>.answer  `frontier/mcp.py:190`
+-  12.96s mcp-server/ThreadPoolExecutor-0_0   frontier.mcp.Server.handle  `frontier/mcp.py:141`
+-  12.96s mcp-server/ThreadPoolExecutor-0_0     frontier.mcp.Server.tool_specs  `frontier/mcp.py:108`
+-  12.96s mcp-server/ThreadPoolExecutor-0_0       frontier.mcp.annotations  `frontier/mcp.py:54`  (x27)
+-  12.98s launcher/Thread-4 (process_request_thread) frontier.gateway.Handler.do_POST  `frontier/gateway.py:187`
+-  12.98s launcher/Thread-4 (process_request_thread)   frontier.gateway.Handler._proxy  `frontier/gateway.py:196`
+-  12.98s launcher/Thread-4 (process_request_thread)     frontier.gateway.remap  `frontier/gateway.py:115`
+-  12.98s launcher/Thread-4 (process_request_thread)     frontier.gateway.strip_fields  `frontier/gateway.py:132`
+-  12.98s launcher/Thread-4 (process_request_thread)     frontier.gateway.is_generation  `frontier/gateway.py:110`
+-  12.98s launcher/Thread-4 (process_request_thread)     frontier.gateway.worst_case  `frontier/gateway.py:83`
+-  12.98s launcher/Thread-4 (process_request_thread)       frontier.gateway._obj  `frontier/gateway.py:74`
+-  12.98s launcher/Thread-4 (process_request_thread)       frontier.gateway.model_of  `frontier/gateway.py:144`
+-  12.98s launcher/Thread-4 (process_request_thread)         frontier.gateway._obj  `frontier/gateway.py:74`
+-  12.98s launcher/Thread-4 (process_request_thread)       frontier.gateway.requested_price_x  `frontier/gateway.py:96`
+-  12.98s launcher/Thread-4 (process_request_thread)       frontier.budget.worst_case_usd  `frontier/budget.py:173`
+-  12.98s launcher/Thread-4 (process_request_thread)         frontier.budget.llm_cost  `frontier/budget.py:158`
+-  12.98s launcher/Thread-4 (process_request_thread)           frontier.budget.price_of  `frontier/budget.py:132`
+-  12.98s launcher/Thread-4 (process_request_thread)           frontier.budget.time_factor  `frontier/budget.py:143`
+-  12.98s launcher/Thread-4 (process_request_thread)     frontier.gateway.model_of  `frontier/gateway.py:144`
+-  12.98s launcher/Thread-4 (process_request_thread)       frontier.gateway._obj  `frontier/gateway.py:74`
+-  12.98s launcher/Thread-4 (process_request_thread)     frontier.budget.Budget.call  `frontier/budget.py:306`
+-  12.98s launcher/Thread-4 (process_request_thread)       frontier.budget.Budget.reserve  `frontier/budget.py:275`
+-  12.98s launcher/Thread-4 (process_request_thread)         frontier.budget.Budget._reservations  `frontier/budget.py:259`
+-  12.98s launcher/Thread-4 (process_request_thread)           frontier.budget.Budget.reserve.<locals>.take  `frontier/budget.py:277`
+-  12.98s launcher/Thread-4 (process_request_thread)             frontier.budget.Budget._fits  `frontier/budget.py:290`
+-  12.98s launcher/Thread-4 (process_request_thread)       frontier.budget.Call.__init__  `frontier/budget.py:187`
+-  12.98s launcher/Thread-4 (process_request_thread)     frontier.budget.Call.__enter__  `frontier/budget.py:206`
+-  12.98s launcher/Thread-4 (process_request_thread)     frontier.milestones.Milestones.notice  `frontier/milestones.py:36`
+-  12.98s launcher/Thread-4 (process_request_thread)       frontier.milestones.Milestones._fractions  `frontier/milestones.py:27`
+-  12.98s launcher/Thread-4 (process_request_thread)         frontier.budget.Budget.caps  `frontier/budget.py:222`
+-  12.98s launcher/Thread-4 (process_request_thread)         frontier.budget.Budget.llm_spent  `frontier/budget.py:256`
+-  12.98s launcher/Thread-4 (process_request_thread)           frontier.budget.Budget.llm_entries  `frontier/budget.py:253`
+-  12.98s launcher/Thread-4 (process_request_thread)         frontier.budget.Budget.cloud_spent  `frontier/budget.py:349`
+-  12.98s launcher/Thread-4 (process_request_thread)           frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  12.98s launcher/Thread-4 (process_request_thread)         frontier.budget.Budget.cloud_spent  `frontier/budget.py:349`
+-  12.98s launcher/Thread-4 (process_request_thread)           frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  12.98s launcher/Thread-4 (process_request_thread)     frontier.milestones.inject  `frontier/milestones.py:61`
+-  12.98s launcher/Thread-4 (process_request_thread)     frontier.snapshots.Snapshots.notice  `frontier/snapshots.py:101`
+-  12.98s launcher/Thread-4 (process_request_thread)       frontier.snapshots.Snapshots._events  `frontier/snapshots.py:86`
+-  12.98s launcher/Thread-4 (process_request_thread)       frontier.snapshots.Snapshots._minutes  `frontier/snapshots.py:89`
+-  12.98s launcher/Thread-4 (process_request_thread)         frontier.budget.Budget.caps  `frontier/budget.py:222`
+-  12.98s launcher/Thread-4 (process_request_thread)       frontier.snapshots.Snapshots.crossed  `frontier/snapshots.py:94`
+-  12.98s launcher/Thread-4 (process_request_thread)         frontier.snapshots.Snapshots._minutes  `frontier/snapshots.py:89`
+-  12.98s launcher/Thread-4 (process_request_thread)           frontier.budget.Budget.caps  `frontier/budget.py:222`
+-  12.99s launcher/Thread-4 (process_request_thread)         frontier.snapshots.spend  `frontier/snapshots.py:71`
+-  12.99s launcher/Thread-4 (process_request_thread)           frontier.budget.Budget.cloud_spent  `frontier/budget.py:349`
+-  12.99s launcher/Thread-4 (process_request_thread)             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  12.99s launcher/Thread-4 (process_request_thread)           frontier.budget.Budget.cloud_spent  `frontier/budget.py:349`
+-  12.99s launcher/Thread-4 (process_request_thread)             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  12.99s launcher/Thread-4 (process_request_thread)           frontier.budget.Budget.llm_spent  `frontier/budget.py:256`
+-  12.99s launcher/Thread-4 (process_request_thread)             frontier.budget.Budget.llm_entries  `frontier/budget.py:253`
+-  12.99s launcher/Thread-4 (process_request_thread)           frontier.snapshots.core_seconds  `frontier/snapshots.py:65`
+-  12.99s launcher/Thread-4 (process_request_thread)         frontier.snapshots._extend  `frontier/snapshots.py:52`  (x2)
+-  12.99s launcher/Thread-4 (process_request_thread)       frontier.snapshots.Snapshots._events  `frontier/snapshots.py:86`
+-  12.99s launcher/Thread-4 (process_request_thread)     frontier.milestones.inject  `frontier/milestones.py:61`
+-  12.99s launcher/Thread-4 (process_request_thread)     frontier.gateway.Handler._with_stream_usage  `frontier/gateway.py:317`
+-  12.99s launcher/Thread-4 (process_request_thread)     frontier.gateway.Handler._forward  `frontier/gateway.py:224`
+-  17.10s launcher/Thread-4 (process_request_thread)       frontier.gateway.Handler.log_message  `frontier/gateway.py:173`
+-  17.10s launcher/Thread-4 (process_request_thread)       frontier.llm.usage_of  `frontier/llm.py:146`
+-  17.10s launcher/Thread-4 (process_request_thread)       frontier.gateway.merge  `frontier/gateway.py:55`
+-  17.10s launcher/Thread-4 (process_request_thread)       frontier.gateway.model_of  `frontier/gateway.py:144`
+-  17.10s launcher/Thread-4 (process_request_thread)         frontier.gateway._obj  `frontier/gateway.py:74`
+-  17.10s launcher/Thread-4 (process_request_thread)       frontier.gateway.mode_of  `frontier/gateway.py:61`
+-  17.10s launcher/Thread-4 (process_request_thread)       frontier.budget.Call.charge  `frontier/budget.py:192`
+-  17.10s launcher/Thread-4 (process_request_thread)         frontier.budget.Budget.charge_llm  `frontier/budget.py:237`
+-  17.10s launcher/Thread-4 (process_request_thread)           frontier.budget.llm_cost  `frontier/budget.py:158`
+-  17.10s launcher/Thread-4 (process_request_thread)             frontier.budget.price_of  `frontier/budget.py:132`
+-  17.10s launcher/Thread-4 (process_request_thread)             frontier.budget.time_factor  `frontier/budget.py:143`
+-  17.10s launcher/Thread-4 (process_request_thread)           frontier.budget.append_chained  `frontier/budget.py:54`
+-  17.10s launcher/Thread-4 (process_request_thread)             frontier.budget._digest  `frontier/budget.py:42`
+-  17.10s launcher/Thread-4 (process_request_thread)     frontier.budget.Call.__exit__  `frontier/budget.py:209`
+-  17.10s launcher/Thread-4 (process_request_thread)       frontier.budget.Budget.release  `frontier/budget.py:286`
+-  17.10s launcher/Thread-4 (process_request_thread)         frontier.budget.Budget._reservations  `frontier/budget.py:259`
+-  17.10s mcp-server/ThreadPoolExecutor-0_1 frontier.mcp.serve_stdio.<locals>.answer  `frontier/mcp.py:190`
+-  17.10s mcp-server/ThreadPoolExecutor-0_1   frontier.mcp.Server.handle  `frontier/mcp.py:141`
+-  17.10s mcp-server/ThreadPoolExecutor-0_1     frontier.mcp.Server.call  `frontier/mcp.py:126`
+-  17.10s mcp-server/ThreadPoolExecutor-0_1       frontier.infra.budget_status  `frontier/infra.py:465`
+-  17.10s mcp-server/ThreadPoolExecutor-0_1         frontier.infra.enforce  `frontier/infra.py:427`
+-  17.10s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.caps  `frontier/budget.py:222`
+-  17.10s mcp-server/ThreadPoolExecutor-0_1           frontier.agent.Run.alive  `frontier/agent.py:86`
+-  17.10s mcp-server/ThreadPoolExecutor-0_1             frontier.agent.Run.resources  `frontier/agent.py:63`
+-  17.10s mcp-server/ThreadPoolExecutor-0_1         frontier.budget.Budget.status  `frontier/budget.py:387`
+-  17.10s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.caps  `frontier/budget.py:222`
+-  17.10s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.llm_entries  `frontier/budget.py:253`
+-  17.10s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.llm_spent  `frontier/budget.py:256`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.llm_entries  `frontier/budget.py:253`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.reserved  `frontier/budget.py:272`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget._reservations  `frontier/budget.py:259`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.verify  `frontier/budget.py:335`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.verify_chain  `frontier/budget.py:108`  (x2)
+-  17.11s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.cloud_spent  `frontier/budget.py:349`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.cloud_committed  `frontier/budget.py:354`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.cloud_spent  `frontier/budget.py:349`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.cloud_committed  `frontier/budget.py:354`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1         frontier.infra._j  `frontier/infra.py:29`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1       frontier.tools.failed  `frontier/tools.py:44`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1       frontier.agent.Run.log  `frontier/agent.py:51`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1         frontier.budget.append_chained  `frontier/budget.py:54`
+-  17.11s mcp-server/ThreadPoolExecutor-0_1           frontier.budget._digest  `frontier/budget.py:42`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0 frontier.mcp.serve_stdio.<locals>.answer  `frontier/mcp.py:190`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0   frontier.mcp.Server.handle  `frontier/mcp.py:141`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0     frontier.mcp.Server.call  `frontier/mcp.py:126`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0       frontier.agent.t_spawn_agent  `frontier/agent.py:249`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0         frontier.agent.expand_tools  `frontier/agent.py:143`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0         frontier.agent.Run.take_agent_slot  `frontier/agent.py:89`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0           frontier.agent.Run.limits  `frontier/agent.py:47`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0         frontier.agent.Agent.__init__  `frontier/agent.py:160`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0             frontier.llm._merge  `frontier/llm.py:129`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0           frontier.agent.Run.limits  `frontier/agent.py:47`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0           frontier.agent.expand_tools  `frontier/agent.py:143`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0           frontier.agent.Run.limits  `frontier/agent.py:47`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0           frontier.agent.Agent._system  `frontier/agent.py:176`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0             frontier.llm.ModelSpec.label  `frontier/llm.py:60`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0             frontier.agent.Run.limits  `frontier/agent.py:47`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0             frontier.agent._fill  `frontier/agent.py:153`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0         frontier.agent.Agent.run_task  `frontier/agent.py:192`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0           frontier.agent.Run.log  `frontier/agent.py:51`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0             frontier.budget.append_chained  `frontier/budget.py:54`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0           frontier.agent.Run.over_budget  `frontier/agent.py:56`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0             frontier.agent.Run.limits  `frontier/agent.py:47`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0             frontier.budget.Budget.llm_allowed  `frontier/budget.py:331`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0           frontier.agent.Run.limits  `frontier/agent.py:47`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0           frontier.budget.Budget.metered_chat  `frontier/budget.py:313`
+-  17.11s mcp-server/ThreadPoolExecutor-0_0             frontier.budget.worst_case_usd  `frontier/budget.py:173`
+-  17.12s mcp-server/ThreadPoolExecutor-0_0             frontier.llm.ModelSpec.label  `frontier/llm.py:60`
+-  17.12s mcp-server/ThreadPoolExecutor-0_0             frontier.budget.Budget.call  `frontier/budget.py:306`
+-  17.12s mcp-server/ThreadPoolExecutor-0_0             frontier.budget.Call.__enter__  `frontier/budget.py:206`
+-  17.12s mcp-server/ThreadPoolExecutor-0_0             frontier.llm.chat  `frontier/llm.py:475`
+-  17.13s launcher/Thread-5 (process_request_thread) frontier.egress._Handler.do_CONNECT  `frontier/egress.py:73`
+-  17.13s launcher/Thread-5 (process_request_thread)   frontier.egress.denied  `frontier/egress.py:25`
+-  17.13s launcher/Thread-5 (process_request_thread)   frontier.egress._Handler._upstream  `frontier/egress.py:55`
+-  17.15s launcher/Thread-5 (process_request_thread)   frontier.egress._Handler._log  `frontier/egress.py:42`
+-  17.15s launcher/Thread-5 (process_request_thread)     frontier.budget.append_chained  `frontier/budget.py:54`
+-  17.16s launcher/Thread-5 (process_request_thread)       frontier.budget._digest  `frontier/budget.py:42`
+-  17.16s launcher/Thread-5 (process_request_thread)   frontier.egress._Handler.log_message  `frontier/egress.py:39`
+-  17.16s launcher/Thread-5 (process_request_thread)   frontier.egress._relay  `frontier/egress.py:108`
+-  18.09s mcp-server/ThreadPoolExecutor-0_0             frontier.budget.Call.charge  `frontier/budget.py:192`
+-  18.10s mcp-server/ThreadPoolExecutor-0_0             frontier.budget.Call.__exit__  `frontier/budget.py:209`
+-  18.10s mcp-server/ThreadPoolExecutor-0_0           frontier.agent.Run.log  `frontier/agent.py:51`
+-  18.10s mcp-server/ThreadPoolExecutor-0_0             frontier.budget.append_chained  `frontier/budget.py:54`
+-  18.10s mcp-server/ThreadPoolExecutor-0_0           frontier.agent.Run.log  `frontier/agent.py:51`
+-  18.10s mcp-server/ThreadPoolExecutor-0_0             frontier.budget.append_chained  `frontier/budget.py:54`
+-  18.10s mcp-server/ThreadPoolExecutor-0_0         frontier.llm.ModelSpec.label  `frontier/llm.py:60`
+-  18.10s mcp-server/ThreadPoolExecutor-0_0       frontier.tools.failed  `frontier/tools.py:44`
+-  18.10s mcp-server/ThreadPoolExecutor-0_0       frontier.agent.Run.log  `frontier/agent.py:51`
+-  18.10s mcp-server/ThreadPoolExecutor-0_0         frontier.budget.append_chained  `frontier/budget.py:54`
+-  18.10s mcp-server/ThreadPoolExecutor-0_0           frontier.budget._digest  `frontier/budget.py:42`
+-  18.10s mcp-server/ThreadPoolExecutor-0_1 frontier.mcp.serve_stdio.<locals>.answer  `frontier/mcp.py:190`
+-  18.10s mcp-server/ThreadPoolExecutor-0_1   frontier.mcp.Server.handle  `frontier/mcp.py:141`
+-  18.10s mcp-server/ThreadPoolExecutor-0_1     frontier.mcp.Server.call  `frontier/mcp.py:126`
+-  18.10s mcp-server/ThreadPoolExecutor-0_1       frontier.tools.t_deliver  `frontier/tools.py:289`
+-  18.12s mcp-server/ThreadPoolExecutor-0_1         frontier.mission.deliver  `frontier/mission.py:476`
+-  18.12s mcp-server/ThreadPoolExecutor-0_1           frontier.agent.Ctx.workspace  `frontier/agent.py:104`
+-  18.12s mcp-server/ThreadPoolExecutor-0_1           frontier.mission.report_files  `frontier/mission.py:451`
+-  18.12s mcp-server/ThreadPoolExecutor-0_1           frontier.mission.report_paths  `frontier/mission.py:460`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1           frontier.infra.cleanup  `frontier/infra.py:418`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1             frontier.agent.Run.resources  `frontier/agent.py:63`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.status  `frontier/budget.py:387`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.caps  `frontier/budget.py:222`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.llm_entries  `frontier/budget.py:253`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.llm_spent  `frontier/budget.py:256`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.reserved  `frontier/budget.py:272`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.verify  `frontier/budget.py:335`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.cloud_spent  `frontier/budget.py:349`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.cloud_committed  `frontier/budget.py:354`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.cloud_spent  `frontier/budget.py:349`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.cloud_committed  `frontier/budget.py:354`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1           frontier.mission.costs_markdown  `frontier/mission.py:530`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1           frontier.budget.Budget.set_caps  `frontier/budget.py:227`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.update_json  `frontier/budget.py:92`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1           frontier.snapshots.commit  `frontier/snapshots.py:186`
+-  18.13s mcp-server/ThreadPoolExecutor-0_1             frontier.snapshots.commit.<locals>.ok  `frontier/snapshots.py:192`  (x3)
+-  18.21s mcp-server/ThreadPoolExecutor-0_1           frontier.hf.publish_delivery  `frontier/hf.py:143`
+-  18.21s mcp-server/ThreadPoolExecutor-0_1           frontier.agent.Run.log  `frontier/agent.py:51`
+-  18.21s mcp-server/ThreadPoolExecutor-0_1             frontier.budget.append_chained  `frontier/budget.py:54`
+-  18.21s mcp-server/ThreadPoolExecutor-0_1       frontier.tools.failed  `frontier/tools.py:44`
+-  18.21s mcp-server/ThreadPoolExecutor-0_1       frontier.agent.Run.log  `frontier/agent.py:51`
+-  18.21s mcp-server/ThreadPoolExecutor-0_1         frontier.budget.append_chained  `frontier/budget.py:54`
+-  18.21s mcp-server/ThreadPoolExecutor-0_1           frontier.budget._digest  `frontier/budget.py:42`
+-  18.21s mcp-server/MainThread   frontier.mcp.Server.shutdown  `frontier/mcp.py:167`
+-  18.26s launcher/MainThread         frontier.budget.Budget.llm_entries  `frontier/budget.py:253`
+-  18.26s launcher/MainThread         frontier.agent.Run.log  `frontier/agent.py:51`
+-  18.26s launcher/MainThread           frontier.budget.append_chained  `frontier/budget.py:54`
+-  18.26s launcher/MainThread             frontier.budget._digest  `frontier/budget.py:42`
+-  18.26s launcher/MainThread       frontier.snapshots.commit  `frontier/snapshots.py:186`
+-  18.26s launcher/MainThread         frontier.snapshots.commit.<locals>.ok  `frontier/snapshots.py:192`  (x3)
+-  18.27s launcher/MainThread       frontier.launcher._stop_reason  `frontier/launcher.py:474`
+-  18.49s launcher/MainThread       frontier.launcher.finish  `frontier/launcher.py:454`
+-  18.49s launcher/MainThread         frontier.launcher.end_leftovers  `frontier/launcher.py:214`
+-  18.49s launcher/MainThread         frontier.agent.Run.alive  `frontier/agent.py:86`
+-  18.49s launcher/MainThread           frontier.agent.Run.resources  `frontier/agent.py:63`
+-  18.49s launcher/MainThread             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  18.50s launcher/MainThread         frontier.mission.final_costs  `frontier/mission.py:516`
+-  18.50s launcher/MainThread           frontier.budget.Budget.status  `frontier/budget.py:387`
+-  18.50s launcher/MainThread             frontier.budget.Budget.caps  `frontier/budget.py:222`
+-  18.50s launcher/MainThread             frontier.budget.Budget.llm_entries  `frontier/budget.py:253`
+-  18.50s launcher/MainThread             frontier.budget.Budget.llm_spent  `frontier/budget.py:256`
+-  18.50s launcher/MainThread             frontier.budget.Budget.reserved  `frontier/budget.py:272`
+-  18.50s launcher/MainThread             frontier.budget.Budget.verify  `frontier/budget.py:335`
+-  18.50s launcher/MainThread             frontier.budget.Budget.cloud_spent  `frontier/budget.py:349`
+-  18.50s launcher/MainThread             frontier.budget.Budget.cloud_committed  `frontier/budget.py:354`
+-  18.50s launcher/MainThread             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  18.50s launcher/MainThread             frontier.budget.Budget.cloud_spent  `frontier/budget.py:349`
+-  18.50s launcher/MainThread             frontier.budget.Budget.cloud_committed  `frontier/budget.py:354`
+-  18.50s launcher/MainThread             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  18.50s launcher/MainThread           frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  18.50s launcher/MainThread           frontier.mission.costs_markdown  `frontier/mission.py:530`
+-  18.50s launcher/MainThread         frontier.snapshots.commit  `frontier/snapshots.py:186`
+-  18.50s launcher/MainThread           frontier.snapshots.commit.<locals>.ok  `frontier/snapshots.py:192`  (x3)
+-  18.73s launcher/MainThread frontier.__main__.main  `frontier/__main__.py:171`
+-  18.74s launcher/MainThread   frontier.__main__.cmd_mission  `frontier/__main__.py:108`
+-  18.75s launcher/MainThread     frontier.launcher.status  `frontier/launcher.py:504`
+-  18.75s launcher/MainThread       frontier.mission.load  `frontier/mission.py:42`
+-  18.76s launcher/MainThread       frontier.agent.Run.__post_init__  `frontier/agent.py:39`
+-  18.76s launcher/MainThread         frontier.budget.Budget.__init__  `frontier/budget.py:218`
+-  18.76s launcher/MainThread       frontier.infra.budget_status  `frontier/infra.py:465`
+-  18.76s launcher/MainThread         frontier.infra.enforce  `frontier/infra.py:427`
+-  18.76s launcher/MainThread           frontier.budget.Budget.caps  `frontier/budget.py:222`
+-  18.76s launcher/MainThread           frontier.agent.Run.alive  `frontier/agent.py:86`
+-  18.76s launcher/MainThread             frontier.agent.Run.resources  `frontier/agent.py:63`
+-  18.76s launcher/MainThread         frontier.budget.Budget.status  `frontier/budget.py:387`
+-  18.76s launcher/MainThread           frontier.budget.Budget.caps  `frontier/budget.py:222`
+-  18.76s launcher/MainThread           frontier.budget.Budget.llm_entries  `frontier/budget.py:253`
+-  18.76s launcher/MainThread           frontier.budget.Budget.llm_spent  `frontier/budget.py:256`
+-  18.76s launcher/MainThread             frontier.budget.Budget.llm_entries  `frontier/budget.py:253`
+-  18.76s launcher/MainThread           frontier.budget.Budget.reserved  `frontier/budget.py:272`
+-  18.76s launcher/MainThread             frontier.budget.Budget._reservations  `frontier/budget.py:259`
+-  18.76s launcher/MainThread           frontier.budget.Budget.verify  `frontier/budget.py:335`
+-  18.76s launcher/MainThread             frontier.budget.verify_chain  `frontier/budget.py:108`  (x2)
+-  18.76s launcher/MainThread           frontier.budget.Budget.cloud_spent  `frontier/budget.py:349`
+-  18.76s launcher/MainThread             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  18.76s launcher/MainThread           frontier.budget.Budget.cloud_committed  `frontier/budget.py:354`
+-  18.76s launcher/MainThread             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  18.76s launcher/MainThread           frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  18.76s launcher/MainThread           frontier.budget.Budget.cloud_spent  `frontier/budget.py:349`
+-  18.76s launcher/MainThread             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  18.76s launcher/MainThread           frontier.budget.Budget.cloud_committed  `frontier/budget.py:354`
+-  18.76s launcher/MainThread             frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  18.76s launcher/MainThread           frontier.budget.Budget.resources  `frontier/budget.py:339`
+-  18.76s launcher/MainThread         frontier.infra._j  `frontier/infra.py:29`

@@ -1,0 +1,39 @@
+# The mission of the simulated launch (run.sh): the real launcher and Codex recipe, a stand-in `codex` (./codex).
+[mission]
+name = "sim-openai"
+subject = "subject/subject.md"
+workspace = "ws"
+state = "state"
+duration_hours = 1
+
+[harness]
+name = "auto"
+tier = "frontier"
+reasoning = "high"
+max_sessions = 2
+
+[llm]
+provider = "openai"
+budget_usd = 1.0
+
+[scaleway]
+budget_eur = 1.0
+
+[runpod]
+budget_usd = 1.0
+
+[grading]
+criteria = ["scientific quality", "code and data", "efficiency"]
+weights = [50, 25, 25]
+
+[snapshots]
+enabled = true
+grace_minutes = 1
+notice_from_minutes = 15
+time_minutes = [5]
+spend_usd = [5]
+
+[secrets]
+OPENAI_API_KEY = "proxy"
+SCW_SECRET_KEY = "proxy"
+RUNPOD_API_KEY = "proxy"

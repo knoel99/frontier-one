@@ -1,0 +1,873 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Level 5: the jury, from the teams' files to the ranking, each judge grading on its own",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/launch-5-jury.html",
+    "repository": {
+      "url": "https://github.com/knoel99/frontier-one",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "3da2b3058d468ec0e979be42dbdbccf6cf726f72"
+    },
+    "legend": {
+      "entries": {
+        "external": {
+          "label": "Given to python3 -m frontier jury"
+        },
+        "backend": {
+          "label": "Frontier code, no model call"
+        },
+        "security": {
+          "label": "Gate: anonymity, leak check"
+        },
+        "cloud": {
+          "label": "Judge: one model call, on its own"
+        },
+        "database": {
+          "label": "Written to the jury directory (--out)"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "inputs",
+      "label": "Inputs of the jury command"
+    },
+    {
+      "id": "team",
+      "label": "Per team, no model"
+    },
+    {
+      "id": "judge1",
+      "label": "Judge provider 1 (default openai)"
+    },
+    {
+      "id": "judge2",
+      "label": "Judge provider 2 (default anthropic)"
+    },
+    {
+      "id": "judge3",
+      "label": "Judge provider 3 (default google)"
+    },
+    {
+      "id": "graded",
+      "label": "Graded by the judges"
+    },
+    {
+      "id": "measured",
+      "label": "Measured, final score"
+    },
+    {
+      "id": "outdir",
+      "label": "Jury directory (--out)"
+    }
+  ],
+  "phases": [
+    {
+      "id": "ph-in",
+      "label": "Inputs",
+      "fromCol": 0,
+      "toCol": 0
+    },
+    {
+      "id": "ph-file",
+      "label": "One anonymous file per team",
+      "fromCol": 1,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "ph-judges",
+      "label": "Judges in parallel, independent",
+      "fromCol": 4,
+      "toCol": 4,
+      "variant": "security"
+    },
+    {
+      "id": "ph-agg",
+      "label": "Aggregate",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "in_states",
+    "facts",
+    "team_file",
+    "anon",
+    "leak",
+    "dispatch",
+    "judge_2",
+    "median",
+    "scores",
+    "final",
+    "outputs"
+  ],
+  "nodes": [
+    {
+      "id": "in_states",
+      "lane": "inputs",
+      "col": 0,
+      "type": "external",
+      "label": "Teams' state dirs",
+      "sublabel": "--root: */mission.json",
+      "tag": "ledgers, delivery.json",
+      "sources": [
+        {
+          "path": "frontier/jury.py",
+          "line": 275,
+          "end_line": 277,
+          "label": "states: <root>/*/mission.json"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 145,
+          "end_line": 150,
+          "label": "mission.json, Budget, delivery.json"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 157,
+          "end_line": 163,
+          "label": "events.jsonl, ledger integrity"
+        }
+      ],
+      "width": 112
+    },
+    {
+      "id": "in_ws",
+      "lane": "inputs",
+      "col": 1,
+      "type": "external",
+      "label": "Workspaces",
+      "sublabel": "reports, code",
+      "tag": "records, results",
+      "sources": [
+        {
+          "path": "frontier/jury.py",
+          "line": 291,
+          "end_line": 294,
+          "label": "workspace, has_work"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 53,
+          "end_line": 57,
+          "label": "_tracked: generated files left out"
+        },
+        {
+          "path": "frontier/mission.py",
+          "line": 451,
+          "end_line": 457,
+          "label": "report_files"
+        }
+      ],
+      "width": 92
+    },
+    {
+      "id": "in_context",
+      "lane": "inputs",
+      "col": 2,
+      "type": "external",
+      "label": "Race context",
+      "sublabel": "--context, --calibration",
+      "tag": "## Incidents per team",
+      "sources": [
+        {
+          "path": "frontier/jury.py",
+          "line": 102,
+          "end_line": 109,
+          "label": "incidents_of"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 280,
+          "end_line": 285,
+          "label": "general part, calibration redacted"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 432,
+          "end_line": 438,
+          "label": "--context, --calibration"
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "in_brief",
+      "lane": "inputs",
+      "col": 3,
+      "type": "external",
+      "label": "Brief, subject, judges",
+      "sublabel": "jury.md, --subject, --judge",
+      "tag": "cap: --cap-usd 15",
+      "sources": [
+        {
+          "path": "prompts/jury.md",
+          "line": 1,
+          "end_line": 10,
+          "label": "one team, other judges independent"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 434,
+          "end_line": 442,
+          "label": "--judge, --cap-usd, subject"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 272,
+          "end_line": 278,
+          "label": "Budget(out) cap, brief, frontier/high"
+        }
+      ],
+      "width": 150
+    },
+    {
+      "id": "facts",
+      "lane": "team",
+      "col": 0,
+      "type": "backend",
+      "label": "facts()",
+      "sublabel": "measured from the ledgers",
+      "tag": "time, spend, penalties",
+      "sources": [
+        {
+          "path": "frontier/jury.py",
+          "line": 142,
+          "end_line": 180,
+          "label": "facts"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 115,
+          "end_line": 124,
+          "label": "deliverables"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 127,
+          "end_line": 139,
+          "label": "stewards: penalties"
+        }
+      ],
+      "width": 128
+    },
+    {
+      "id": "team_file",
+      "lane": "team",
+      "col": 1,
+      "type": "backend",
+      "label": "team_file()",
+      "sublabel": "as the team left it",
+      "tag": "+ facts, incidents",
+      "sources": [
+        {
+          "path": "frontier/jury.py",
+          "line": 187,
+          "end_line": 226,
+          "label": "team_file"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 38,
+          "end_line": 44,
+          "label": "records, size limits, hidden files"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 295,
+          "end_line": 296,
+          "label": "the team's incidents"
+        }
+      ],
+      "width": 92
+    },
+    {
+      "id": "anon",
+      "lane": "team",
+      "col": 2,
+      "type": "security",
+      "label": "Pseudonym, redact",
+      "sublabel": "Team A, B; [redacted]",
+      "tag": "-> files/<label>.md",
+      "yOffset": -48,
+      "sources": [
+        {
+          "path": "frontier/jury.py",
+          "line": 96,
+          "end_line": 99,
+          "label": "pseudonyms: shuffled labels"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 60,
+          "end_line": 88,
+          "label": "identity_names, redact"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 296,
+          "end_line": 299,
+          "label": "redacted file written to files/"
+        }
+      ],
+      "width": 112
+    },
+    {
+      "id": "leak",
+      "lane": "team",
+      "col": 2,
+      "type": "security",
+      "label": "Leak check",
+      "sublabel": "name left: not sent",
+      "tag": "error recorded",
+      "yOffset": 48,
+      "sources": [
+        {
+          "path": "frontier/jury.py",
+          "line": 91,
+          "end_line": 93,
+          "label": "leaks"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 297,
+          "end_line": 297,
+          "label": "leak = leaks(text, names)"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 302,
+          "end_line": 306,
+          "label": "sent, or not sent with a reason"
+        }
+      ],
+      "width": 92
+    },
+    {
+      "id": "dispatch",
+      "lane": "team",
+      "col": 3,
+      "type": "backend",
+      "label": "Work list",
+      "sublabel": "(team, judge) pairs",
+      "tag": "judge != team's provider",
+      "yOffset": 48,
+      "sources": [
+        {
+          "path": "frontier/jury.py",
+          "line": 302,
+          "end_line": 304,
+          "label": "own provider, no work: skipped"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 308,
+          "end_line": 313,
+          "label": "one(item): one call per pair"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 315,
+          "end_line": 320,
+          "label": "ThreadPoolExecutor, 6 workers"
+        }
+      ],
+      "width": 112
+    },
+    {
+      "id": "judge_1",
+      "lane": "judge1",
+      "col": 4,
+      "type": "cloud",
+      "label": "Judge call",
+      "sublabel": "judge:<provider>",
+      "tag": "JSON checked, 1 retry",
+      "sources": [
+        {
+          "path": "frontier/jury.py",
+          "line": 246,
+          "end_line": 265,
+          "label": "judge: messages, metered, retry"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 236,
+          "end_line": 243,
+          "label": "validate"
+        },
+        {
+          "path": "frontier/budget.py",
+          "line": 313,
+          "end_line": 329,
+          "label": "metered_chat: reserve, charge"
+        }
+      ],
+      "width": 92
+    },
+    {
+      "id": "judge_2",
+      "lane": "judge2",
+      "col": 4,
+      "type": "cloud",
+      "label": "Judge call",
+      "sublabel": "judge:<provider>",
+      "tag": "JSON checked, 1 retry",
+      "sources": [
+        {
+          "path": "frontier/jury.py",
+          "line": 246,
+          "end_line": 265,
+          "label": "judge: messages, metered, retry"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 236,
+          "end_line": 243,
+          "label": "validate"
+        },
+        {
+          "path": "frontier/budget.py",
+          "line": 313,
+          "end_line": 329,
+          "label": "metered_chat: reserve, charge"
+        }
+      ],
+      "width": 92
+    },
+    {
+      "id": "judge_3",
+      "lane": "judge3",
+      "col": 4,
+      "type": "cloud",
+      "label": "Judge call",
+      "sublabel": "judge:<provider>",
+      "tag": "JSON checked, 1 retry",
+      "sources": [
+        {
+          "path": "frontier/jury.py",
+          "line": 246,
+          "end_line": 265,
+          "label": "judge: messages, metered, retry"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 236,
+          "end_line": 243,
+          "label": "validate"
+        },
+        {
+          "path": "frontier/budget.py",
+          "line": 313,
+          "end_line": 329,
+          "label": "metered_chat: reserve, charge"
+        }
+      ],
+      "width": 92
+    },
+    {
+      "id": "median",
+      "lane": "graded",
+      "col": 5,
+      "type": "backend",
+      "label": "Median per rubric",
+      "sublabel": "of the judges' grades",
+      "tag": "adequacy: strictest judge",
+      "sources": [
+        {
+          "path": "frontier/jury.py",
+          "line": 328,
+          "end_line": 338,
+          "label": "aggregate: medians, adequacy"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 316,
+          "end_line": 320,
+          "label": "verdict or error per judge"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 324,
+          "end_line": 325,
+          "label": "_median"
+        }
+      ],
+      "yOffset": -48,
+      "width": 112
+    },
+    {
+      "id": "scores",
+      "lane": "graded",
+      "col": 5,
+      "type": "backend",
+      "label": "Science, code and data",
+      "sublabel": "scoring.py rubric weights",
+      "tag": "x adequacy for science",
+      "sources": [
+        {
+          "path": "frontier/scoring.py",
+          "line": 27,
+          "end_line": 30,
+          "label": "weights, rubrics, adequacy"
+        },
+        {
+          "path": "frontier/scoring.py",
+          "line": 50,
+          "end_line": 63,
+          "label": "weighted, science, artifacts"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 339,
+          "end_line": 346,
+          "label": "scores, soundness spread"
+        }
+      ],
+      "yOffset": 48,
+      "width": 144
+    },
+    {
+      "id": "eff",
+      "lane": "measured",
+      "col": 4,
+      "type": "backend",
+      "label": "Efficiency",
+      "sublabel": "spend, time vs peers",
+      "tag": "peers: science within x2",
+      "yOffset": -48,
+      "sources": [
+        {
+          "path": "frontier/scoring.py",
+          "line": 76,
+          "end_line": 91,
+          "label": "efficiency: absolute, relative"
+        },
+        {
+          "path": "frontier/scoring.py",
+          "line": 66,
+          "end_line": 73,
+          "label": "relative to the median peer"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 347,
+          "end_line": 352,
+          "label": "from facts: usd, minutes"
+        }
+      ],
+      "width": 112
+    },
+    {
+      "id": "stewards",
+      "lane": "measured",
+      "col": 4,
+      "type": "backend",
+      "label": "Stewards",
+      "sublabel": "ledger penalties",
+      "tag": "altered ledger: DSQ",
+      "yOffset": 48,
+      "sources": [
+        {
+          "path": "frontier/jury.py",
+          "line": 127,
+          "end_line": 139,
+          "label": "stewards"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 165,
+          "end_line": 165,
+          "label": "computed in facts"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 353,
+          "end_line": 354,
+          "label": "penalty summed"
+        }
+      ],
+      "width": 92
+    },
+    {
+      "id": "final",
+      "lane": "measured",
+      "col": 5,
+      "type": "backend",
+      "label": "Final score, rank",
+      "sublabel": "50 / 25 / 25 - penalty",
+      "tag": "classified teams first",
+      "sources": [
+        {
+          "path": "frontier/scoring.py",
+          "line": 94,
+          "end_line": 102,
+          "label": "final"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 355,
+          "end_line": 363,
+          "label": "final, ranking"
+        }
+      ],
+      "width": 112
+    },
+    {
+      "id": "outputs",
+      "lane": "outdir",
+      "col": 5,
+      "type": "database",
+      "label": "jury.json, JURY.md",
+      "sublabel": "+ llm.jsonl ledger, files/",
+      "tag": "identities.json: operator",
+      "sources": [
+        {
+          "path": "frontier/jury.py",
+          "line": 446,
+          "end_line": 449,
+          "label": "jury.json, JURY.md"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 286,
+          "end_line": 287,
+          "label": "identities.json, never a judge"
+        },
+        {
+          "path": "frontier/jury.py",
+          "line": 370,
+          "end_line": 390,
+          "label": "markdown: the results table"
+        }
+      ],
+      "width": 120
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-states",
+      "from": "in_states",
+      "to": "facts",
+      "label": "ledgers",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-ws",
+      "from": "in_ws",
+      "to": "team_file",
+      "label": "files",
+      "variant": "default"
+    },
+    {
+      "id": "e-context",
+      "from": "in_context",
+      "to": "anon",
+      "label": "redacted too",
+      "variant": "default"
+    },
+    {
+      "id": "e-brief",
+      "from": "in_brief",
+      "to": "dispatch",
+      "label": "same for all",
+      "variant": "default"
+    },
+    {
+      "id": "e-facts",
+      "from": "facts",
+      "to": "team_file",
+      "label": "facts",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-anon",
+      "from": "team_file",
+      "to": "anon",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-leak",
+      "from": "anon",
+      "to": "leak",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-dispatch",
+      "from": "leak",
+      "to": "dispatch",
+      "label": "no name left",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-j1",
+      "from": "dispatch",
+      "to": "judge_1",
+      "label": "file only",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          681.6,
+          438
+        ]
+      ],
+      "labelSegment": 1
+    },
+    {
+      "id": "e-j3",
+      "from": "dispatch",
+      "to": "judge_3",
+      "label": "file only",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          561.6,
+          1056
+        ]
+      ],
+      "labelSegment": 1
+    },
+    {
+      "id": "e-j2",
+      "from": "dispatch",
+      "to": "judge_2",
+      "label": "file only",
+      "variant": "security"
+    },
+    {
+      "id": "e-v1",
+      "from": "judge_1",
+      "to": "median",
+      "label": "verdict",
+      "variant": "default",
+      "fromSide": "right",
+      "toSide": "right",
+      "via": [
+        [
+          990,
+          612
+        ],
+        [
+          990,
+          1230
+        ]
+      ]
+    },
+    {
+      "id": "e-v2",
+      "from": "judge_2",
+      "to": "median",
+      "label": "verdict",
+      "variant": "default",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          891.2,
+          834
+        ]
+      ]
+    },
+    {
+      "id": "e-v3",
+      "from": "judge_3",
+      "to": "median",
+      "label": "verdict",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left",
+      "via": [
+        [
+          790,
+          1056
+        ],
+        [
+          790,
+          1230
+        ]
+      ]
+    },
+    {
+      "id": "e-scores",
+      "from": "median",
+      "to": "scores",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-final",
+      "from": "scores",
+      "to": "final",
+      "label": "graded parts",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-quality",
+      "from": "scores",
+      "to": "eff",
+      "label": "quality",
+      "variant": "default"
+    },
+    {
+      "id": "e-eff",
+      "from": "eff",
+      "to": "final",
+      "variant": "default"
+    },
+    {
+      "id": "e-pen",
+      "from": "stewards",
+      "to": "final",
+      "label": "points off",
+      "variant": "default"
+    },
+    {
+      "id": "e-out",
+      "from": "final",
+      "to": "outputs",
+      "label": "ranking",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "What each judge sees, and does not",
+      "items": [
+        "Sees: the brief prompts/jury.md, the race context (redacted), the subject, the calibration example if given, and one team's file",
+        "Never sees: another judge's verdict, the team's name, provider or model, identities.json",
+        "Never grades its own provider's team: that pair is not in the work list",
+        "Each pair is its own call, run in parallel (6 workers); a failed judge is recorded and the others still count"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Budget and failures",
+      "items": [
+        "Every judge call, a retry included, is reserved and charged in the jury's own ledger under --cap-usd (agent judge:<provider>)",
+        "A file in which a name is still found is written to files/ but sent to no judge",
+        "No report and no record: graded 0; work every judge failed on: not graded",
+        "An altered ledger disqualifies: final score 0"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Not implemented yet: grading the snapshots during the race",
+      "items": [
+        "The dashboard reads <root>/jury/snapshots.json (grades per snapshot commit) and jury/events.jsonl, events \"verdict\"",
+        "Today only tools/fake_race.py writes them; frontier/jury.py grades once, after the race",
+        "See frontier/dashboard.py, its docstring and jury_state"
+      ]
+    }
+  ]
+}

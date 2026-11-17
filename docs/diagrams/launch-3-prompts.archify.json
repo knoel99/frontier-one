@@ -1,0 +1,387 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Level 3: the prompts, skills and files the AI reads, their sources and read order",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/launch-3-prompts.html",
+    "repository": {
+      "url": "https://github.com/knoel99/frontier-one",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "db900a09070221944703e0be8cc9545175d92dc7"
+    },
+    "legend": {
+      "entries": {
+        "emphasis": { "label": "Built by Frontier (traced)" },
+        "default": { "label": "Frontier reads, writes" },
+        "dashed": { "label": "Stand-in (replays Codex)" },
+        "security": { "label": "Jury, later (not run)" },
+        "database": { "label": "File" }
+      }
+    }
+  },
+  "stages": [
+    { "label": "Repository sources" },
+    { "label": "Built by the launcher" },
+    { "label": "Session 1: reads" },
+    { "label": "Tools and writes" },
+    { "label": "After the session" }
+  ],
+  "nodes": [
+    {
+      "id": "src_codex_config", "type": "backend", "label": "codex_config", "sublabel": "harnesses.py, McpCommand",
+      "stage": 0, "row": 0,
+      "sources": [
+        { "path": "frontier/harnesses.py", "line": 187, "end_line": 192, "label": "codex_config: [mcp_servers.frontier]" },
+        { "path": "frontier/harnesses.py", "line": 22, "end_line": 31, "label": "McpCommand" },
+        { "path": "frontier/mission.py", "line": 360, "end_line": 360, "label": "bin/frontier-mcp --state <state>" }
+      ]
+    },
+    {
+      "id": "src_agents_md", "type": "backend", "label": "AGENTS_MD", "sublabel": "mission.py template",
+      "stage": 0, "row": 1,
+      "sources": [
+        { "path": "frontier/mission.py", "line": 261, "end_line": 271, "label": "AGENTS_MD" }
+      ]
+    },
+    {
+      "id": "src_skill_text", "type": "backend", "label": "skill_text()", "sublabel": "harnesses.py + registry",
+      "stage": 0, "row": 2,
+      "sources": [
+        { "path": "frontier/harnesses.py", "line": 135, "end_line": 161, "label": "SKILL_DESCRIPTION, skill_text" },
+        { "path": "frontier/tools.py", "line": 206, "end_line": 210, "label": "REGISTRY" },
+        { "path": "frontier/agent.py", "line": 280, "end_line": 298, "label": "spawn_agent registered" }
+      ]
+    },
+    {
+      "id": "src_roles", "type": "database", "label": "roles/*.md", "sublabel": "infra.md, reviewer.md",
+      "stage": 0, "row": 3,
+      "sources": [
+        { "path": "roles/infra.md", "line": 1, "end_line": 8, "label": "infra role" },
+        { "path": "roles/reviewer.md", "line": 1, "end_line": 8, "label": "reviewer role" },
+        { "path": "frontier/agent.py", "line": 117, "end_line": 132, "label": "load_role" }
+      ]
+    },
+    {
+      "id": "src_mission", "type": "database", "label": "Mission file", "sublabel": "as mission.example.toml",
+      "stage": 0, "row": 4,
+      "sources": [
+        { "path": "config/mission.example.toml", "line": 6, "end_line": 60, "label": "mission, harness, llm, budgets" },
+        { "path": "frontier/mission.py", "line": 42, "end_line": 59, "label": "load: harness auto -> codex" }
+      ]
+    },
+    {
+      "id": "src_prompts", "type": "database", "label": "Sub-agent prompts", "sublabel": "system, cloud, subagents",
+      "stage": 0, "row": 4, "yOffset": 114,
+      "sources": [
+        { "path": "prompts/system.md", "line": 1, "end_line": 8, "label": "system.md" },
+        { "path": "prompts/cloud.md", "line": 1, "end_line": 7, "label": "cloud.md" },
+        { "path": "prompts/subagents.md", "line": 1, "end_line": 11, "label": "subagents.md, {{roles}}" }
+      ]
+    },
+    {
+      "id": "src_recipe", "type": "database", "label": "Launch recipe", "sublabel": "harnesses.toml [codex]", "tag": "+ launcher FIRST_PROMPT",
+      "stage": 0, "row": 4, "yOffset": 228,
+      "sources": [
+        { "path": "config/harnesses.toml", "line": 32, "end_line": 47, "label": "[codex] command, setup, route_args" },
+        { "path": "frontier/launcher.py", "line": 27, "end_line": 39, "label": "FIRST_PROMPT, GOAL_CONDITION, NEXT_PROMPT" },
+        { "path": "frontier/launcher.py", "line": 332, "end_line": 338, "label": "run_one picks the prompt" }
+      ]
+    },
+    {
+      "id": "src_mission_md", "type": "database", "label": "prompts/mission.md", "sublabel": "brief template",
+      "stage": 0, "row": 4, "yOffset": 342,
+      "sources": [
+        { "path": "prompts/mission.md", "line": 1, "end_line": 94, "label": "brief template" },
+        { "path": "frontier/mission.py", "line": 242, "end_line": 258, "label": "mission_brief" }
+      ]
+    },
+    {
+      "id": "src_tool_specs", "type": "backend", "label": "tool_specs()", "sublabel": "mcp.py + registry",
+      "stage": 0, "row": 4, "yOffset": 456,
+      "sources": [
+        { "path": "frontier/mcp.py", "line": 108, "end_line": 124, "label": "Server.tool_specs" },
+        { "path": "frontier/tools.py", "line": 314, "end_line": 327, "label": "GROUPS, all_tools" },
+        { "path": "frontier/mission.py", "line": 354, "end_line": 354, "label": "Server().tool_specs() in prepare" }
+      ]
+    },
+    {
+      "id": "src_config", "type": "database", "label": "providers, prices", "sublabel": "config/*.toml",
+      "stage": 0, "row": 4, "yOffset": 570,
+      "sources": [
+        { "path": "config/providers.toml", "line": 26, "end_line": 49, "label": "[providers.openai]: tiers, modes" },
+        { "path": "config/prices.toml", "line": 8, "end_line": 33, "label": "gpt-6 prices" },
+        { "path": "frontier/mission.py", "line": 91, "end_line": 125, "label": "_models_section" }
+      ]
+    },
+
+    {
+      "id": "ws_codex_config", "type": "database", "label": ".codex/config.toml", "sublabel": "[mcp_servers.frontier]", "tag": "written 12.44 s",
+      "stage": 1, "row": 0,
+      "sources": [
+        { "path": "frontier/mission.py", "line": 371, "end_line": 375, "label": "harness files written" },
+        { "path": "frontier/harnesses.py", "line": 37, "end_line": 45, "label": "mcp_env_vars: names only" },
+        { "path": "frontier/harnesses.py", "line": 63, "end_line": 64, "label": "Codex: its file kinds" }
+      ]
+    },
+    {
+      "id": "ws_agents_md", "type": "database", "label": "AGENTS.md", "sublabel": "how to work here", "tag": "written 12.43 s",
+      "stage": 1, "row": 1,
+      "sources": [
+        { "path": "frontier/mission.py", "line": 358, "end_line": 359, "label": "AGENTS_MD.format(...)" }
+      ]
+    },
+    {
+      "id": "ws_skill", "type": "database", "label": "frontier SKILL.md", "sublabel": ".agents/skills/frontier/", "tag": "written 12.44 s",
+      "stage": 1, "row": 2,
+      "sources": [
+        { "path": "frontier/harnesses.py", "line": 262, "end_line": 263, "label": "agents_skill" },
+        { "path": "frontier/mission.py", "line": 371, "end_line": 376, "label": "written; install_skills" }
+      ]
+    },
+    {
+      "id": "ws_agents", "type": "database", "label": ".codex/agents/", "sublabel": "infra, reviewer .toml", "tag": "written 12.44 s",
+      "stage": 1, "row": 3,
+      "sources": [
+        { "path": "frontier/harnesses.py", "line": 274, "end_line": 288, "label": "_agent_files: codex_agents" },
+        { "path": "frontier/harnesses.py", "line": 117, "end_line": 123, "label": "_roles reads roles/*.md" }
+      ]
+    },
+    {
+      "id": "st_files", "type": "database", "label": "State files", "sublabel": "mission, budgets, snapshots", "tag": "0.15 s and 12.45 s",
+      "stage": 1, "row": 4,
+      "sources": [
+        { "path": "frontier/mission.py", "line": 325, "end_line": 348, "label": "budgets.json, mission.json" },
+        { "path": "frontier/launcher.py", "line": 406, "end_line": 408, "label": "snapshots settings" },
+        { "path": "frontier/snapshots.py", "line": 46, "end_line": 49, "label": "write_settings: snapshots.json" }
+      ]
+    },
+    {
+      "id": "argv", "type": "backend", "label": "codex exec argv", "sublabel": "gpt-6-astra, high, gateway", "tag": "built 12.61 s",
+      "stage": 1, "row": 4, "yOffset": 228,
+      "sources": [
+        { "path": "frontier/launcher.py", "line": 67, "end_line": 102, "label": "build_session" },
+        { "path": "frontier/launcher.py", "line": 339, "end_line": 346, "label": "session_start, run_until" }
+      ]
+    },
+    {
+      "id": "ws_mission_md", "type": "database", "label": "MISSION.md", "sublabel": "the brief", "tag": "written 12.43 s",
+      "stage": 1, "row": 4, "yOffset": 342,
+      "sources": [
+        { "path": "frontier/mission.py", "line": 357, "end_line": 357, "label": "MISSION.md written" },
+        { "path": "frontier/mission.py", "line": 234, "end_line": 239, "label": "_blocked: hosts named in the brief" }
+      ]
+    },
+    {
+      "id": "ws_tools_md", "type": "database", "label": "TOOLS.md", "sublabel": "tools, models, offers", "tag": "written 12.43 s",
+      "stage": 1, "row": 4, "yOffset": 456,
+      "sources": [
+        { "path": "frontier/mission.py", "line": 185, "end_line": 231, "label": "tools_inventory" },
+        { "path": "frontier/mission.py", "line": 352, "end_line": 356, "label": "pings, specs, TOOLS.md written" }
+      ]
+    },
+    {
+      "id": "live", "type": "cloud", "label": "Live answers", "sublabel": "key check, 3 offer lists", "tag": "0.15 to 12.43 s",
+      "stage": 1, "row": 4, "yOffset": 627,
+      "sources": [
+        { "path": "frontier/mission.py", "line": 293, "end_line": 301, "label": "_ping: key check on the light tier" },
+        { "path": "frontier/mission.py", "line": 128, "end_line": 151, "label": "_offers_section: Scaleway, Runpod" },
+        { "path": "frontier/mission.py", "line": 353, "end_line": 353, "label": "one ping per provider" }
+      ]
+    },
+
+    {
+      "id": "r1", "type": "frontend", "label": "1 project config", "sublabel": "read at start, trusted", "tag": "stand-in, 12.76 s",
+      "stage": 2, "row": 0,
+      "sources": [
+        { "path": "docs/HARNESSES.md", "line": 32, "end_line": 32, "label": "Codex CLI: what it reads" },
+        { "path": "config/harnesses.toml", "line": 37, "end_line": 37, "label": "codex exec --trust" }
+      ]
+    },
+    {
+      "id": "r2", "type": "frontend", "label": "2 AGENTS.md", "sublabel": "instructions", "tag": "stand-in, 12.76 s",
+      "stage": 2, "row": 1,
+      "sources": [
+        { "path": "docs/HARNESSES.md", "line": 15, "end_line": 15, "label": "AGENTS.md read natively" }
+      ]
+    },
+    {
+      "id": "r3", "type": "frontend", "label": "3 frontier skill", "sublabel": "Agent Skills folder", "tag": "stand-in, 12.76 s",
+      "stage": 2, "row": 2,
+      "sources": [
+        { "path": "docs/HARNESSES.md", "line": 17, "end_line": 17, "label": ".agents/skills read by Codex" }
+      ]
+    },
+    {
+      "id": "r4", "type": "frontend", "label": "4 sub-agent files", "sublabel": "infra, reviewer", "tag": "stand-in, 12.76 s",
+      "stage": 2, "row": 3,
+      "sources": [
+        { "path": "docs/HARNESSES.md", "line": 32, "end_line": 32, "label": ".codex/agents/*.toml" }
+      ]
+    },
+    {
+      "id": "r5", "type": "messagebus", "label": "5 MCP server", "sublabel": "bin/frontier-mcp --state", "tag": "traced, 12.77-12.96 s",
+      "stage": 2, "row": 4, "yOffset": 57,
+      "sources": [
+        { "path": "bin/frontier-mcp", "line": 1, "end_line": 6, "label": "python3 -m frontier.mcp" },
+        { "path": "frontier/mcp.py", "line": 83, "end_line": 106, "label": "Server: mission.json, root agent" },
+        { "path": "frontier/agent.py", "line": 176, "end_line": 190, "label": "Agent._system: prompts + roles" }
+      ]
+    },
+    {
+      "id": "r6", "type": "frontend", "label": "6 first prompt", "sublabel": "FIRST_PROMPT via gateway", "tag": "stand-in, 12.96-17.10 s",
+      "stage": 2, "row": 4, "yOffset": 228,
+      "sources": [
+        { "path": "config/harnesses.toml", "line": 41, "end_line": 43, "label": "route_args: provider on the gateway" },
+        { "path": "frontier/launcher.py", "line": 335, "end_line": 337, "label": "no goal command: FIRST_PROMPT" },
+        { "path": "frontier/gateway.py", "line": 1, "end_line": 12, "label": "metering gateway" }
+      ]
+    },
+    {
+      "id": "r7", "type": "frontend", "label": "7 reads the brief", "sublabel": "MISSION.md, TOOLS.md", "tag": "stand-in, 17.10 s",
+      "stage": 2, "row": 4, "yOffset": 399,
+      "sources": [
+        { "path": "frontier/mission.py", "line": 263, "end_line": 264, "label": "AGENTS.md: read MISSION.md, TOOLS.md" },
+        { "path": "frontier/launcher.py", "line": 27, "end_line": 29, "label": "FIRST_PROMPT: read them first" }
+      ]
+    },
+
+    {
+      "id": "spawn", "type": "backend", "label": "8 spawn_agent", "sublabel": "sub-agent on gpt-6-luna", "tag": "traced, 17.11-18.10 s",
+      "stage": 3, "row": 4,
+      "sources": [
+        { "path": "frontier/agent.py", "line": 249, "end_line": 277, "label": "t_spawn_agent" },
+        { "path": "frontier/agent.py", "line": 176, "end_line": 190, "label": "no tools: system.md only" }
+      ]
+    },
+    {
+      "id": "deliver", "type": "security", "label": "10 deliver", "sublabel": "MCP tool, checks files", "tag": "traced, 18.10-18.21 s",
+      "stage": 3, "row": 4, "yOffset": 114,
+      "sources": [
+        { "path": "frontier/tools.py", "line": 289, "end_line": 298, "label": "deliver tool" },
+        { "path": "frontier/mission.py", "line": 476, "end_line": 513, "label": "mission.deliver" }
+      ]
+    },
+    {
+      "id": "ai_files", "type": "database", "label": "9 AI writes files", "sublabel": "3 records + report.md", "tag": "stand-in, 18.10 s",
+      "stage": 3, "row": 4, "yOffset": 399,
+      "sources": [
+        { "path": "prompts/mission.md", "line": 57, "end_line": 83, "label": "deliverables" },
+        { "path": "frontier/mission.py", "line": 36, "end_line": 36, "label": "REQUIRED by deliver" }
+      ]
+    },
+
+    {
+      "id": "finish", "type": "security", "label": "11 finish", "sublabel": "launcher, final spend", "tag": "traced, 18.49-18.57 s",
+      "stage": 4, "row": 3,
+      "sources": [
+        { "path": "frontier/launcher.py", "line": 440, "end_line": 450, "label": "commit Session n, then finish" },
+        { "path": "frontier/launcher.py", "line": 454, "end_line": 466, "label": "finish" },
+        { "path": "frontier/mission.py", "line": 516, "end_line": 527, "label": "final_costs" }
+      ]
+    },
+    {
+      "id": "delivered", "type": "database", "label": "Delivery record", "sublabel": "COSTS.md, delivery.json", "tag": "commit + tag delivery",
+      "stage": 4, "row": 4, "yOffset": 114,
+      "sources": [
+        { "path": "frontier/mission.py", "line": 504, "end_line": 511, "label": "COSTS.md, delivery.json, commit" },
+        { "path": "frontier/mission.py", "line": 530, "end_line": 557, "label": "costs_markdown" },
+        { "path": "frontier/snapshots.py", "line": 186, "end_line": 203, "label": "commit and tag" }
+      ]
+    },
+    {
+      "id": "jury", "type": "external", "label": "Jury", "sublabel": "python3 -m frontier jury", "tag": "not run here",
+      "stage": 4, "row": 4, "yOffset": 399,
+      "sources": [
+        { "path": "frontier/jury.py", "line": 268, "end_line": 299, "label": "run: one file per team" },
+        { "path": "frontier/jury.py", "line": 187, "end_line": 204, "label": "team_file: report, records" },
+        { "path": "frontier/jury.py", "line": 142, "end_line": 150, "label": "facts: mission.json, delivery.json" }
+      ]
+    },
+    {
+      "id": "jury_md", "type": "database", "label": "prompts/jury.md", "sublabel": "grading brief",
+      "stage": 4, "row": 4, "yOffset": 570,
+      "sources": [
+        { "path": "prompts/jury.md", "line": 1, "end_line": 121, "label": "jury brief" },
+        { "path": "frontier/jury.py", "line": 274, "end_line": 274, "label": "read by jury.run" }
+      ]
+    }
+  ],
+  "flows": [
+    { "id": "f-codex-config", "from": "src_codex_config", "to": "ws_codex_config", "label": "MCP server entry", "variant": "emphasis" },
+    { "id": "f-agents-md", "from": "src_agents_md", "to": "ws_agents_md", "label": "template, 2 paths", "variant": "emphasis" },
+    { "id": "f-skill", "from": "src_skill_text", "to": "ws_skill", "label": "tool one-liners", "variant": "emphasis" },
+    { "id": "f-roles", "from": "src_roles", "to": "ws_agents", "label": "role text", "variant": "emphasis" },
+    { "id": "f-state", "from": "src_mission", "to": "st_files", "label": "settings, caps", "variant": "emphasis" },
+    { "id": "f-recipe", "from": "src_recipe", "to": "argv", "label": "command, prompt", "variant": "emphasis" },
+    { "id": "f-brief", "from": "src_mission_md", "to": "ws_mission_md", "label": "filled template", "variant": "emphasis" },
+    { "id": "f-tools", "from": "src_tool_specs", "to": "ws_tools_md", "label": "tool table", "variant": "emphasis" },
+    { "id": "f-models", "from": "src_config", "to": "ws_tools_md", "label": "models, prices", "variant": "emphasis" },
+    { "id": "f-live", "from": "live", "to": "ws_tools_md", "label": "key check, offers", "variant": "emphasis" },
+
+    { "id": "r-config", "from": "ws_codex_config", "to": "r1", "label": "project config", "variant": "dashed" },
+    { "id": "r-agents-md", "from": "ws_agents_md", "to": "r2", "label": "instructions", "variant": "dashed" },
+    { "id": "r-skill", "from": "ws_skill", "to": "r3", "label": "skill text", "variant": "dashed" },
+    { "id": "r-agents", "from": "ws_agents", "to": "r4", "label": "2 agent files", "variant": "dashed" },
+    { "id": "r-mission-json", "from": "st_files", "to": "r5", "label": "mission.json", "variant": "default" },
+    { "id": "r-prompts", "from": "src_prompts", "to": "r5", "label": "prompt templates", "variant": "default" },
+    { "id": "r-argv", "from": "argv", "to": "r6", "label": "FIRST_PROMPT", "variant": "dashed" },
+    { "id": "r-next", "from": "r6", "to": "r7", "label": "names both files", "variant": "dashed" },
+    { "id": "r-brief", "from": "ws_mission_md", "to": "r7", "label": "the brief", "variant": "dashed" },
+    { "id": "r-inventory", "from": "ws_tools_md", "to": "r7", "label": "the inventory", "variant": "dashed" },
+
+    { "id": "t-spawn", "from": "r5", "to": "spawn", "label": "system.md only", "variant": "default" },
+    { "id": "t-deliver", "from": "r5", "to": "deliver", "label": "deliver tool", "variant": "default" },
+    { "id": "w-files", "from": "r7", "to": "ai_files", "label": "deliverables list", "variant": "dashed" },
+    { "id": "w-check", "from": "ai_files", "to": "deliver", "label": "4 files checked", "variant": "default" },
+    { "id": "w-record", "from": "deliver", "to": "delivered", "label": "written 18.13 s", "variant": "default" },
+    { "id": "w-final", "from": "finish", "to": "delivered", "label": "final spend", "variant": "default" },
+
+    { "id": "j-work", "from": "ai_files", "to": "jury", "label": "report, records", "variant": "security" },
+    { "id": "j-record", "from": "delivered", "to": "jury", "label": "delivery.json", "variant": "security" },
+    { "id": "j-brief", "from": "jury_md", "to": "jury", "label": "grading brief", "variant": "security" }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "Stand-in or traced",
+      "items": [
+        "Only the codex binary was a stand-in: the tag stand-in marks what it replays (reads 1 to 4, 6, 7 and the files of 9)",
+        "The tag traced marks Frontier's own code seen in the trace: MCP server, spawn_agent, deliver, finish",
+        "docs/HARNESSES.md names the files Codex reads, not their order: 1 to 4 follow the stand-in",
+        "The stand-in's model call sends the prompt only, plus 'Answer with the single word OK.'"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Also read, not drawn",
+      "items": [
+        "prepare builds Server() for the tool table, so the launcher reads system.md, cloud.md, subagents.md and both roles at 1.20 s; that text is not in TOOLS.md",
+        "The MCP server reads roles/*.md again at 12.96 s for the roles summary in subagents.md",
+        "config/providers.toml also gives the agent files' models, the model and effort in argv, the variable names in config.toml and the blocked hosts in MISSION.md",
+        "subject/subject.md is copied at 0.15 s and named in MISSION.md; the stand-in does not read it"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Not used in this run",
+      "items": [
+        "install_skills: the mission has no [[skills]], nothing copied (12.44 s)",
+        "NEXT_PROMPT opens sessions 2 and later; GOAL_CONDITION wraps a harness that has a goal command, and Codex has none",
+        ".gitignore (__pycache__/, .env) is written for git, not for the AI",
+        "The jury is a later command; it was not run here"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Commits of the workspace",
+      "items": [
+        "10 deliver: commit Delivery and tag delivery, 18.14 to 18.21 s",
+        "The launcher's commit Session 1 at 18.26 s finds nothing new",
+        "11 finish: COSTS.md (only its time changed) and delivery.json rewritten, commit Delivery, tag moved, 18.50 to 18.57 s"
+      ]
+    }
+  ]
+}

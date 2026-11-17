@@ -66,5 +66,9 @@ unit race-mission frontier "/usr/bin/python3 -m frontier mission start $F/race/m
 unit race-caddy root "/usr/local/bin/caddy run --config /etc/caddy/Caddyfile"
 touch /var/log/race-dashboard.log /var/log/race-mission.log && chown frontier: /var/log/race-dashboard.log /var/log/race-mission.log
 systemctl daemon-reload && systemctl enable --now race-caddy race-dashboard race-mission
+# the certificate comes from Let's Encrypt within a minute or two; the report says whether it came, with Caddy's log
+for i in $(seq 60); do [ "$(curl -s -o /dev/null -m 5 -w '%{http_code}' https://__HOST__/)" != 000 ] && break; sleep 5; done
+echo "== HTTPS: $(curl -s -o /dev/null -m 5 -w '%{http_code}' https://__HOST__/) (403 without the token is the expected answer)"
+tail -n 15 /var/log/race-caddy.log || true
 echo "== ready https://__HOST__/ $(date -u +%FT%TZ)"
 report

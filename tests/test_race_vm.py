@@ -31,3 +31,9 @@ def test_a_subject_outside_the_mission_folder_is_refused(tmp_path):
     with pytest.raises(SystemExit):
         race_vm.subject_file(tmp_path / "m.toml", {"mission": {"subject": "../secret.pdf"}})
     assert race_vm.subject_file(tmp_path / "m.toml", {"mission": {"subject": "https://x.org/s.pdf"}}) == ("", b"")
+
+
+def test_the_fake_race_vm_gets_no_key():
+    script = race_vm.fill(race_vm.FAKE_INIT.read_text(), {"BRANCH": "b", "TOKEN": "t0k", "HOST": "h", "FAKEARGS": "--replay --speed 10"})
+    assert "__" not in script and "SCW_SECRET_KEY" not in script and "secret-manager" not in script
+    assert "fake_race.py" in script and "FRONTIER_DASHBOARD_TOKEN=t0k" in script

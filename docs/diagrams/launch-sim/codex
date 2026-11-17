@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""Stand-in for Codex CLI, called with the real launch recipe of config/harnesses.toml. It plays the AI's part of a
+session in a few steps: read the instructions Codex loads, start the frontier MCP server from .codex/config.toml, one
+model call through the metering gateway, budget_status, one spawn_agent, the three required files, deliver."""
+
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tomllib
+import urllib.request
+
+os.environ["TRACE_PROC"] = "harness"
+import sitecustomize as tr
+
+tr.PROC = "harness"
+step = lambda name, **kw: tr.emit(k="step", step=name, **kw)
+argv = sys.argv[1:]
+
+if argv[:1] == ["login"]:
+    sys.stdin.read()
+    step("codex login --with-api-key", note="recipe `setup`: the key arrives on stdin")
+    sys.exit(0)
+
+assert argv[:1] == ["exec"], argv
+opts = {}
+for i, a in enumerate(argv):
+    if a == "-c":
+        k, _, v = argv[i + 1].partition("=")
+        opts[k] = v.strip('"')
+model = argv[argv.index("-m") + 1]
+prompt = argv[-1]
+base = opts["model_providers.frontier.base_url"]
+effort = opts.get("model_reasoning_effort", "medium")
+step("codex exec starts", model=model, effort=effort, base_url=base, prompt=prompt[:160])
+
+ws = pathlib.Path.cwd()
+conf = tomllib.loads((ws / ".codex/config.toml").read_text())
+step("loads project config", file=".codex/config.toml")
+(ws / "AGENTS.md").read_text()
+step("loads instructions", file="AGENTS.md")
+for p in sorted((ws / ".agents/skills").glob("*/SKILL.md")):
+    p.read_text()
+    step("loads skill", file=str(p.relative_to(ws)))
+for p in sorted((ws / ".codex/agents").glob("*.toml")):
+    p.read_text()
+    step("loads sub-agent definition", file=str(p.relative_to(ws)))
+
+srv = conf["mcp_servers"]["frontier"]
+env = {**os.environ, **srv.get("env", {}), "TRACE_PROC": "mcp-server"}
+mcp = subprocess.Popen([srv["command"], *srv.get("args", [])], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                       text=True, env=env)
+step("starts MCP server", cmd=" ".join([srv["command"], *srv.get("args", [])]))
+seq = 0
+
+
+def rpc(method, params=None, notify=False):
+    global seq
+    msg = {"jsonrpc": "2.0", "method": method, **({"params": params} if params is not None else {})}
+    if not notify:
+        seq += 1
+        msg["id"] = seq
+    mcp.stdin.write(json.dumps(msg) + "\n")
+    mcp.stdin.flush()
+    if notify:
+        return None
+    while True:
+        r = json.loads(mcp.stdout.readline())
+        if r.get("id") == seq:
+            return r
+
+
+def tool(name, args):
+    step("tools/call " + name, arguments=args)
+    r = rpc("tools/call", {"name": name, "arguments": args})["result"]
+    text = r["content"][0]["text"]
+    step("result " + name, text=text[:300], is_error=r.get("isError", False))
+    return text
+
+
+rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "codex-stub"}})
+rpc("notifications/initialized", notify=True)
+names = [t["name"] for t in rpc("tools/list")["result"]["tools"]]
+step("tools/list", tools=names)
+
+body = {"model": model, "input": prompt + "\n\nAnswer with the single word OK.", "reasoning": {"effort": "low"},
+        "max_output_tokens": 200}
+req = urllib.request.Request(base + "/responses", data=json.dumps(body).encode(), method="POST", headers={
+    "Content-Type": "application/json", "Authorization": "Bearer " + os.environ.get("OPENAI_API_KEY", "")})
+step("model call through the gateway", url=base + "/responses")
+try:
+    with urllib.request.urlopen(req, timeout=300) as r:
+        out = json.loads(r.read())
+    step("model answered", status=out.get("status"), usage=out.get("usage"))
+except urllib.error.HTTPError as e:
+    step("model call failed", code=e.code, body=e.read()[:300].decode(errors="replace"))
+
+(ws / "MISSION.md").read_text()
+(ws / "TOOLS.md").read_text()
+step("model reads the brief and the inventory (shell tool)", files=["MISSION.md", "TOOLS.md"])
+tool("budget_status", {})
+tool("spawn_agent", {"task": "Answer with the single word OK.", "tier": "light", "reasoning": "low", "tools": [],
+                     "max_turns": 1})
+for f, text in {"DECISIONS.md": "# Decisions\n\n- Simulated session: no research done.\n",
+                "COMPLIANCE.md": "# Compliance\n\n| instruction | status |\n|---|---|\n| simulation | n/a |\n",
+                "DELIVERY.md": "# Delivery\n\nSimulated launch: nothing to deliver.\n",
+                "report.md": "# Report\n\nSimulated launch of a mission; no result.\n"}.items():
+    (ws / f).write_text(text)
+step("writes DECISIONS.md, COMPLIANCE.md, DELIVERY.md, report.md")
+tool("deliver", {"summary": "simulated launch"})
+mcp.stdin.close()
+mcp.wait(timeout=30)
+print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 0, "output_tokens": 0}}))
+step("codex exec ends")

@@ -441,6 +441,36 @@ def test_dashboard_snapshot(tmp_path, cfg):
     assert snap["feed"][0]["team"] == "t"
 
 
+def test_dashboard_joins_each_snapshot_with_its_grade_and_shows_an_ungraded_one_without(tmp_path, cfg):
+    from frontier import dashboard
+
+    info = mission.prepare(_mission(tmp_path), ping=False, offers=False)
+    run = Run(cfg, workspace=info["workspace"], run_id="x", log_dir=info["state"], settings=info["settings"])
+    for c in ("aaa", "bbb"):
+        run.log(event="snapshot", labels=["1h"], commit=c, minutes=60, llm_usd=1.5, simulation_usd=0.5)
+    (tmp_path / "jury").mkdir()
+    (tmp_path / "jury" / "snapshots.json").write_text(json.dumps({"t": {"aaa": 42.5}}))
+    snaps = dashboard.snapshot(tmp_path)["teams"][0]["snapshots"]
+    assert [(x["commit"], x["quality"]) for x in snaps] == [("aaa", 42.5), ("bbb", None)]
+    assert snaps[0]["llm_usd"] == 1.5 and snaps[0]["simulation_usd"] == 0.5
+    (tmp_path / "jury" / "snapshots.json").write_text(json.dumps({"t": {"aaa": 40, "bbb": {"scientific_quality": 60, "artifacts": 50}}}))
+    t = dashboard.snapshot(tmp_path)["teams"][0]
+    assert t["scores"]["science"] == 60 and t["scores"]["artifacts"] == 50 and t["scores"]["final"] is not None
+    assert t["model"] and t["brand"]["color"] and t["harness_title"]
+
+
+def test_dashboard_simulation_spend_grows_with_each_machine_alive():
+    import datetime as dt
+
+    from frontier import dashboard
+
+    at = dt.datetime(2026, 11, 17, 12, tzinfo=dt.UTC)
+    res = [{"created": "2026-11-17T10:00:00+00:00", "deleted_at": "2026-11-17T11:00:00+00:00", "usd_per_hour": 2.0},
+           {"created": "2026-11-17T10:30:00+00:00", "eur_per_hour": 1.0}]
+    series = dict(dashboard.simulation_series(res, at))
+    assert series["2026-11-17T11:00:00+00:00"] == 2.5 and series["2026-11-17T12:00:00+00:00"] == 3.5
+
+
 def test_dashboard_subagent_history(tmp_path, cfg):
     from frontier import dashboard
 
@@ -498,36 +528,54 @@ deny = ["github.com", "de.wikipedia.org"]
     assert box.commands[-1][:3] == ["openshell", "provider", "delete"]
 
 
-def test_dashboard_with_a_token_serves_only_the_link_that_holds_it(tmp_path):
+def test_dashboard_opens_with_a_login_link_until_it_expires_and_never_with_the_token_itself(tmp_path):
+    import gzip
+    import http.client
     import threading
-    import urllib.error
-    import urllib.request
     from http.server import ThreadingHTTPServer
 
     from frontier import dashboard
 
     class Handler(dashboard._Handler):
-        root, token = tmp_path, "s3cret-token"
+        root, token, used = tmp_path, "s3cret-token", set()
 
     srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    port = srv.server_address[1]
 
-    def get(path, cookie=""):
-        req = urllib.request.Request(base + path, headers={"Cookie": cookie} if cookie else {})
-        try:
-            with urllib.request.urlopen(req, timeout=10) as r:
-                return r.status, r.headers.get("Set-Cookie", ""), r.read()
-        except urllib.error.HTTPError as e:
-            return e.code, "", e.read()
+    def get(path, cookie="", **headers):  # no redirect followed: the login answers 303
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        c.request("GET", path, headers={**({"Cookie": cookie} if cookie else {}), **headers})
+        r = c.getresponse()
+        return r.status, r.headers, r.read()
+
+    def path(link):
+        return link.split(f"127.0.0.1:{port}", 1)[1]
 
     try:
-        assert get("/")[0] == 403 and get("/api/state")[0] == 403 and get("/?t=wrong")[0] == 403
-        code, cookie, body = get("/?t=s3cret-token")
-        assert code == 200 and b"<html" in body.lower() and "HttpOnly" in cookie
-        code, _, body = get("/api/state", cookie.split(";")[0])
-        assert code == 200 and json.loads(body)["teams"] == []
-        assert get("/api/state", "frontier_dashboard=wrong")[0] == 403
+        assert get("/")[0] == 403 and get("/api/state")[0] == 403 and get("/?t=s3cret-token")[0] == 403
+        link = path(dashboard.login_link(f"http://127.0.0.1:{port}", "s3cret-token"))
+        code, h, _ = get(link)
+        assert code == 303 and h["Location"] == "/" and "HttpOnly" in h["Set-Cookie"]
+        cookie = h["Set-Cookie"].split(";")[0]
+        assert get(link)[0] == 303  # again within its validity: a reload, an app's browser without cookies
+        code, _, body = get("/", cookie)
+        assert code == 200 and b"<html" in body.lower() and b'<symbol id="logo-openai"' in body
+        code, h, body = get("/api/state", cookie, **{"Accept-Encoding": "gzip"})
+        assert code == 200 and h["Content-Encoding"] == "gzip" and json.loads(gzip.decompress(body))["teams"] == []
+        assert get("/api/state", "frontier_dashboard=1.forged")[0] == 403
+        code, h, body = get("/diagrams/race.png", cookie)  # the How it works tab's Archify diagrams
+        assert code == 200 and h["Content-Type"] == "image/png" and body[:4] == b"\x89PNG"
+        assert get("/diagrams/race.png")[0] == 403 and get("/diagrams/nope.png", cookie)[0] == 403
+        expired = path(dashboard.login_link(f"http://127.0.0.1:{port}", "s3cret-token", minutes=-1))
+        forged = path(dashboard.login_link(f"http://127.0.0.1:{port}", "another-token"))
+        assert get(expired)[0] == 403 and get(forged)[0] == 403
+        assert get(expired, cookie)[0] == 303  # a reload of an old link, by a browser that has its session
+        code, h, _ = get(path(dashboard.login_link(f"http://127.0.0.1:{port}", "s3cret-token")), **{"X-Forwarded-Proto": "https"})
+        assert code == 303 and "Secure" in h["Set-Cookie"]  # behind the race VM's HTTPS proxy
+        _, h, _ = get("/", cookie, **{"X-Forwarded-Proto": "https"})
+        assert "max-age" in h["Strict-Transport-Security"] and "frame-ancestors 'none'" in h["Content-Security-Policy"]
+        assert h["Referrer-Policy"] == "no-referrer"
     finally:
         srv.shutdown()
 
@@ -620,3 +668,124 @@ def test_cpu_meter_counts_the_mission_processes_and_their_reaped_children(tmp_pa
     shutil.rmtree(proc / "10")
     ps(14, 1, (2 * tick, 0, 0, 0))
     assert again.record() == 9 + 2  # added to what was measured, not the max of the two
+
+
+def test_the_race_clock_doubles_its_speed_and_inverts():
+    import datetime as dt
+
+    from frontier.dashboard import race_clock, real_time
+    t0 = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+    c = {"real_start": t0.isoformat(), "race_start": t0.isoformat(), "speed": 10, "doubling_minutes": 10}
+    race = [(race_clock(c, t0 + dt.timedelta(minutes=m)) - t0).total_seconds() / 3600 for m in (0, 5, 50)]
+    assert race[0] == 0 and 0.9 < race[1] < 1.1 and race[2] > 72  # x10 at the start, 72 h in about 50 min
+    end = t0 + dt.timedelta(hours=72)
+    assert abs((race_clock(c, real_time(c, end)) - end).total_seconds()) < 1
+    ended = dict(c, race_end=end.isoformat())  # a finished race keeps the real clock's pace from its end
+    after = real_time(c, end) + dt.timedelta(hours=5)
+    assert race_clock(ended, after) == end + dt.timedelta(hours=5)
+    assert race_clock(c, t0 + dt.timedelta(days=30)) > t0  # an old clock without race_end does not overflow
+    flat = dict(c, doubling_minutes=0)
+    assert race_clock(flat, t0 + dt.timedelta(minutes=6)) == t0 + dt.timedelta(minutes=60)
+
+
+def test_dashboard_serves_a_team_report_and_takes_an_evaluation_request_only_from_a_session(tmp_path):
+    import http.client
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from frontier import dashboard
+
+    ws = tmp_path / "ws"
+    (ws / "report").mkdir(parents=True)
+    (ws / "report.md").write_text("# Title\n\nBody")
+    (ws / "report" / "report.tex").write_text(r"\section{Title}")
+    (ws / "report" / "report.pdf").write_bytes(b"%PDF-1.4 fake")
+    (ws / "secret.pdf").write_bytes(b"%PDF-1.4 not a report")
+    (tmp_path / "missions" / "t1").mkdir(parents=True)
+    root = tmp_path / "missions"
+    (root / "t1" / "mission.json").write_text(json.dumps({"workspace": str(ws)}))
+
+    class Handler(dashboard._Handler):
+        token = "s3cret-token"
+
+    Handler.root = root
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+    cookie = "frontier_dashboard=" + dashboard._session("s3cret-token")
+
+    def req(method, path, cookie=cookie, body=None, **headers):
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        c.request(method, path, body=body, headers={**({"Cookie": cookie} if cookie else {}), **headers})
+        r = c.getresponse()
+        return r.status, r.headers, r.read()
+
+    try:
+        code, _, body = req("GET", "/api/report?team=t1")
+        r = json.loads(body)
+        assert code == 200 and [f["path"] for f in r["files"]] == ["report.md", "report/report.tex"]  # Markdown first
+        assert r["files"][0]["text"] == "# Title\n\nBody" and r["pdfs"] == ["report/report.pdf"]
+        code, h, body = req("GET", "/report/t1/report/report.pdf")
+        assert code == 200 and h["Content-Type"] == "application/pdf" and body.startswith(b"%PDF")
+        assert req("GET", "/report/t1/secret.pdf")[0] == 403  # only the report's PDFs, never another file
+        assert req("GET", "/report/t1/report/report.pdf", cookie="")[0] == 403
+        assert req("GET", "/api/report?team=..")[0] == 403 and req("GET", "/api/report?team=nope")[0] == 403
+        assert req("POST", "/api/evaluate")[0] == 409  # nothing honors a request: no DIR/requests
+        (root / "requests").mkdir()
+        assert req("POST", "/api/evaluate", cookie="")[0] == 403
+        assert req("POST", "/api/evaluate", Origin="https://evil.example")[0] == 403
+        assert req("POST", "/api/evaluate", Origin=f"http://127.0.0.1:{port}")[0] == 200
+        assert req("POST", "/api/evaluate")[0] == 409  # one pending at a time
+        assert len(dashboard.evaluate_state(root)["pending"]) == 1
+        assert req("POST", "/api/panel", body=json.dumps({"judges": ["xai"]}), cookie="")[0] == 403
+        assert req("POST", "/api/panel", body="not json")[0] == 400
+        code, _, body = req("POST", "/api/panel", body=json.dumps({"judges": ["xai", "google"]}))
+        assert code == 200 and json.loads(body)["judges"] == ["xai", "google"] == dashboard.panel(root)["judges"]
+    finally:
+        srv.shutdown()
+
+
+def test_dashboard_compiles_a_report_s_latex_once_and_never_reads_outside_its_folder(tmp_path):
+    import shutil
+
+    import pytest
+
+    from frontier import dashboard
+
+    if not shutil.which("pdflatex"):
+        pytest.skip("pdflatex is not installed")
+    ws = tmp_path / "ws"
+    (ws / "report").mkdir(parents=True)
+    tex = ws / "report" / "report.tex"
+    tex.write_text("\\documentclass{article}\\begin{document}Hello $x^2$\\end{document}\n")
+    (tmp_path / "m" / "t1").mkdir(parents=True)
+    (tmp_path / "m" / "t1" / "mission.json").write_text(json.dumps({"workspace": str(ws)}))
+    root = tmp_path / "m"
+    pdf = dashboard.tex_pdf(root, "t1", "report/report.tex")
+    assert pdf.read_bytes()[:5] == b"%PDF-" and dashboard.tex_pdf(root, "t1", "report/report.tex") == pdf  # kept
+    assert dashboard.reports(root, "t1")["files"][0]["compiled"]["current"] is True  # the page shows when it was made
+    assert dashboard.tex_pdf(root, "t1", "../secret.tex") == "no such LaTeX file"
+    (tmp_path / "secret.txt").write_text("s3cret")
+    tex.write_text(f"\\documentclass{{article}}\\begin{{document}}\\input{{{tmp_path / 'secret.txt'}}}\\end{{document}}\n")
+    assert dashboard.tex_pdf(root, "t1", "report/report.tex").startswith("pdflatex failed")  # paranoid: no file outside
+
+
+def test_the_jury_panel_is_changed_from_the_dashboard_and_read_by_the_jury(tmp_path, monkeypatch):
+    from frontier import dashboard, jury
+
+    assert dashboard.panel(tmp_path)["judges"] == list(dashboard.DEFAULT_JUDGES)
+    for bad in (["openai", "nope"], [], "openai", ["openai", "openai"]):  # distinct providers of the config only
+        assert dashboard.set_panel(tmp_path, bad)
+    assert dashboard.set_panel(tmp_path, ["openai", "mistral", "xai"]) is None
+    p = dashboard.panel(tmp_path)
+    assert p["judges"] == ["openai", "mistral", "xai"]
+    assert [h["judges"] for h in p["history"]] == [list(dashboard.DEFAULT_JUDGES), p["judges"]]
+    c = {x["provider"]: x for x in dashboard.panel_state(tmp_path)["candidates"]}
+    assert c["openai"]["usd"] > 0 and c["openai"]["observed"] == 0  # priced from the price list until a judge answers
+    seen = {}
+    monkeypatch.setattr(jury, "run", lambda root, subject, context, out, judges, *a: seen.setdefault("judges", judges) and {})
+    monkeypatch.setattr(jury, "markdown", lambda res: "")
+    (tmp_path / "s.md").write_text("subject")
+    s = str(tmp_path / "s.md")
+    jury.main(["--root", str(tmp_path), "--subject", s, "--context", s, "--out", str(tmp_path / "jury")])
+    assert seen["judges"] == ["openai", "mistral", "xai"]  # frontier jury grades with the panel the dashboard set
