@@ -2,7 +2,7 @@
 """A fake race for the dashboard: plausible state directories for one team per provider, with no model call.
 
     python3 tools/fake_race.py DIR [--hours 24] [--seed 7] [--live]
-    python3 tools/fake_race.py DIR --replay [--speed 10] [--hours 72]     # a race from its start, played SPEED times faster
+    python3 tools/fake_race.py DIR --replay [--speed 10] [--doubling 10] [--hours 72]   # a race from its start, faster
     python3 -m frontier dashboard --root DIR
 
 It writes what the launcher, the gateway and the MCP server would have written over the first --hours of a race that
@@ -10,8 +10,9 @@ started --hours ago: mission.json, budgets.json, the hash-chained llm.jsonl and 
 the dashboard finds them intact), resources.json, runners/<id>.log and the harness session logs, and the snapshots at
 the time and spend milestones of frontier/snapshots.py with a made-up scientific quality in DIR/jury/snapshots.json.
 Costs come from config/prices.toml. With --live it then keeps appending calls and actions in real time until stopped. With --replay the
-race starts now, empty, and its --hours of race are written as they happen, SPEED times faster: every date is divided by
-SPEED from the start, and the snapshots and the jury follow the real clock, as the framework's do.
+race starts now, empty, and its --hours of race are written as they happen on a clock of their own (DIR/clock.json, which
+the dashboard reads): SPEED race minutes per real minute at the start, the speed doubling every DOUBLING real minutes, so
+that the snapshots' milestones, which double too, come at a steady pace (72 h in about 50 min by default).
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from frontier import budget
 from frontier.config import load_config
+from frontier.dashboard import race_clock, real_time
 from frontier.mission import NATIVE_HARNESS
 from frontier.snapshots import SPEND_USD, TIME_MINUTES, label
 
@@ -349,35 +351,9 @@ def jury_rows(teams: list[Team], cfg: dict, rng: random.Random, end: dt.datetime
     return calls, events
 
 
-def compress(tm: Team, speed: float) -> None:
-    """Divide every date of a team's simulated race by `speed` from its start: the race happens `speed` times faster."""
-    def at(t: dt.datetime) -> dt.datetime:
-        return tm.start + (t - tm.start) / speed
-
-    def m(s: str) -> str:
-        return iso(at(budget.parse_time(s)))
-
-    for e in tm.llm + tm.events:
-        e["t"] = m(e["t"])
-    for r in tm.resources:
-        r["created"] = m(r["created"])
-        if r.get("deleted_at"):
-            r["deleted_at"] = m(r["deleted_at"])
-    tm.caps["deadline"] = m(tm.caps["deadline"])
-    if tm.delivered_at:
-        tm.delivered_at = at(tm.delivered_at)
-    if getattr(tm, "delivery", None):
-        d = tm.delivery
-        d.update(delivered_at=m(d["delivered_at"]), elapsed_hours=round(d["elapsed_hours"] / speed, 3), deadline=tm.caps["deadline"])
-        for e in tm.events:
-            if e["event"] == "delivered":
-                e.update({k: d[k] for k in ("delivered_at", "elapsed_hours", "deadline")})
-    tm.speed = speed
-
-
-def replay(root: pathlib.Path, teams: list[Team], jcalls: list[dict], jevents: list[dict]) -> None:
-    """Write each team's race and the jury's work as the real clock reaches them; a snapshot's grade is published once
-    its judges have answered."""
+def replay(root: pathlib.Path, teams: list[Team], jcalls: list[dict], jevents: list[dict], clock: dict) -> None:
+    """Write each team's race and the jury's work as the race's clock reaches them; a snapshot's grade is published
+    once its judges have answered."""
     jd = root / "jury"
     jd.mkdir(exist_ok=True)
     for f in [jd / "llm.jsonl", jd / "events.jsonl", jd / ".llm.jsonl.head", jd / ".events.jsonl.head"]:
@@ -409,7 +385,7 @@ def replay(root: pathlib.Path, teams: list[Team], jcalls: list[dict], jevents: l
     published: dict[str, dict] = {}
     print(f"live: replaying {len(teams)} teams; Ctrl-C to stop", flush=True)
     while True:
-        now = iso(budget.now())
+        now = iso(race_clock(clock, budget.now()))
         for tm in teams:
             q = queues[tm.name]
             for kind, f in (("llm", "llm.jsonl"), ("events", "events.jsonl")):
@@ -476,7 +452,8 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--live", action="store_true")
     ap.add_argument("--replay", action="store_true", help="start the race now and write it as it happens")
-    ap.add_argument("--speed", type=float, default=10, help="with --replay: race hours per real hour")
+    ap.add_argument("--speed", type=float, default=10, help="with --replay: race minutes per real minute at the start")
+    ap.add_argument("--doubling", type=float, default=10, help="with --replay: real minutes for the speed to double (0: never)")
     a = ap.parse_args()
     root = pathlib.Path(a.root)
     cfg = load_config()
@@ -489,11 +466,14 @@ def main() -> int:
         teams = [Team(root, p, cfg, random.Random(rng.random()), start, hours) for p in NATIVE_HARNESS if p in cfg["providers"]]
         for tm in teams:
             tm.simulate(end)
-            compress(tm, a.speed)
-            tm.snapshots(start + dt.timedelta(hours=hours / a.speed))
-        jcalls, jevents = jury_rows(teams, cfg, rng, start + dt.timedelta(hours=hours / a.speed))
-        print(f"replay: {hours:g} h of race in {hours / a.speed:g} h, from {iso(start)}", flush=True)
-        replay(root, teams, jcalls, jevents)
+            tm.snapshots(end)
+        jcalls, jevents = jury_rows(teams, cfg, rng, end)
+        clock = {"real_start": iso(start), "race_start": iso(start), "speed": a.speed, "doubling_minutes": a.doubling}
+        root.mkdir(parents=True, exist_ok=True)
+        budget.write_json(root / "clock.json", clock)
+        real = (real_time(clock, end) - start).total_seconds() / 60
+        print(f"replay: {hours:g} h of race in {real:.0f} min, from {iso(start)}", flush=True)
+        replay(root, teams, jcalls, jevents, clock)
         return 0
     teams = [Team(root, p, cfg, random.Random(rng.random()), start, hours) for p in NATIVE_HARNESS if p in cfg["providers"]]
     for tm in teams:

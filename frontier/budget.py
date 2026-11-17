@@ -386,8 +386,9 @@ class Budget:
                            f"{new:.2f} ({price_per_hour:.3f}/h x {max_hours} h) > {cap:.2f} {cur}")
         return True, ""
 
-    def status(self) -> dict:
-        at = now()
+    def status(self, at: dt.datetime | None = None) -> dict:
+        """Spend, caps and time at `at` (now by default; a replayed race passes its own clock)."""
+        at = at or now()
         caps = self.caps
         llm = self.llm_entries()
         by_model: dict[str, dict] = {}

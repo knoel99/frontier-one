@@ -668,3 +668,17 @@ def test_cpu_meter_counts_the_mission_processes_and_their_reaped_children(tmp_pa
     shutil.rmtree(proc / "10")
     ps(14, 1, (2 * tick, 0, 0, 0))
     assert again.record() == 9 + 2  # added to what was measured, not the max of the two
+
+
+def test_the_race_clock_doubles_its_speed_and_inverts():
+    import datetime as dt
+
+    from frontier.dashboard import race_clock, real_time
+    t0 = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+    c = {"real_start": t0.isoformat(), "race_start": t0.isoformat(), "speed": 10, "doubling_minutes": 10}
+    race = [(race_clock(c, t0 + dt.timedelta(minutes=m)) - t0).total_seconds() / 3600 for m in (0, 5, 50)]
+    assert race[0] == 0 and 0.9 < race[1] < 1.1 and race[2] > 72  # x10 at the start, 72 h in about 50 min
+    end = t0 + dt.timedelta(hours=72)
+    assert abs((race_clock(c, real_time(c, end)) - end).total_seconds()) < 1
+    flat = dict(c, doubling_minutes=0)
+    assert race_clock(flat, t0 + dt.timedelta(minutes=6)) == t0 + dt.timedelta(minutes=60)

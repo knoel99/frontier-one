@@ -14,16 +14,19 @@ and the harness session logs; it writes nothing in the missions. The scientific 
 <root>/jury/snapshots.json, {team: {snapshot commit: {"scientific_quality": x, "artifacts": y}}} (or a bare number for
 the scientific quality alone), written by whoever grades the snapshots; a snapshot without a grade is shown with its time
 and spend only. From the latest graded snapshot of each team, the live standings apply frontier/scoring.py: efficiency
-from the spend and time so far, and the final score.
+from the spend and time so far, and the final score. A race replayed faster (tools/fake_race.py --replay) has its own
+clock in <root>/clock.json: every time is then read on it (race_now), so the snapshots, durations and axes are the race's.
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import gzip
 import hashlib
 import hmac
 import json
+import math
 import os
 import pathlib
 import re
@@ -130,7 +133,29 @@ def _harness_actions(log: pathlib.Path) -> list[dict]:
     return out[-60:]  # the last actions of the session
 
 
-def subagents(events: list[dict], llm: list[dict], logs: list[pathlib.Path]) -> list[dict]:
+def race_clock(c: dict, real: dt.datetime) -> dt.datetime:
+    """The race's time at the real time `real`, for a replayed race: SPEED race minutes per real minute at its start,
+    the speed doubling every DOUBLING minutes (0: constant)."""
+    r = max(0.0, (real - parse_time(c["real_start"])).total_seconds() / 60)
+    s0, d = float(c["speed"]), float(c.get("doubling_minutes") or 0)
+    race = s0 * d / math.log(2) * (2 ** (r / d) - 1) if d else s0 * r
+    return parse_time(c["race_start"]) + dt.timedelta(minutes=race)
+
+
+def real_time(c: dict, race: dt.datetime) -> dt.datetime:
+    """The inverse of race_clock: when the real clock reaches the race time `race`."""
+    m = max(0.0, (race - parse_time(c["race_start"])).total_seconds() / 60)
+    s0, d = float(c["speed"]), float(c.get("doubling_minutes") or 0)
+    r = d * math.log2(1 + m * math.log(2) / (s0 * d)) if d else m / s0
+    return parse_time(c["real_start"]) + dt.timedelta(minutes=r)
+
+
+def race_now(root: pathlib.Path) -> dt.datetime:
+    c = read_json(root / "clock.json")
+    return race_clock(c, now()) if c else now()
+
+
+def subagents(events: list[dict], llm: list[dict], logs: list[pathlib.Path], at: dt.datetime | None = None) -> list[dict]:
     """History of the sub-agents of a mission, like a session tracker: model, effort, duration, calls, tokens, cost.
 
     Frontier sub-agents (spawn_agent) come from agent_start / model_call / agent_end events and the LLM ledger;
@@ -166,7 +191,7 @@ def subagents(events: list[dict], llm: list[dict], logs: list[pathlib.Path]) -> 
                 r["mode"] = e["frontier.mode"]
     for r in rows.values():
         s, f = parse_time(r["start"]), parse_time(r["end"])
-        r["seconds"] = round(((f or now()) - s).total_seconds()) if s else None
+        r["seconds"] = round(((f or at or now()) - s).total_seconds()) if s else None
     out = list(rows.values())
     for log in logs:  # native sub-agents of the harness
         try:
@@ -249,10 +274,11 @@ def simulation_series(resources: list[dict], at) -> list[list]:
                                                         for a, b, p in spans if a <= t), 4)] for t in times]
 
 
-def team_state(d: pathlib.Path) -> dict:
+def team_state(d: pathlib.Path, at: dt.datetime | None = None) -> dict:
     settings = json.loads((d / "mission.json").read_text())
     b = Budget(d)
-    st = b.status()
+    at = at or now()
+    st = b.status(at)
     llm = b.llm_entries()
     cum, series = 0.0, []
     for e in llm:
@@ -278,7 +304,6 @@ def team_state(d: pathlib.Path) -> dict:
         t0 = starts[-1].get("t", "") if starts else ""
         for i, a in enumerate(_harness_actions(sessions[-1])):  # harness output has no clock: stamped from its session
             actions.append({"t": f"{t0}.{i:04d}" if t0 else "", "kind": "harness " + a["kind"], "text": a["text"]})
-    at = now()
     alive = []
     for r in b.resources():
         if r.get("state") == "deleted":
@@ -288,7 +313,7 @@ def team_state(d: pathlib.Path) -> dict:
         alive.append({"provider": r["provider"], "id": r["id"], "type": r.get("type"), "name": r.get("name"),
                       "price_h": r.get("eur_per_hour") or r.get("usd_per_hour"), "hours": round(hours, 2),
                       "max_hours": r.get("max_hours")})
-    subs = subagents(events, llm, sessions)
+    subs = subagents(events, llm, sessions, at)
     runners = runner_activity(d, b.resources(), at)
     jobs = [a for a in actions if a["kind"] == "tool" and a["text"].startswith(("rp_exec", "scw_create", "rp_create"))]
     delivered = read_json(d / "delivery.json")
@@ -319,10 +344,11 @@ def team_state(d: pathlib.Path) -> dict:
 
 def snapshot(root: pathlib.Path) -> dict:
     grades = read_json(root / "jury" / "snapshots.json", {}) or {}
+    at = race_now(root)
     teams = []
     for p in sorted(root.glob("*/mission.json")):
         try:
-            teams.append(team_state(p.parent))
+            teams.append(team_state(p.parent, at))
         except (OSError, ValueError, KeyError) as e:  # a file being rewritten: skip this team for this refresh
             print(f"dashboard: {p.parent.name}: {e}", file=sys.stderr)
     for t in teams:
@@ -336,7 +362,7 @@ def snapshot(root: pathlib.Path) -> dict:
                   key=lambda a: a["t"])[-FEED:]
     history = sorted(({**r, "team": t["name"]} for t in teams for r in t["subagents"]),
                      key=lambda r: r.get("start") or "", reverse=True)
-    return {"time": now().isoformat(timespec="seconds"), "root": str(root), "teams": teams, "jury": jury_state(root / "jury"),
+    return {"time": at.isoformat(timespec="seconds"), "root": str(root), "teams": teams, "jury": jury_state(root / "jury"),
             "feed": feed[::-1],
             "subagents": history, "activities": [a for t in teams for a in t["activities"]],
             "model_calls": [{**c, "team": t["name"]} for t in teams for c in t.get("model_calls", [])]}

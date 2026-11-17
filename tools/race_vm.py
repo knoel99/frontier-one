@@ -2,7 +2,7 @@
 """Run a mission on a Scaleway VM of its own and get the link to its live dashboard.
 
     python3 tools/race_vm.py up MISSION.toml [--zone nl-ams-1] [--type BASIC2-A4C-8G] [--branch master] [--wait]
-    python3 tools/race_vm.py up --fake [--speed 10] [--hours 72] [--wait]   # a synthetic race from its start, no key, no LLM
+    python3 tools/race_vm.py up --fake [--speed 10] [--doubling 10] [--hours 72] [--wait]   # a synthetic race from its start, no LLM
     python3 tools/race_vm.py link SERVER_ID                      # a new single-use login link to its dashboard
     python3 tools/race_vm.py log SERVER_ID [--zone nl-ams-1]     # the tail of the VM's first-boot log
     python3 tools/race_vm.py down SERVER_ID [--zone nl-ams-1]
@@ -156,8 +156,9 @@ def up(a) -> int:
         host = f"{label}.{ip['address'].replace('.', '-')}.sslip.io"
         token = secrets.token_urlsafe(24)
         if a.fake:
-            # --speed N: the race starts at boot and plays N times faster; --speed 0: --hours already written, then live
-            fake = (f"--replay --speed {a.speed:g} --hours {a.hours or 72:g}" if a.speed
+            # --speed N: the race starts at boot, N times faster, doubling every --doubling min
+            # --speed 0: --hours already written, then live
+            fake = (f"--replay --speed {a.speed:g} --doubling {a.doubling:g} --hours {a.hours or 72:g}" if a.speed
                     else f"--hours {a.hours or 24:g} --live")
             script = fill(FAKE_INIT.read_text(), {"BRANCH": a.branch, "TOKEN": token, "HOST": host, "FAKEARGS": fake})
         else:
@@ -241,7 +242,8 @@ def main() -> int:
     u.add_argument("mission", nargs="?")
     u.add_argument("--fake", action="store_true", help="no mission: the dashboard of a synthetic race (tools/fake_race.py)")
     u.add_argument("--hours", type=float, help="with --fake: hours of race (72 replayed, or 24 written at once with --speed 0)")
-    u.add_argument("--speed", type=float, default=10, help="with --fake: race hours per real hour, 0 for a race already written")
+    u.add_argument("--speed", type=float, default=10, help="with --fake: race min per real min at the start, 0: race already written")
+    u.add_argument("--doubling", type=float, default=10, help="with --fake: real minutes for the speed to double (0: never)")
     u.add_argument("--zone", default="nl-ams-1")
     u.add_argument("--type", help="instance type (default BASIC2-A4C-8G, BASIC2-A2C-4G with --fake)")
     u.add_argument("--branch", default="master", help="branch of the framework the VM clones")

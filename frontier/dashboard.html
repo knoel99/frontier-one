@@ -318,14 +318,18 @@ document.addEventListener('focusout',hideTip);
 
 /* scales and frame */
 function nice(x){const p=Math.pow(10,Math.floor(Math.log10(x||1))),f=x/p;return (f<1.5?1:f<3?2:f<7?5:10)*p}
-function lin(d0,d1,r0,r1){const f=v=>r0+(r1-r0)*(v-d0)/((d1-d0)||1);f.ticks=n=>{const st=nice((d1-d0)/n),o=[];for(let v=Math.ceil(d0/st)*st;v<=d1+st*1e-9;v+=st)o.push(+v.toFixed(10));return o};return f}
+function lin(d0,d1,r0,r1){const f=v=>r0+(r1-r0)*(v-d0)/((d1-d0)||1);f.d=[d0,d1];f.ticks=n=>{const st=nice((d1-d0)/n),o=[];for(let v=Math.ceil(d0/st)*st;v<=d1+st*1e-9;v+=st)o.push(+v.toFixed(10));return o};return f}
 function logs(d0,d1,r0,r1){const a=Math.log10(d0),b=Math.log10(d1),f=v=>r0+(r1-r0)*(Math.log10(Math.max(v,d0))-a)/((b-a)||1);
- f.ticks=()=>{const o=[];for(let e=Math.floor(a);e<=Math.ceil(b);e++)for(const m of [1,2,5]){const v=m*Math.pow(10,e);if(v>=d0*0.999&&v<=d1*1.001)o.push(v)}return o};return f}
+ f.ticks=()=>{const o=[];for(let e=Math.floor(a);e<=Math.ceil(b);e++)for(const m of [1,2,5]){const v=m*Math.pow(10,e);if(v>=d0*0.999&&v<=d1*1.001)o.push(v)}return o};f.d=[d0,d1];f.log=1;return f}
+// time axes in hours tick on clock steps (5 min, 1 h, 6 h, 1 d…), not on decimal ones
+const TSTEPS=[1,5,10,15,30,60,120,180,360,720,1440,2880,4320,10080].map(m=>m/60);
+function timeTicks(X,n){const [d0,d1]=X.d;if(X.log)return [5,15,30,60,180,360,720,1440,2880,4320,10080].map(m=>m/60).filter(v=>v>=d0*0.999&&v<=d1*1.001);
+ const st=TSTEPS.find(t=>t>=(d1-d0)/n)||TSTEPS.at(-1),o=[];for(let v=Math.ceil(d0/st)*st;v<=d1+1e-9;v+=st)o.push(v);return o}
 const W0=el=>Math.max(300,el.clientWidth||600);
 function frame(el,h,{x,y,xt,yt,xl}){const w=W0(el),P={l:40,r:46,t:12,b:36},n=w<480?4:6;
  const X=x(P.l,w-P.r),Y=y(h-P.b,P.t);let s=`<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="${esc(el.dataset.label||'')}">`;
  for(const v of Y.ticks(5))s+=`<line class="grid" x1="${P.l}" x2="${w-P.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${P.l-8}" y="${Y(v)+4}" text-anchor="end">${yt(v)}</text>`;
- const xs=X.ticks(n),step=Math.ceil(xs.length/(n+1));xs.forEach((v,i)=>{if(i%step===0)s+=`<text x="${X(v)}" y="${h-P.b+18}" text-anchor="middle">${xt(v)}</text>`});
+ const xs=xt===HT?timeTicks(X,n):X.ticks(n),step=Math.ceil(xs.length/(n+1));xs.forEach((v,i)=>{if(i%step===0)s+=`<text x="${X(v)}" y="${h-P.b+18}" text-anchor="middle">${xt(v)}</text>`});
  s+=`<line class="axis" x1="${P.l}" x2="${w-P.r}" y1="${h-P.b}" y2="${h-P.b}"/>`;if(xl)s+=`<text x="${w-P.r}" y="${h-3}" text-anchor="end">${esc(xl)}</text>`;
  return {w,h,P,X,Y,s,ends:[]}}
 const path=(pts,X,Y,step)=>pts.map((p,i)=>{const x=X(p[0]),y=Y(p[1]);return !i?`M${x},${y}`:step?`H${x}V${y}`:`L${x},${y}`}).join('');
@@ -364,7 +368,9 @@ function qTable(ser){return `<table><thead><tr><th>Team</th><th>Snapshot</th><th
  ser.flatMap(({t,pts})=>pts.filter(p=>!p.s.live).map(({s})=>`<tr><td>${key(t)} ${esc(t.model)}</td><td>${esc(s.labels.join(', '))}</td><td class="n">${dur(s.minutes*60)}</td><td class="n">${money(s.llm_usd)}</td><td class="n">${money(s.simulation_usd)}</td><td class="n">${sc(s.quality)}</td><td class="n">${sc(s.artifacts)}</td><td class="n">${sc(s.efficiency)}</td><td class="n">${sc(s.final)}</td></tr>`)).join('')}</tbody></table>`}
 const raceHours=()=>(Date.parse(S.d.time)-T0)/3.6e6;
 const chartH=()=>narrow()?240:Math.round(Math.max(190,Math.min(360,(innerHeight-345)*0.58)));
-const chartQT=()=>scoreChart('qt',s=>s.minutes/60,{log:S.ax.qt==='log',lo:5/60,xmax:S.ax.qt==='log'?0:raceHours(),xt:v=>v<1?Math.round(v*60)+' min':v+' h',xl:'hours since the start'});
+// hours as d/h/min: 0.5 → 30 min, 30 → 1 d 6 h
+const HT=v=>{const m=Math.round(v*60),d=Math.floor(m/1440),h=Math.floor(m%1440/60),n=m%60;return [d&&d+' d',h&&h+' h',n&&n+' min'].filter(Boolean).join(' ')||'0';};
+const chartQT=()=>scoreChart('qt',s=>s.minutes/60,{log:S.ax.qt==='log',lo:5/60,xmax:S.ax.qt==='log'?0:raceHours(),xt:HT,xl:'time since the start'});
 const chartQC=()=>scoreChart('qc',s=>costOf(s,S.cost.qc),{log:S.ax.qc==='log',lo:0.01,xt:v=>(v<1?v:NF.format(v))+' $',xl:'USD, '+COSTL[S.cost.qc]});
 function spendSeries(t,k,t1){const L=(t.series||[]).map(([x,y])=>[Date.parse(x),y]),M=(t.sim_series||[]).map(([x,y])=>[Date.parse(x),y]);
  if(k==='llm')return L.concat(L.length?[[t1,L[L.length-1][1]]]:[]);
@@ -374,7 +380,7 @@ function spendSeries(t,k,t1){const L=(t.series||[]).map(([x,y])=>[Date.parse(x),
 function chartSP(){const el=$('c-sp'),k=S.cost.sp,t1=Date.parse(S.d.time),ser=shown().map(t=>({t,P:spendSeries(t,k,t1)})).filter(x=>x.P.length);
  if(!ser.length){el.innerHTML=`<div class="empty">No ${COSTL[k]} yet</div>`;return}
  const H=x=>(x-T0)/3.6e6,ymax=Math.max(...ser.map(x=>x.P[x.P.length-1][1]),1);el.dataset.label='Cumulative spend per team: '+COSTL[k];
- const f=frame(el,Math.round(chartH()*0.72),{x:(a,b)=>lin(0,raceHours(),a,b),y:(a,b)=>lin(0,ymax,a,b),xt:v=>v+' h',yt:v=>v+' $',xl:'hours since the start'});
+ const f=frame(el,Math.round(chartH()*0.72),{x:(a,b)=>lin(0,raceHours(),a,b),y:(a,b)=>lin(0,ymax,a,b),xt:HT,yt:v=>v+' $',xl:'time since the start'});
  let s=f.s;for(const {t,P} of ser){const st=Math.max(1,Math.floor(P.length/400)),Q=P.filter((_,i)=>i%st===0||i===P.length-1).map(([x,y])=>[H(x),y]);
   s+=line(f,t,Q,`${t.model} · ${t.harness_title}\n${money(Q[Q.length-1][1])} of ${COSTL[k]}`,k==='llm')}
  s+=ends(f)+`<line class="xhl axis" y1="${f.P.t}" y2="${f.h-f.P.b}" visibility="hidden"/><rect class="xh" x="${f.P.l}" y="${f.P.t}" width="${f.w-f.P.l-f.P.r}" height="${f.h-f.P.t-f.P.b}" fill="transparent"/>`;
