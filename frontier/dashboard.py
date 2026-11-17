@@ -3,8 +3,10 @@
     python3 -m frontier dashboard [--root DIR] [--port 8800]      # serve http://127.0.0.1:8800, refreshes itself
     python3 -m frontier dashboard --once race.html                 # a static snapshot
 
-With FRONTIER_DASHBOARD_TOKEN set, every request needs that token: `?t=<token>` once (the reply sets a cookie), then
-the cookie. A dashboard reachable from the Internet (tools/race_vm.py) is served this way, behind HTTPS.
+With FRONTIER_DASHBOARD_TOKEN set, the token itself never travels: it signs single-use login links (`login_link`, made by
+`tools/race_vm.py link`), valid LINK_MINUTES. Opening one sets a signed session cookie (SESSION_DAYS) and redirects to the
+page, so a link that leaked after use, or was never used in time, opens nothing. A dashboard reachable from the Internet
+(tools/race_vm.py) is served this way, behind HTTPS.
 
 Read-only: it reads the framework's ledgers (llm.jsonl, resources.json, events.jsonl, budgets.json, delivery.json)
 and the harness session logs; it writes nothing in the missions. The scientific quality of each snapshot comes from
@@ -18,11 +20,15 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import hashlib
 import hmac
 import json
 import os
 import pathlib
+import secrets
 import sys
+import threading
+import time
 import urllib.parse
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -34,6 +40,29 @@ from .config import load_config
 from .mission import STATE_ROOT as ROOT_DEFAULT
 
 FEED = 300  # actions kept in the global feed
+LINK_MINUTES = 15
+SESSION_DAYS = 30
+
+
+def _sign(token: str, text: str) -> str:
+    return hmac.new(token.encode(), text.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def login_link(base_url: str, token: str, minutes: float = LINK_MINUTES) -> str:
+    """A link that opens the dashboard once, within `minutes`: <expiry>.<nonce>.<signature> under ?k=."""
+    body = f"{int(time.time() + minutes * 60)}.{secrets.token_urlsafe(9)}"
+    return f"{base_url.rstrip('/')}/?k={body}.{_sign(token, 'link:' + body)}"
+
+
+def _session(token: str) -> str:
+    issued = str(int(time.time()))
+    return f"{issued}.{_sign(token, 'session:' + issued)}"
+
+
+def _valid_session(token: str, value: str) -> bool:
+    issued, _, sig = value.partition(".")
+    return (issued.isdigit() and time.time() - int(issued) < SESSION_DAYS * 86400
+            and hmac.compare_digest(sig, _sign(token, "session:" + issued)))
 
 
 def _short(x, n=140) -> str:
@@ -306,9 +335,32 @@ def snapshot(root: pathlib.Path) -> dict:
                   key=lambda a: a["t"])[-FEED:]
     history = sorted(({**r, "team": t["name"]} for t in teams for r in t["subagents"]),
                      key=lambda r: r.get("start") or "", reverse=True)
-    return {"time": now().isoformat(timespec="seconds"), "root": str(root), "teams": teams, "feed": feed[::-1],
+    return {"time": now().isoformat(timespec="seconds"), "root": str(root), "teams": teams, "jury": jury_state(root / "jury"),
+            "feed": feed[::-1],
             "subagents": history, "activities": [a for t in teams for a in t["activities"]],
             "model_calls": [{**c, "team": t["name"]} for t in teams for c in t.get("model_calls", [])]}
+
+
+def jury_state(d: pathlib.Path) -> dict:
+    """The jury's activity from its own directory: the calls in its ledger (llm.jsonl, agent judge:<provider>) and the
+    verdicts it records (events.jsonl, event "verdict": judge, model, team, commit, label, scientific_quality,
+    artifacts, seconds, usd)."""
+    if not d.is_dir():
+        return {"calls": 0, "usd": 0.0, "judges": [], "verdicts": []}
+    cfg, llm = load_config(), read_jsonl(d / "llm.jsonl")
+    judges: dict[str, dict] = {}
+    for e in llm:
+        prov = e["gen_ai.agent.name"].split(":", 1)[-1]
+        j = judges.setdefault(prov, {"provider": prov, "model": e["gen_ai.request.model"], "calls": 0, "usd": 0.0, "last": "",
+                                     "logos": cfg["providers"].get(prov, {}).get("logos", []),
+                                     "color": cfg["providers"].get(prov, {}).get("color")})
+        j["calls"] += 1
+        j["usd"] = round(j["usd"] + e["frontier.cost.usd"], 6)
+        j["last"] = max(j["last"], e["t"])
+    verdicts = [e for e in read_jsonl(d / "events.jsonl") if e.get("event") == "verdict"]
+    return {"calls": len(llm), "usd": round(sum(e["frontier.cost.usd"] for e in llm), 6), "cap": Budget(d).caps.get("llm_usd"),
+            "judges": sorted(judges.values(), key=lambda j: j["provider"]),
+            "verdicts": [{k: v for k, v in e.items() if k not in ("prev", "hash")} for e in verdicts[-400:]]}
 
 
 def standings(teams: list[dict]) -> None:
@@ -357,26 +409,49 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def _given(self) -> tuple[str, str]:
-        query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("t", [""])[0]
-        cookie = SimpleCookie(self.headers.get("Cookie", "")).get("frontier_dashboard")
-        return query, cookie.value if cookie else ""
+    used: set[str] = set()  # nonces of the login links opened by this process
+    lock = threading.Lock()
+
+    def _deny(self, why: str) -> None:
+        body = f"forbidden: {why}\n".encode()
+        self.send_response(403)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _login(self, link: str, https: bool) -> None:
+        """A single-use link: check its signature and expiry, burn its nonce, set the session cookie, redirect."""
+        expiry, _, rest = link.partition(".")
+        nonce, _, sig = rest.rpartition(".")
+        ok = expiry.isdigit() and int(expiry) > time.time() and hmac.compare_digest(sig, _sign(self.token, f"link:{expiry}.{nonce}"))
+        with self.lock:
+            fresh = ok and nonce not in self.used
+            self.used.add(nonce)
+        if not fresh:
+            return self._deny("this login link has expired or was already used; ask for a new one (tools/race_vm.py link)")
+        self.send_response(303)
+        self.send_header("Location", "/")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Set-Cookie", f"frontier_dashboard={_session(self.token)}; Path=/; Max-Age={SESSION_DAYS * 86400}; "
+                         "HttpOnly; SameSite=Strict" + ("; Secure" if https else ""))
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def do_GET(self):
-        query, cookie = self._given()
-        if self.token and not any(hmac.compare_digest(x.encode(), self.token.encode()) for x in (query, cookie)):
-            body = b"forbidden: open the dashboard with the link that holds its token (?t=...)\n"
-            self.send_response(403)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
+        https = self.headers.get("X-Forwarded-Proto") == "https"  # behind Caddy (tools/race_vm.py)
+        if self.token:
+            link = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("k", [""])[0]
+            if link:
+                return self._login(link, https)
+            cookie = SimpleCookie(self.headers.get("Cookie", "")).get("frontier_dashboard")
+            if not (cookie and _valid_session(self.token, cookie.value)):
+                return self._deny("open the dashboard with a login link (tools/race_vm.py link)")
         if self.path.startswith("/api/state"):
             body, ctype = json.dumps(snapshot(self.root), separators=(",", ":")).encode(), "application/json"
         else:
             body, ctype = PAGE.encode(), "text/html; charset=utf-8"
-        https = self.headers.get("X-Forwarded-Proto") == "https"  # behind Caddy (tools/race_vm.py)
         zipped = "gzip" in self.headers.get("Accept-Encoding", "")
         if zipped:  # the state of a long race is megabytes of JSON, fetched every few seconds
             body = gzip.compress(body, 5)
@@ -393,9 +468,6 @@ class _Handler(BaseHTTPRequestHandler):
         if zipped:
             self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(body)))
-        if self.token and query:  # the page's own api/state calls then carry the cookie
-            self.send_header("Set-Cookie", f"frontier_dashboard={self.token}; Path=/; HttpOnly; SameSite=Strict"
-                             + ("; Secure" if https else ""))
         self.end_headers()
         self.wfile.write(body)
 

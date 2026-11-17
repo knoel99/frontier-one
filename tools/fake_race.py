@@ -77,7 +77,8 @@ class Team:
         self.hours, self.refused = hours, False
         self.skill, self.tau, self.code = rng.uniform(35, 85), rng.uniform(150, 700), rng.uniform(0.7, 1.25)
         # where its science levels off, how fast, and how its code and data follow it
-        self.grades: dict[str, float] = {}
+        self.grades: dict[str, dict] = {}
+        self.graded: list[tuple] = []  # (time, commit, label) of each graded snapshot, for the jury
         self.events: list[dict] = []
         self.llm: list[dict] = []
         self.resources: list[dict] = []
@@ -279,6 +280,7 @@ class Team:
                 q = max(q - 4, min(100, self.skill * (1 - math.exp(-max(0, work) / self.tau)) + r.gauss(0, 2.5)))
                 arts = min(100, max(0.0, q * self.code + r.gauss(0, 3)))  # code and data follow the science, loosely
                 self.grades[commit] = {"scientific_quality": round(max(0.0, q), 1), "artifacts": round(arts, 1)}
+                self.graded.append((t, commit, lab))
 
     def write(self) -> None:
         s = {"name": self.name, "harness": self.harness, "provider": self.p, "providers": [self.p], "tier": "frontier",
@@ -298,6 +300,43 @@ class Team:
             (self.d / "sessions" / f"{n:02d}.log").write_text("\n".join(lines) + "\n")
         if getattr(self, "delivery", None):
             budget.write_json(self.d / "delivery.json", self.delivery)
+
+
+JUDGES = ("anthropic", "openai", "google")  # a judge never grades the team of its own provider (frontier/jury.py)
+
+
+def jury(root: pathlib.Path, teams: list[Team], cfg: dict, rng: random.Random, end: dt.datetime) -> None:
+    """What a snapshot jury would write in DIR/jury: each judge's calls in its ledger and a verdict event per snapshot."""
+    d = root / "jury"
+    d.mkdir(exist_ok=True)
+    calls, events = [], []
+    for tm in teams:
+        for t, commit, lab in tm.graded:
+            g = tm.grades[commit]
+            for j in [p for p in JUDGES if p != tm.p and p in cfg["providers"]]:
+                start = t + dt.timedelta(minutes=rng.uniform(2, 10))
+                secs = rng.uniform(30, 150)
+                stop = start + dt.timedelta(seconds=secs)
+                if stop >= end:
+                    continue
+                model = cfg["providers"][j]["tiers"]["frontier"]
+                inp = rng.randint(15000, 45000)
+                usage = {"input": inp, "cached": inp // 2, "output": rng.randint(2000, 6000)}
+                usd, _ = budget.llm_cost(j, model, usage, 1.0, at=stop)
+                calls.append({"t": iso(stop), "frontier.source": "jury", "gen_ai.agent.name": f"judge:{j}", "gen_ai.provider.name": j,
+                              "gen_ai.request.model": model, "frontier.mode": "", "gen_ai.usage.input_tokens": usage["input"],
+                              "gen_ai.usage.output_tokens": usage["output"], "gen_ai.usage.cache_read.input_tokens": usage["cached"],
+                              "gen_ai.usage.cache_write.input_tokens": 0, "gen_ai.usage.reasoning.output_tokens": usage["output"] // 2,
+                              "frontier.cost.usd": round(usd, 6), "frontier.price_exact": True})
+                events.append({"t": iso(stop), "event": "verdict", "judge": j, "model": model, "team": tm.name, "commit": commit,
+                               "label": lab, "scientific_quality": round(min(100, max(0, g["scientific_quality"] + rng.gauss(0, 3))), 1),
+                               "artifacts": round(min(100, max(0, g["artifacts"] + rng.gauss(0, 3))), 1),
+                               "seconds": round(secs), "usd": round(usd, 6)})
+    budget.write_json(d / "budgets.json", {"llm_usd": 100.0})
+    for name, rows in (("llm.jsonl", calls), ("events.jsonl", events)):
+        (d / name).unlink(missing_ok=True)
+        for e in sorted(rows, key=lambda e: e["t"]):
+            budget.append_chained(d / name, e)
 
 
 def live(teams: list[Team], rng: random.Random) -> None:
@@ -341,6 +380,7 @@ def main() -> int:
               f"{max(tm.sessions)} session(s)  ledgers {st['ledgers_intact']}")
     (root / "jury").mkdir(exist_ok=True)
     budget.write_json(root / "jury" / "snapshots.json", {tm.name: tm.grades for tm in teams})
+    jury(root, teams, cfg, rng, end)
     if a.live:
         print("live: appending calls and actions; Ctrl-C to stop", flush=True)
         live(teams, rng)

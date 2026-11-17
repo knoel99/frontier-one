@@ -3,6 +3,7 @@
 
     python3 tools/race_vm.py up MISSION.toml [--zone nl-ams-1] [--type BASIC2-A4C-8G] [--branch master] [--wait]
     python3 tools/race_vm.py up --fake [--hours 24] [--type BASIC2-A2C-4G] [--wait]   # synthetic data, no key, no LLM
+    python3 tools/race_vm.py link SERVER_ID                      # a new single-use login link to its dashboard
     python3 tools/race_vm.py log SERVER_ID [--zone nl-ams-1]     # the tail of the VM's first-boot log
     python3 tools/race_vm.py down SERVER_ID [--zone nl-ams-1]
 
@@ -10,7 +11,9 @@
 read the mission's keys (the Key-value secret `frontier-keys` at path / of Secret Manager) and, when the mission has
 a [scaleway] section, manage Instances and Block Storage; a flexible IP; and the VM. Its first boot
 (tools/race_vm_init.sh) installs the framework and the mission's harness under a non-root user, starts the mission,
-and serves the dashboard over HTTPS at https://<ip>.sslip.io behind a random token. `up` prints that link.
+and serves the dashboard over HTTPS at https://<vm>.<ip>.sslip.io. Its random token never travels: it stays on the VM
+and in ~/.frontier/race-vms/<server id>.json (mode 600) on this machine, and signs single-use login links valid 15 minutes
+(frontier/dashboard.py). `up` prints one; `link` makes another.
 The mission's [secrets] section is dropped: on the VM every key comes from `frontier-keys`.
 `down` deletes the VM, its volumes, its IP, and the IAM application with its key and policy.
 `up --fake` runs no mission: its VM gets no key and no IAM application, and serves the dashboard of a synthetic race
@@ -23,6 +26,7 @@ from __future__ import annotations
 import argparse
 import base64
 import datetime as dt
+import json
 import pathlib
 import re
 import secrets
@@ -36,11 +40,13 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from frontier.budget import parse_time
+from frontier.dashboard import LINK_MINUTES, login_link
 from frontier.http import scw, scw_defaults, scw_raw
 
 INIT = ROOT / "tools" / "race_vm_init.sh"
 FAKE_INIT = ROOT / "tools" / "race_vm_fake_init.sh"
 SECRET, SECRET_REGION = "frontier-keys", "fr-par"
+VMS = pathlib.Path.home() / ".frontier" / "race-vms"  # each VM's host and dashboard token, readable by its owner only
 DISK_BYTES = 40_000_000_000  # the harnesses' npm, uv and pnpm trees
 FAKE_DISK_BYTES = 10_000_000_000  # a fake race installs no harness
 
@@ -102,12 +108,16 @@ def create_firewall(zone: str, project: str, name: str) -> str:
 
 
 def wait_ready(url: str, minutes: float) -> bool:
+    """True once the dashboard answers over HTTPS: 403 to a request without a session is the expected answer."""
     t0 = time.time()
     while time.time() - t0 < minutes * 60:
         try:
             with urllib.request.urlopen(url, timeout=20) as r:
                 if r.status == 200:
                     return True
+        except urllib.error.HTTPError as e:
+            if e.code == 403:
+                return True
         except (urllib.error.URLError, OSError):
             pass
         time.sleep(20)
@@ -170,11 +180,16 @@ def up(a) -> int:
         print(f"up failed: {e}; deleting what was created", file=sys.stderr)
         teardown(zone, created.get("server", ""), created.get("ip", ""), created.get("app", ""), created.get("sg", ""))
         return 1
-    url = f"https://{host}/?t={token}"
-    print(f"server {server['id']} ({a.type}, {zone}, {ip['address']})\ndashboard {url}\n"
+    VMS.mkdir(parents=True, exist_ok=True)
+    saved = VMS / f"{server['id']}.json"
+    saved.touch(mode=0o600)
+    saved.write_text(json.dumps({"zone": zone, "host": host, "token": token}))
+    print(f"server {server['id']} ({a.type}, {zone}, {ip['address']})\ndashboard https://{host}/\n"
+          f"login link, single use, {LINK_MINUTES} min: {login_link('https://' + host, token)}\n"
+          f"another one: python3 tools/race_vm.py link {server['id']}\n"
           f"delete it with: python3 tools/race_vm.py down {server['id']} --zone {zone}", flush=True)
     if a.wait:
-        print("dashboard answering" if wait_ready(url, 30) else "dashboard not answering after 30 min", flush=True)
+        print("dashboard answering" if wait_ready(f"https://{host}/", 30) else "dashboard not answering after 30 min", flush=True)
     return 0
 
 
@@ -227,6 +242,8 @@ def main() -> int:
     u.add_argument("--type", help="instance type (default BASIC2-A4C-8G, BASIC2-A2C-4G with --fake)")
     u.add_argument("--branch", default="master", help="branch of the framework the VM clones")
     u.add_argument("--wait", action="store_true", help="wait until the dashboard answers (up to 30 min)")
+    lk = sub.add_parser("link", help="print a new single-use login link to the VM's dashboard")
+    lk.add_argument("server_id")
     lg = sub.add_parser("log", help="print the tail of the VM's first-boot log (written at the end or on a failure)")
     lg.add_argument("server_id")
     lg.add_argument("--zone", default="nl-ams-1")
@@ -237,11 +254,19 @@ def main() -> int:
     if a.cmd == "up":
         a.type = a.type or ("BASIC2-A2C-4G" if a.fake else "BASIC2-A4C-8G")
         return up(a)
+    if a.cmd == "link":
+        saved = VMS / f"{a.server_id}.json"
+        if not saved.exists():
+            sys.exit(f"no token saved for {a.server_id} in {VMS}: it was created from another machine")
+        vm = json.loads(saved.read_text())
+        print(login_link("https://" + vm["host"], vm["token"]))
+        return 0
     if a.cmd == "log":
         code, text = scw_raw("GET", f"/instance/v1/zones/{a.zone}/servers/{a.server_id}/user_data/race-log")
         print(text if code == 200 else f"no log yet (HTTP {code}): the VM writes it when its first boot ends or fails")
         return 0 if code == 200 else 1
     teardown(a.zone, a.server_id, "", "")
+    (VMS / f"{a.server_id}.json").unlink(missing_ok=True)
     return 0
 
 

@@ -528,45 +528,50 @@ deny = ["github.com", "de.wikipedia.org"]
     assert box.commands[-1][:3] == ["openshell", "provider", "delete"]
 
 
-def test_dashboard_with_a_token_serves_only_the_link_that_holds_it(tmp_path):
+def test_dashboard_opens_once_per_login_link_and_never_with_the_token_itself(tmp_path):
+    import gzip
+    import http.client
     import threading
-    import urllib.error
-    import urllib.request
     from http.server import ThreadingHTTPServer
 
     from frontier import dashboard
 
     class Handler(dashboard._Handler):
-        root, token = tmp_path, "s3cret-token"
+        root, token, used = tmp_path, "s3cret-token", set()
 
     srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    port = srv.server_address[1]
 
-    def get(path, cookie=""):
-        req = urllib.request.Request(base + path, headers={"Cookie": cookie} if cookie else {})
-        try:
-            with urllib.request.urlopen(req, timeout=10) as r:
-                return r.status, r.headers.get("Set-Cookie", ""), r.read()
-        except urllib.error.HTTPError as e:
-            return e.code, "", e.read()
+    def get(path, cookie="", **headers):  # no redirect followed: the login answers 303
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        c.request("GET", path, headers={**({"Cookie": cookie} if cookie else {}), **headers})
+        r = c.getresponse()
+        return r.status, r.headers, r.read()
+
+    def path(link):
+        return link.split(f"127.0.0.1:{port}", 1)[1]
 
     try:
-        assert get("/")[0] == 403 and get("/api/state")[0] == 403 and get("/?t=wrong")[0] == 403
-        code, cookie, body = get("/?t=s3cret-token")
-        assert code == 200 and b"<html" in body.lower() and "HttpOnly" in cookie
-        code, _, body = get("/api/state", cookie.split(";")[0])
-        assert code == 200 and json.loads(body)["teams"] == []
-        req = urllib.request.Request(base + "/api/state", headers={"Cookie": cookie.split(";")[0], "Accept-Encoding": "gzip"})
-        with urllib.request.urlopen(req, timeout=10) as r:
-            import gzip
-            assert r.headers["Content-Encoding"] == "gzip" and json.loads(gzip.decompress(r.read()))["teams"] == []
-        assert get("/api/state", "frontier_dashboard=wrong")[0] == 403
-        req = urllib.request.Request(base + "/?t=s3cret-token", headers={"X-Forwarded-Proto": "https"})
-        with urllib.request.urlopen(req, timeout=10) as r:  # behind the race VM's HTTPS proxy
-            assert "Secure" in r.headers["Set-Cookie"] and "max-age" in r.headers["Strict-Transport-Security"]
-            assert "frame-ancestors 'none'" in r.headers["Content-Security-Policy"] and r.headers["Referrer-Policy"] == "no-referrer"
-            assert b'<symbol id="logo-openai"' in r.read()
+        assert get("/")[0] == 403 and get("/api/state")[0] == 403 and get("/?t=s3cret-token")[0] == 403
+        link = path(dashboard.login_link(f"http://127.0.0.1:{port}", "s3cret-token"))
+        code, h, _ = get(link)
+        assert code == 303 and h["Location"] == "/" and "HttpOnly" in h["Set-Cookie"]
+        cookie = h["Set-Cookie"].split(";")[0]
+        assert get(link)[0] == 403  # a link opens once
+        code, _, body = get("/", cookie)
+        assert code == 200 and b"<html" in body.lower() and b'<symbol id="logo-openai"' in body
+        code, h, body = get("/api/state", cookie, **{"Accept-Encoding": "gzip"})
+        assert code == 200 and h["Content-Encoding"] == "gzip" and json.loads(gzip.decompress(body))["teams"] == []
+        assert get("/api/state", "frontier_dashboard=1.forged")[0] == 403
+        expired = path(dashboard.login_link(f"http://127.0.0.1:{port}", "s3cret-token", minutes=-1))
+        forged = path(dashboard.login_link(f"http://127.0.0.1:{port}", "another-token"))
+        assert get(expired)[0] == 403 and get(forged)[0] == 403
+        code, h, _ = get(path(dashboard.login_link(f"http://127.0.0.1:{port}", "s3cret-token")), **{"X-Forwarded-Proto": "https"})
+        assert code == 303 and "Secure" in h["Set-Cookie"]  # behind the race VM's HTTPS proxy
+        _, h, _ = get("/", cookie, **{"X-Forwarded-Proto": "https"})
+        assert "max-age" in h["Strict-Transport-Security"] and "frame-ancestors 'none'" in h["Content-Security-Policy"]
+        assert h["Referrer-Policy"] == "no-referrer"
     finally:
         srv.shutdown()
 

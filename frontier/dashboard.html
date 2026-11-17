@@ -3,14 +3,14 @@
 <style>
 :root{color-scheme:light;--bg:#f4f4f2;--surface:#fcfcfb;--raised:#ffffff;--ink:#0b0b0b;--ink2:#52514e;--mute:#6b6a65;--line:#e4e3dd;--line2:#d2d1ca;
 --acc:#2a78d6;--good:#006300;--warn:#8a5a00;--bad:#b42323;--good-bg:#e5f3e5;--warn-bg:#fdf1d8;--bad-bg:#fbe6e6;
---c-llm:#2a78d6;--c-sim:#eb6834;--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--shadow:0 1px 2px #0000000d,0 1px 8px #00000008}
+--link:#1c5cab;--c-llm:#2a78d6;--c-sim:#eb6834;--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--shadow:0 1px 2px #0000000d,0 1px 8px #00000008}
 @media (prefers-color-scheme:dark){:root:where(:not([data-theme=light])){color-scheme:dark;--bg:#121211;--surface:#1a1a19;--raised:#20201f;--ink:#f0efec;--ink2:#c3c2b7;--mute:#a3a29a;--line:#2e2e2b;--line2:#3d3d39;
---acc:#6da7ec;--good:#5fd35f;--warn:#fab219;--bad:#f08080;--good-bg:#173317;--warn-bg:#3a2c08;--bad-bg:#3d1b1b;--c-llm:#3987e5;--c-sim:#d95926;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--shadow:none}}
+--acc:#6da7ec;--good:#5fd35f;--warn:#fab219;--bad:#f08080;--good-bg:#173317;--warn-bg:#3a2c08;--bad-bg:#3d1b1b;--link:#86b6ef;--c-llm:#3987e5;--c-sim:#d95926;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--shadow:none}}
 :root[data-theme=dark]{color-scheme:dark;--bg:#121211;--surface:#1a1a19;--raised:#20201f;--ink:#f0efec;--ink2:#c3c2b7;--mute:#a3a29a;--line:#2e2e2b;--line2:#3d3d39;
---acc:#6da7ec;--good:#5fd35f;--warn:#fab219;--bad:#f08080;--good-bg:#173317;--warn-bg:#3a2c08;--bad-bg:#3d1b1b;--c-llm:#3987e5;--c-sim:#d95926;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--shadow:none}
+--acc:#6da7ec;--good:#5fd35f;--warn:#fab219;--bad:#f08080;--good-bg:#173317;--warn-bg:#3a2c08;--bad-bg:#3d1b1b;--link:#86b6ef;--c-llm:#3987e5;--c-sim:#d95926;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--shadow:none}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
-a{color:var(--acc)}
+a{color:var(--link)}
 .skip{position:absolute;left:-999px;top:8px;background:var(--raised);padding:8px 12px;border-radius:8px;z-index:20}.skip:focus{left:8px}
 header.top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
 .bar-in{max-width:1480px;margin:auto;padding:8px 20px 0;display:flex;flex-wrap:wrap;gap:6px 20px;align-items:center}
@@ -46,10 +46,7 @@ h2{font-size:15px;font-weight:650;margin:0 0 2px}h3{font-size:14px;margin:0 0 4p
 .key{display:inline-block;width:16px;height:0;border-top:3px solid currentColor;border-radius:2px;vertical-align:middle;flex:none}
 .key.dash{border-top-style:dashed}.key.dot{border-top-style:dotted}
 .sw{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;margin-right:4px}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--shadow);min-width:0}
-.kpi{padding:12px 16px}.kpi .v{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.25;margin-top:2px;display:flex;gap:8px;align-items:center}
-.kpi .l{color:var(--ink2);font-size:12.5px}.kpi .d{color:var(--mute);font-size:12px}
 .home{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
 @media (max-width:1100px){.home{grid-template-columns:1fr}}
 .stack{display:grid;gap:16px}
@@ -124,7 +121,7 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 .stale{opacity:.6;transition:opacity .2s}
 @media (max-width:640px){
  header.top{position:static}.bar-in,main{padding-left:12px;padding-right:12px}.clock{font-size:12px;flex-basis:100%;order:2}[role=tablist]{order:3}.babs{display:none}
- .card{padding:12px;border-radius:10px}.stats{grid-template-columns:repeat(2,1fr)}.kpis{grid-template-columns:repeat(2,1fr);gap:8px}.kpi .v{font-size:18px}
+ .card{padding:12px;border-radius:10px}.stats{grid-template-columns:repeat(2,1fr)}
  td,th{padding:7px 6px}.st{display:none}.who .mob{display:block}.budget{min-width:72px}
  .chart-head{flex-direction:column}.ctrls{width:100%}}
 </style></head><body>
@@ -139,6 +136,7 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
   <button role="tab" id="tab-teams" aria-controls="p-teams" aria-selected="false" tabindex="-1">Teams</button>
   <button role="tab" id="tab-activity" aria-controls="p-activity" aria-selected="false" tabindex="-1">Activity</button>
   <button role="tab" id="tab-subagents" aria-controls="p-subagents" aria-selected="false" tabindex="-1">Sub-agents</button>
+  <button role="tab" id="tab-jury" aria-controls="p-jury" aria-selected="false" tabindex="-1">Jury</button>
   <button role="tab" id="tab-feed" aria-controls="p-feed" aria-selected="false" tabindex="-1">Feed</button>
   <button role="tab" id="tab-about" aria-controls="p-about" aria-selected="false" tabindex="-1">How it works</button>
  </div>
@@ -151,13 +149,13 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 </div>
 
 <section role="tabpanel" id="p-overview" aria-labelledby="tab-overview">
- <div class="kpis" id="kpis"></div>
  <div class="home">
-  <div class="card"><div class="chart-head"><div><h2>Standings</h2><p class="sub">Live global score out of 100. Budget: what is spent of all the caps together.</p></div></div>
+  <div class="card"><div class="chart-head"><div><h2>Live leaderboard</h2><p class="sub">Global score out of 100, now: the latest graded snapshot with the spend and time so far. Budget: what is spent of all the caps together.</p></div></div>
    <div class="scroll"><table id="board"></table></div>
-   <div class="legend"><span><i class="sw" style="background:var(--c-llm)"></i>model calls</span><span><i class="sw" style="background:var(--c-sim)"></i>simulations (rented machines, EUR at par)</span><span><i class="sw" style="background:var(--line)"></i>left</span></div></div>
+   <div class="legend"><span><i class="sw" style="background:var(--c-llm)"></i>model calls</span><span><i class="sw" style="background:var(--c-sim)"></i>simulations (rented machines, EUR at par)</span><span><i class="sw" style="background:var(--line)"></i>left</span></div>
+   <p class="sub" id="jline" style="margin:12px 0 0"></p></div>
   <div class="stack">
-   <div class="card"><div class="chart-head"><div><h2 id="h-qt">Score over time</h2><p class="sub">One point per graded snapshot, out of 100; hover a line for its team.</p></div>
+   <div class="card"><div class="chart-head"><div><h2 id="h-qt">Score over time</h2><p class="sub">One point per graded snapshot, out of 100; each line ends on the team's live score. Hover a line for its team.</p></div>
     <div class="ctrls"><label>Score <select id="metric"><option value="final">global</option><option value="science">scientific quality</option><option value="artifacts">code and data</option><option value="efficiency">efficiency</option></select></label>
     <div class="seg" role="group" aria-label="Time axis scale"><button data-ax="qt" data-v="lin" aria-pressed="true">Linear</button><button data-ax="qt" data-v="log" aria-pressed="false">Log</button></div></div></div>
     <div class="chart" id="c-qt"></div><details class="tv" id="tv-qt"><summary>Table view</summary><div class="scroll" id="t-qt" tabindex="0" role="region" aria-label="Score over time, as a table"></div></details></div>
@@ -195,6 +193,15 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
  <div class="ctrls"><label>Team <select id="steam"><option value="">all teams</option></select></label><label>Role <select id="srole"><option value="">all roles</option></select></label></div></div>
  <div id="sdetail"></div><div class="scroll"><table id="subs"></table></div><div class="pager" id="spager"></div></div></section>
 
+<section role="tabpanel" id="p-jury" aria-labelledby="tab-jury" hidden>
+ <div class="card" style="margin-bottom:16px"><h2>Jury activity</h2><p class="sub">The judges grade each snapshot blind; a judge never grades the team of its own provider. Each grade is the median of the judges.</p>
+ <div class="facts" id="jfacts"></div><div class="scroll"><table id="jjudges"></table></div></div>
+ <div class="card" style="margin-bottom:16px"><div class="chart-head"><div><h2>Verdicts over time</h2><p class="sub">One bar per verdict, from the judge's first call to its answer. Hover for the grade.</p></div>
+ <label>Window <select id="jwin"><option value="0">whole race</option><option value="21600">last 6 h</option><option value="3600">last hour</option></select></label></div>
+ <div class="chart scroll" id="c-jury"></div></div>
+ <div class="card"><h2>Latest verdicts</h2><p class="sub" id="jsum"></p><div class="scroll"><table id="jtable"></table></div><div class="pager" id="jpager"></div></div>
+</section>
+
 <section role="tabpanel" id="p-feed" aria-labelledby="tab-feed" hidden><div class="card"><div class="chart-head"><div><h2>All actions</h2><p class="sub">Latest first.</p></div>
  <label>Kind <select id="fkind"><option value="">all</option></select></label></div>
  <div class="scroll feed" tabindex="0" role="region" aria-label="All actions, scrollable"><table id="feedt"></table></div></div></section>
@@ -217,7 +224,7 @@ th[aria-sort=ascending] button::after{content:"▲";font-size:9px}th[aria-sort=d
 <rect class="box" x="300" y="240" width="320" height="50" rx="10"/><text x="460" y="262" text-anchor="middle">Hash-chained ledgers and snapshots</text><text class="m" x="460" y="280" text-anchor="middle">llm.jsonl, events.jsonl · a commit at each time and spend milestone</text>
 <path class="arr" d="M375,212V238" marker-end="url(#ar)"/><path class="arr" d="M545,212V238" marker-end="url(#ar)"/><path class="arr" d="M620,265C800,265 875,200 875,92" marker-end="url(#ar)"/>
 </svg></div>
-<p>Snapshots: at 5, 15 and 30 minutes, then 1, 2, 4, 8 h and doubling, and at 5, 10, 20, 50, 100… USD of total spend, the workspace is committed and tagged. Graded blind, they draw each team's score against time and money, the charts of the Overview.</p></div>
+<p>Snapshots: at 5, 15 and 30 minutes, then 1, 2, 4, 8 h and doubling, and at 5, 10, 20, 50, 100… USD of total spend, the workspace is committed and tagged. Graded blind by the jury (its activity is in the Jury tab), they draw each team's score against time and money, the charts of the Overview.</p></div>
 <div class="card"><h2>The score, out of 100</h2>
 <div class="fig"><svg viewBox="0 0 940 250" role="img" aria-label="Scoring tree: the global score is 50 percent scientific quality, 25 percent code and data, 25 percent efficiency, minus penalties">
 <rect class="hot" x="370" y="10" width="200" height="54" rx="10"/><text x="470" y="34" text-anchor="middle">Global score</text><text class="m" x="470" y="52" text-anchor="middle">minus the stewards' penalties</text>
@@ -323,20 +330,23 @@ function ends(f){const R=10,gap=2*R+3,B=f.ends.sort((a,b)=>a.y-b.y),hi=f.h-f.P.b
 
 /* score over time, score against cost, spend over time; one time axis from the start of the race to now */
 const graded=t=>(t.snapshots||[]).filter(s=>s.quality!=null);
+/* the live score as a last point: now (or at delivery), with the spend so far; the leaderboard shows the same value */
+const livePoint=t=>{const sc=t.scores;if(sc.science==null)return [];return [{live:true,labels:['now'],minutes:elapsed(t)/60,llm_usd:t.status.llm.spent_usd,simulation_usd:simUsd(t),
+ quality:sc.science,artifacts:sc.artifacts,efficiency:sc.efficiency,final:sc.final}]};
 const val=s=>s[METRIC[S.metric][1]];
 function scoreChart(id,xOf,{log,xt,xl,lo,xmax}){const el=$('c-'+id),mn=METRIC[S.metric][0];
- const ser=shown().map(t=>({t,pts:graded(t).map(s=>({s,x:xOf(s),q:val(s)})).filter(p=>p.q!=null&&(!log||p.x>0))})).filter(x=>x.pts.length);
+ const ser=shown().map(t=>({t,pts:graded(t).concat(livePoint(t)).map(s=>({s,x:xOf(s),q:val(s)})).filter(p=>p.q!=null&&(!log||p.x>0))})).filter(x=>x.pts.length);
  if(!ser.length){el.innerHTML='<div class="empty">No graded snapshot yet</div>';$('t-'+id).innerHTML='';return}
  const xs=ser.flatMap(x=>x.pts.map(p=>p.x)),x0=log?Math.max(lo,Math.min(...xs)):0,x1=Math.max(xmax||0,...xs,x0*10||1);
  el.dataset.label=`${mn} out of 100 ${id==='qt'?'over time':'against cost'}, one line per team`;
  const f=frame(el,narrow()?260:300,{x:(a,b)=>log?logs(x0,x1,a,b):lin(0,x1,a,b),y:(a,b)=>lin(0,100,a,b),xt,yt:v=>v,xl});
  let s=f.s;for(const {t,pts} of ser){const c=col(t),P=pts.map(p=>[p.x,p.q]),last=pts[pts.length-1];
   for(const p of pts.slice(0,-1))s+=`<circle class="ring" cx="${f.X(p.x)}" cy="${f.Y(p.q)}" r="3" fill="${c}" data-team="${esc(t.name)}" data-tip="${esc(ptTip(t,p,mn))}"/>`;
-  s+=line(f,t,P,`${t.model} · ${t.harness_title}\n${mn} ${sc(last.q)} at its latest snapshot (${last.s.labels.join(', ')})\n${dur(last.s.minutes*60)} after the start · ${money(last.s.llm_usd+last.s.simulation_usd)} spent`)}
+  s+=line(f,t,P,`${t.model} · ${t.harness_title}\n${mn} ${sc(last.q)} ${last.s.live?'now, as in the leaderboard':'at its latest snapshot'}\n${dur(last.s.minutes*60)} after the start · ${money(last.s.llm_usd+last.s.simulation_usd)} spent`)}
  el.innerHTML=s+ends(f)+'</svg>';$('t-'+id).innerHTML=qTable(ser)}
 const ptTip=(t,p,mn)=>`${mn} ${sc(p.q)} · ${t.model}\nsnapshot ${p.s.labels.join(', ')}, ${dur(p.s.minutes*60)} after the start\n${money(p.s.llm_usd)} model calls, ${money(p.s.simulation_usd)} simulations`;
 function qTable(ser){return `<table><thead><tr><th>Team</th><th>Snapshot</th><th class="n">Time</th><th class="n">Model calls</th><th class="n">Simulations</th><th class="n">Science</th><th class="n">Code and data</th><th class="n">Efficiency</th><th class="n">Global</th></tr></thead><tbody>${
- ser.flatMap(({t,pts})=>pts.map(({s})=>`<tr><td>${key(t)} ${esc(t.model)}</td><td>${esc(s.labels.join(', '))}</td><td class="n">${dur(s.minutes*60)}</td><td class="n">${money(s.llm_usd)}</td><td class="n">${money(s.simulation_usd)}</td><td class="n">${sc(s.quality)}</td><td class="n">${sc(s.artifacts)}</td><td class="n">${sc(s.efficiency)}</td><td class="n">${sc(s.final)}</td></tr>`)).join('')}</tbody></table>`}
+ ser.flatMap(({t,pts})=>pts.filter(p=>!p.s.live).map(({s})=>`<tr><td>${key(t)} ${esc(t.model)}</td><td>${esc(s.labels.join(', '))}</td><td class="n">${dur(s.minutes*60)}</td><td class="n">${money(s.llm_usd)}</td><td class="n">${money(s.simulation_usd)}</td><td class="n">${sc(s.quality)}</td><td class="n">${sc(s.artifacts)}</td><td class="n">${sc(s.efficiency)}</td><td class="n">${sc(s.final)}</td></tr>`)).join('')}</tbody></table>`}
 const raceHours=()=>(Date.parse(S.d.time)-T0)/3.6e6;
 const chartQT=()=>scoreChart('qt',s=>s.minutes/60,{log:S.ax.qt==='log',lo:5/60,xmax:S.ax.qt==='log'?0:raceHours(),xt:v=>v<1?Math.round(v*60)+' min':v+' h',xl:'hours since the start'});
 const chartQC=()=>scoreChart('qc',s=>costOf(s,S.cost.qc),{log:S.ax.qc==='log',lo:0.01,xt:v=>(v<1?v:NF.format(v))+' $',xl:'USD, '+COSTL[S.cost.qc]});
@@ -364,11 +374,6 @@ function budget(t){const s=t.status,c=s.cloud,cap=(s.llm.cap_usd||0)+(c.scaleway
  if(!cap)return `<div class="budget"><div class="t">${money(l+m)} · no cap</div></div>`;const pl=Math.min(100,100*l/cap),pm=Math.min(100-pl,100*m/cap);
  return `<div class="budget" role="img" aria-label="${money(l)} model calls and ${money(m)} simulations of ${money(cap)} in all"><div class="bar"><i style="width:${pl}%;background:var(--c-llm)"></i><i style="width:${pm}%;background:var(--c-sim)"></i></div>
  <div class="t">${Math.round(pl+pm)} %<span class="babs"> · ${money(l+m,'')} / ${NF.format(cap)} $</span></div></div>`}
-function kpis(){const ts=shown(),run=ts.filter(t=>!t.delivered).length,lead=ts.filter(t=>t.scores.final!=null).sort((a,b)=>b.scores.final-a.scores.final)[0];
- const llm=ts.reduce((a,t)=>a+t.status.llm.spent_usd,0),sim=ts.reduce((a,t)=>a+simUsd(t),0),calls=ts.reduce((a,t)=>a+t.series.length,0),alive=ts.reduce((a,t)=>a+t.alive.length,0);
- const K=[['Teams',`${ts.length}`,`${run} running · ${ts.length-run} delivered`],['Leader',lead?sc(lead.scores.final):'–',lead?`${lead.model} · ${lead.harness_title}`:'no grade yet',lead],
-  ['<i class="sw" style="background:var(--c-llm)"></i>Model calls',money(llm),`${compact(calls)} calls`],['<i class="sw" style="background:var(--c-sim)"></i>Simulations',money(sim),'Scaleway (EUR at par) + Runpod'],['Machines running',`${alive}`,'across the teams shown']];
- $('kpis').innerHTML=K.map(([l,v,d,t])=>`<div class="card kpi"><div class="l">${l}</div><div class="v">${t?logos(t,'logos logo1',1):''}${esc(v)}</div><div class="d">${esc(d)}</div></div>`).join('')}
 const who=(t,st)=>`<div class="who">${key(t)}${logos(t,'logos logo1',1)}<div><b>${esc(t.model)}</b><span class="id">${esc(t.harness_title)}</span>${st?`<span class="mob">${pill(t)}</span>`:''}</div></div>`;
 const metric=(t,k)=>k==='model'?t.model:k==='status'?status(t)[1]:k==='llm'?t.status.llm.spent_usd:k==='sim'?simUsd(t):k==='time'?elapsed(t):k==='spent'?t.status.llm.spent_usd+simUsd(t):t.scores[k];
 const order=(list,k,dir)=>list.slice().sort((a,b)=>{const x=metric(a,k),y=metric(b,k);return (x==null)-(y==null)||(typeof x==='string'?x.localeCompare(y):(x-y))*dir});
@@ -457,6 +462,26 @@ function feed(){const names=new Set(shown().map(t=>t.name)),k=$('fkind').value,r
  const kinds=[...new Set((S.d.feed||[]).map(a=>a.kind))].sort(),sel=$('fkind');if(sel.options.length-1!==kinds.length)sel.innerHTML='<option value="">all</option>'+kinds.map(x=>`<option${x===k?' selected':''}>${esc(x)}</option>`).join('');
  $('feedt').innerHTML=`<thead><tr><th>Time</th><th>Team</th><th>Kind</th><th>Action</th></tr></thead><tbody>${rows.map(a=>`<tr><td>${esc(clock(a.t.slice(0,19)+'Z'))}</td><td>${BY[a.team]?key(BY[a.team])+' '+esc(BY[a.team].model):esc(a.team)}</td><td><span class="kind">${esc(a.kind)}</span></td><td>${esc(a.text)}</td></tr>`).join('')}</tbody>`}
 
+/* jury */
+const ago=t=>t?dur((Date.parse(S.d.time)-Date.parse(t))/1000)+' ago':'never';
+const judgeCol=j=>j&&j.color?j.color[dark()?1:0]:'var(--mute)';
+function jline(){const J=S.d.jury||{},v=J.verdicts||[];$('jline').innerHTML=v.length?`Jury: ${num(v.length)} verdicts by ${J.judges.length} judges, the last ${esc(ago(v[v.length-1].t))} · ${money(J.usd)}${J.cap?` of ${J.cap} USD`:''} · <a href="#jury" data-goto="jury">see the jury</a>`:'Jury: no verdict yet.'}
+function jury(){const J=S.d.jury||{judges:[],verdicts:[]},names=new Set(shown().map(t=>t.name)),V=J.verdicts.filter(v=>names.has(v.team)),now=Date.parse(S.d.time);
+ const snaps=TEAMS.flatMap(t=>t.snapshots||[]),done=snaps.filter(x=>x.quality!=null).length,JB=Object.fromEntries(J.judges.map(j=>[j.provider,j]));
+ $('jfacts').innerHTML=[[num(J.verdicts.length),'verdicts'],[`${done} / ${snaps.length}`,'snapshots graded'],[money(J.usd),J.cap?`spent of ${J.cap} USD`:'spent'],
+  [J.verdicts.length?ago(J.verdicts[J.verdicts.length-1].t):'–','since the last verdict']].map(([v,l])=>`<div><div class="v">${esc(v)}</div><div class="l">${esc(l)}</div></div>`).join('');
+ $('jjudges').innerHTML=`<thead><tr><th>Judge</th><th class="n">Verdicts</th><th class="n">Calls</th><th class="n">USD</th><th>Last call</th></tr></thead><tbody>${J.judges.map(j=>`<tr><td><div class="who"><span class="key" style="color:${judgeCol(j)}"></span>${j.logos&&j.logos[0]?`<span class="logos logo1">${icon(j.logos[0])}</span>`:''}<div><b>${esc(j.model)}</b><span class="id">${esc(j.provider)}</span></div></div></td>
+ <td class="n">${num(J.verdicts.filter(v=>v.judge===j.provider).length)}</td><td class="n">${num(j.calls)}</td><td class="n">${money(j.usd,'')}</td><td>${esc(ago(j.last))}</td></tr>`).join('')}</tbody>`;
+ const win=+$('jwin').value*1000,acts=V.filter(v=>!win||Date.parse(v.t)>=now-win).map(v=>({team:v.team,kind:'verdict',provider:`judge · ${v.model}`,judge:v.judge,label:v.label,
+  start:new Date(Date.parse(v.t)-v.seconds*1000).toISOString(),end:v.t,detail:`science ${sc(v.scientific_quality)} · code and data ${sc(v.artifacts)} · ${money(v.usd)}`}));
+ gantt($('c-jury'),acts,{by:'provider',win,colorBy:a=>judgeCol(JB[a.judge])});
+ const N=25,pages=Math.max(1,Math.ceil(V.length/N));S.jpage=Math.min(S.jpage||0,pages-1);const rows=V.slice().reverse().slice(S.jpage*N,S.jpage*N+N);
+ $('jsum').textContent=`${V.length} verdicts on the teams shown, latest first.`;
+ $('jtable').innerHTML=`<thead><tr><th>Time</th><th>Judge</th><th>Team graded</th><th>Snapshot</th><th class="n">Science</th><th class="n">Code and data</th><th class="n">Time taken</th><th class="n">USD</th></tr></thead><tbody>${rows.map(v=>`<tr><td>${esc(day(v.t))}</td>
+ <td>${JB[v.judge]&&JB[v.judge].logos[0]?`<span class="logos">${icon(JB[v.judge].logos[0])}</span> `:''}${esc(v.model)}</td><td>${BY[v.team]?key(BY[v.team])+' '+esc(BY[v.team].model):esc(v.team)}</td><td>${esc(v.label)}</td>
+ <td class="n">${sc(v.scientific_quality)}</td><td class="n">${sc(v.artifacts)}</td><td class="n">${dur(v.seconds)}</td><td class="n">${money(v.usd,'')}</td></tr>`).join('')}</tbody>`;
+ $('jpager').innerHTML=`<span>Page ${S.jpage+1} of ${pages}</span><button data-jpg="-1" ${S.jpage?'':'disabled'}>Previous</button><button data-jpg="1" ${S.jpage<pages-1?'':'disabled'}>Next</button>`}
+
 /* team picker: one popover of checkboxes, "only" to keep one */
 function picker(){const n=shown().length;$('pk-n').textContent=n===TEAMS.length?`all ${n}`:`${n} of ${TEAMS.length}`;
  $('pk-faces').innerHTML=shown().slice(0,narrow()?5:9).map(t=>t.logos&&t.logos[0]?icon(t.logos[0]):'').join('')+(narrow()&&n>5?`<span class="sub" style="margin:0">+${n-5}</span>`:'');
@@ -468,12 +493,15 @@ function head(){const now=Date.parse(S.d.time),dl=Math.max(...TEAMS.map(t=>Date.
  $('clock').textContent=T0?`${dur((now-T0)/1000)} into the race${dl?` · ${dur((dl-now)/1000)} to the deadline`:''} · updated ${clock(S.d.time)}`:''}
 
 /* tabs: only the shown one is drawn */
-const VIEWS={overview:()=>{kpis();board();chartQT();chartQC();chartSP()},teams:()=>{board2();cards()},activity:()=>{chartGantt();chartModels()},subagents:subagents,feed:feed,about:()=>{}};
+const VIEWS={overview:()=>{board();jline();chartQT();chartQC();chartSP()},teams:()=>{board2();cards()},activity:()=>{chartGantt();chartModels()},subagents:subagents,jury:jury,feed:feed,about:()=>{}};
 function focusKey(f){if(!f||f===document.body)return null;if(f.id)return '#'+CSS.escape(f.id);if(f.tagName==='SUMMARY'&&f.parentElement.id)return '#'+CSS.escape(f.parentElement.id)+'>summary';
- for(const a of ['sort','pg','ax','v','only','pick'])if(f.dataset[a]!=null)return `[data-${a}="${CSS.escape(f.dataset[a])}"]`;return null}
+ for(const a of ['sort','pg','jpg','ax','v','only','pick'])if(f.dataset[a]!=null)return `[data-${a}="${CSS.escape(f.dataset[a])}"]`;return null}
+/* a table that can scroll sideways is reachable by keyboard, named after its card */
+function scrollables(){document.querySelectorAll('.scroll:not([tabindex])').forEach(e=>{const h=e.closest('.card')&&e.closest('.card').querySelector('h2');
+ e.tabIndex=0;e.setAttribute('role','region');e.setAttribute('aria-label',(h?h.textContent:'Table')+', scrollable')})}
 function render(){if(!S.d)return;const open=new Set([...document.querySelectorAll('details[id][open]')].map(e=>e.id)),fk=focusKey(document.activeElement),
  scroll=[...document.querySelectorAll('.team details>div,.feed')].map(e=>[e.closest('[id]').id,e.scrollTop]);
- head();picker();VIEWS[S.tab]();
+ head();picker();VIEWS[S.tab]();scrollables();
  for(const id of open){const e=$(id);if(e)e.open=true}
  for(const [id,y] of scroll){const h=$(id),e=h&&(h.matches('.feed')?h:h.querySelector('div'));if(e)e.scrollTop=y}
  if(fk&&document.activeElement===document.body){const e=document.querySelector(fk);if(e)e.focus({preventScroll:true})}}
@@ -485,7 +513,8 @@ async function load(){try{const d=window.__STATE__||await (await fetch('api/stat
  TEAMS=d.teams.slice().sort((a,b)=>a.name.localeCompare(b.name));BY=Object.fromEntries(TEAMS.map(t=>[t.name,t]));
  T0=Math.min(...TEAMS.map(t=>Date.parse(t.status.time)-(t.status.elapsed_hours||0)*3.6e6).filter(isFinite));render();
  $('live').textContent=`${TEAMS.length} teams, ${TEAMS.filter(t=>t.delivered).length} delivered`;document.body.classList.remove('stale')}catch(e){document.body.classList.add('stale')}}
-document.addEventListener('click',e=>{const b=e.target.closest('button');
+document.addEventListener('click',e=>{const g=e.target.closest('[data-goto]');if(g){e.preventDefault();show(g.dataset.goto);scrollTo(0,0);return}
+ const b=e.target.closest('button');
  if(!e.target.closest('#picker')&&$('picker').open)$('picker').open=false;if(!b)return;
  if(b.getAttribute('role')==='tab')show(b.id.slice(4));
  else if(b.dataset.only)setHidden(new Set(TEAMS.map(t=>t.name).filter(n=>n!==b.dataset.only)));
@@ -493,16 +522,16 @@ document.addEventListener('click',e=>{const b=e.target.closest('button');
  else if(b.dataset.ax){S.ax[b.dataset.ax]=b.dataset.v;document.querySelectorAll(`[data-ax="${b.dataset.ax}"]`).forEach(x=>x.setAttribute('aria-pressed',x===b));b.dataset.ax==='qt'?chartQT():chartQC()}
  else if(b.dataset.sort){const k=b.dataset.sort;S.sort={k,dir:S.sort.k===k?-S.sort.dir:(k==='model'||k==='status'?1:-1)};board2()}
  else if(b.dataset.pg){S.page+=+b.dataset.pg;subagents()}
+ else if(b.dataset.jpg){S.jpage=(S.jpage||0)+ +b.dataset.jpg;jury()}
  else if(b.id==='pause'){S.paused=!S.paused;b.setAttribute('aria-pressed',S.paused);b.textContent=S.paused?'Resume':'Pause';$('dot').classList.toggle('paused',S.paused)}});
 document.addEventListener('change',e=>{const c=e.target;if(c.dataset.pick){const h=new Set(S.hidden);c.checked?h.delete(c.dataset.pick):h.add(c.dataset.pick);setHidden(h)}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideTip();if($('picker').open){$('picker').open=false;$('picker').querySelector('summary').focus()}}});
 document.querySelectorAll('select[data-cost]').forEach(s=>s.onchange=()=>{S.cost[s.dataset.cost]=s.value;s.dataset.cost==='qc'?chartQC():chartSP()});
 $('metric').onchange=e=>{S.metric=e.target.value;chartQT();chartQC()};
 for(const id of ['gby','gkind','gwin'])$(id).onchange=chartGantt;for(const id of ['msrc','mmode','mwin'])$(id).onchange=chartModels;
-$('tsort').onchange=cards;$('fkind').onchange=feed;for(const id of ['steam','srole'])$(id).onchange=()=>{S.page=0;subagents()};
+$('tsort').onchange=cards;$('jwin').onchange=jury;$('fkind').onchange=feed;for(const id of ['steam','srole'])$(id).onchange=()=>{S.page=0;subagents()};
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',render);
 let rs;new ResizeObserver(()=>{clearTimeout(rs);rs=setTimeout(()=>{if(S.d)VIEWS[S.tab]()},150)}).observe($('main'));
-if(location.search.includes('t='))history.replaceState(null,'',location.pathname+location.hash);  // the token stays in the cookie, not in the address bar or the history
 const first=location.hash.slice(1);if(VIEWS[first])show(first);
 load();if(!window.__STATE__)setInterval(()=>{if(!S.paused&&document.visibilityState==='visible')load()},5000);
 </script></body></html>
