@@ -528,7 +528,7 @@ deny = ["github.com", "de.wikipedia.org"]
     assert box.commands[-1][:3] == ["openshell", "provider", "delete"]
 
 
-def test_dashboard_opens_once_per_login_link_and_never_with_the_token_itself(tmp_path):
+def test_dashboard_opens_with_a_login_link_until_it_expires_and_never_with_the_token_itself(tmp_path):
     import gzip
     import http.client
     import threading
@@ -558,7 +558,7 @@ def test_dashboard_opens_once_per_login_link_and_never_with_the_token_itself(tmp
         code, h, _ = get(link)
         assert code == 303 and h["Location"] == "/" and "HttpOnly" in h["Set-Cookie"]
         cookie = h["Set-Cookie"].split(";")[0]
-        assert get(link)[0] == 403  # a link opens once
+        assert get(link)[0] == 303  # again within its validity: a reload, an app's browser without cookies
         code, _, body = get("/", cookie)
         assert code == 200 and b"<html" in body.lower() and b'<symbol id="logo-openai"' in body
         code, h, body = get("/api/state", cookie, **{"Accept-Encoding": "gzip"})
@@ -567,6 +567,7 @@ def test_dashboard_opens_once_per_login_link_and_never_with_the_token_itself(tmp
         expired = path(dashboard.login_link(f"http://127.0.0.1:{port}", "s3cret-token", minutes=-1))
         forged = path(dashboard.login_link(f"http://127.0.0.1:{port}", "another-token"))
         assert get(expired)[0] == 403 and get(forged)[0] == 403
+        assert get(expired, cookie)[0] == 303  # a reload of an old link, by a browser that has its session
         code, h, _ = get(path(dashboard.login_link(f"http://127.0.0.1:{port}", "s3cret-token")), **{"X-Forwarded-Proto": "https"})
         assert code == 303 and "Secure" in h["Set-Cookie"]  # behind the race VM's HTTPS proxy
         _, h, _ = get("/", cookie, **{"X-Forwarded-Proto": "https"})

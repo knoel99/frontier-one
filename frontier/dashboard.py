@@ -3,10 +3,11 @@
     python3 -m frontier dashboard [--root DIR] [--port 8800]      # serve http://127.0.0.1:8800, refreshes itself
     python3 -m frontier dashboard --once race.html                 # a static snapshot
 
-With FRONTIER_DASHBOARD_TOKEN set, the token itself never travels: it signs single-use login links (`login_link`, made by
-`tools/race_vm.py link`), valid LINK_MINUTES. Opening one sets a signed session cookie (SESSION_DAYS) and redirects to the
-page, so a link that leaked after use, or was never used in time, opens nothing. A dashboard reachable from the Internet
-(tools/race_vm.py) is served this way, behind HTTPS.
+With FRONTIER_DASHBOARD_TOKEN set, the token itself never travels: it signs login links (`login_link`, made by
+`tools/race_vm.py link`), valid LINK_MINUTES and as often as needed within them (a reload of the link, a browser of an app
+that keeps no cookie). Opening one sets a signed session cookie (SESSION_DAYS) and redirects to the page; a request that
+carries a valid session passes whatever link it repeats, so a link that leaked opens nothing once it expired.
+A dashboard reachable from the Internet (tools/race_vm.py) is served this way, behind HTTPS.
 
 Read-only: it reads the framework's ledgers (llm.jsonl, resources.json, events.jsonl, budgets.json, delivery.json)
 and the harness session logs; it writes nothing in the missions. The scientific quality of each snapshot comes from
@@ -27,7 +28,6 @@ import os
 import pathlib
 import secrets
 import sys
-import threading
 import time
 import urllib.parse
 from http.cookies import SimpleCookie
@@ -49,7 +49,7 @@ def _sign(token: str, text: str) -> str:
 
 
 def login_link(base_url: str, token: str, minutes: float = LINK_MINUTES) -> str:
-    """A link that opens the dashboard once, within `minutes`: <expiry>.<nonce>.<signature> under ?k=."""
+    """A link that opens the dashboard within `minutes`: <expiry>.<nonce>.<signature> under ?k=."""
     body = f"{int(time.time() + minutes * 60)}.{secrets.token_urlsafe(9)}"
     return f"{base_url.rstrip('/')}/?k={body}.{_sign(token, 'link:' + body)}"
 
@@ -409,9 +409,6 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    used: set[str] = set()  # nonces of the login links opened by this process
-    lock = threading.Lock()
-
     def _deny(self, why: str) -> None:
         body = f"forbidden: {why}\n".encode()
         self.send_response(403)
@@ -420,16 +417,14 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _login(self, link: str, https: bool) -> None:
-        """A single-use link: check its signature and expiry, burn its nonce, set the session cookie, redirect."""
+    def _login(self, link: str, https: bool, session: bool) -> None:
+        """A login link: check its signature and expiry (or the session the browser already has), set a session cookie
+        and redirect to the page, which drops the link from the address bar."""
         expiry, _, rest = link.partition(".")
         nonce, _, sig = rest.rpartition(".")
         ok = expiry.isdigit() and int(expiry) > time.time() and hmac.compare_digest(sig, _sign(self.token, f"link:{expiry}.{nonce}"))
-        with self.lock:
-            fresh = ok and nonce not in self.used
-            self.used.add(nonce)
-        if not fresh:
-            return self._deny("this login link has expired or was already used; ask for a new one (tools/race_vm.py link)")
+        if not (ok or session):
+            return self._deny("this login link has expired; ask for a new one (tools/race_vm.py link)")
         # Lax, not Strict: a link opened from another site (a chat, a mail) is a cross-site navigation, and a Strict cookie
         # set on it is not sent on the redirect that follows. The dashboard only answers GET: Lax keeps it from other sites.
         self.send_response(303)
@@ -444,11 +439,12 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         https = self.headers.get("X-Forwarded-Proto") == "https"  # behind Caddy (tools/race_vm.py)
         if self.token:
+            cookie = SimpleCookie(self.headers.get("Cookie", "")).get("frontier_dashboard")
+            session = bool(cookie and _valid_session(self.token, cookie.value))
             link = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("k", [""])[0]
             if link:
-                return self._login(link, https)
-            cookie = SimpleCookie(self.headers.get("Cookie", "")).get("frontier_dashboard")
-            if not (cookie and _valid_session(self.token, cookie.value)):
+                return self._login(link, https, session)
+            if not session:
                 return self._deny("open the dashboard with a login link (tools/race_vm.py link)")
         if self.path.startswith("/api/state"):
             body, ctype = json.dumps(snapshot(self.root), separators=(",", ":")).encode(), "application/json"
