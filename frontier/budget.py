@@ -109,6 +109,9 @@ def verify_chain(path: pathlib.Path) -> bool | str:
     """True, or what is wrong: a line edited or removed, or the end of the log cut off. The chain alone says nothing of
     the lines after the last one kept: the head does. A log without a head (written before heads existed) is checked
     line to line only."""
+    # the head before the lines: a writer appends its line, then its head, so a line appended while this reads is
+    # never counted by the head read here, and a live log is not reported cut
+    head = read_json(_head(path))
     hashes: list[str] = []
     for i, e in enumerate(read_jsonl(path), 1):
         h = e.pop("hash", None)
@@ -116,7 +119,6 @@ def verify_chain(path: pathlib.Path) -> bool | str:
         if e.get("prev") != prev or _digest(prev, e) != h:
             return f"broken at line {i}"
         hashes.append(h)
-    head = read_json(_head(path))
     if head and len(hashes) < head["lines"]:
         return f"cut: {len(hashes)} lines, its head records {head['lines']}"
     if head and hashes[head["lines"] - 1] != head["hash"]:

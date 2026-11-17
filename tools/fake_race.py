@@ -2,13 +2,16 @@
 """A fake race for the dashboard: plausible state directories for one team per provider, with no model call.
 
     python3 tools/fake_race.py DIR [--hours 24] [--seed 7] [--live]
+    python3 tools/fake_race.py DIR --replay [--speed 10] [--hours 72]     # a race from its start, played SPEED times faster
     python3 -m frontier dashboard --root DIR
 
 It writes what the launcher, the gateway and the MCP server would have written over the first --hours of a race that
 started --hours ago: mission.json, budgets.json, the hash-chained llm.jsonl and events.jsonl (through budget.py, so
 the dashboard finds them intact), resources.json, runners/<id>.log and the harness session logs, and the snapshots at
 the time and spend milestones of frontier/snapshots.py with a made-up scientific quality in DIR/jury/snapshots.json.
-Costs come from config/prices.toml. With --live it then keeps appending calls and actions in real time until stopped.
+Costs come from config/prices.toml. With --live it then keeps appending calls and actions in real time until stopped. With --replay the
+race starts now, empty, and its --hours of race are written as they happen, SPEED times faster: every date is divided by
+SPEED from the start, and the snapshots and the jury follow the real clock, as the framework's do.
 """
 
 from __future__ import annotations
@@ -79,6 +82,7 @@ class Team:
         # where its science levels off, how fast, and how its code and data follow it
         self.grades: dict[str, dict] = {}
         self.graded: list[tuple] = []  # (time, commit, label) of each graded snapshot, for the jury
+        self.speed = 1.0  # race minutes per real minute: the science grows with the race's time
         self.events: list[dict] = []
         self.llm: list[dict] = []
         self.resources: list[dict] = []
@@ -275,7 +279,7 @@ class Team:
             commit = f"{r.getrandbits(160):040x}"
             self.ev(t, "snapshot", labels=[lab], commit=commit, minutes=round(m, 2), llm_usd=round(llm, 4),
                     simulation_usd=round(sim, 4), core_seconds=round(m * 60 * r.uniform(0.2, 0.9), 1), pdf={lab: "ok"})
-            work = m - (180 if self.harness == "vibe" else 0)  # minutes of real work: Vibe's first sessions failed
+            work = m * self.speed - (180 if self.harness == "vibe" else 0)  # minutes of real work: Vibe's first sessions failed
             if m >= 15:  # before, there is no report to grade
                 q = max(q - 4, min(100, self.skill * (1 - math.exp(-max(0, work) / self.tau)) + r.gauss(0, 2.5)))
                 arts = min(100, max(0.0, q * self.code + r.gauss(0, 3)))  # code and data follow the science, loosely
@@ -309,6 +313,16 @@ def jury(root: pathlib.Path, teams: list[Team], cfg: dict, rng: random.Random, e
     """What a snapshot jury would write in DIR/jury: each judge's calls in its ledger and a verdict event per snapshot."""
     d = root / "jury"
     d.mkdir(exist_ok=True)
+    calls, events = jury_rows(teams, cfg, rng, end)
+    budget.write_json(d / "budgets.json", {"llm_usd": 100.0})
+    for name, rows in (("llm.jsonl", calls), ("events.jsonl", events)):
+        (d / name).unlink(missing_ok=True)
+        for e in sorted(rows, key=lambda e: e["t"]):
+            budget.append_chained(d / name, e)
+
+
+def jury_rows(teams: list[Team], cfg: dict, rng: random.Random, end: dt.datetime) -> tuple[list[dict], list[dict]]:
+    """Each judge's calls and verdicts for every graded snapshot, a few minutes after it, never on its own provider."""
     calls, events = [], []
     for tm in teams:
         for t, commit, lab in tm.graded:
@@ -332,11 +346,108 @@ def jury(root: pathlib.Path, teams: list[Team], cfg: dict, rng: random.Random, e
                                "label": lab, "scientific_quality": round(min(100, max(0, g["scientific_quality"] + rng.gauss(0, 3))), 1),
                                "artifacts": round(min(100, max(0, g["artifacts"] + rng.gauss(0, 3))), 1),
                                "seconds": round(secs), "usd": round(usd, 6)})
-    budget.write_json(d / "budgets.json", {"llm_usd": 100.0})
-    for name, rows in (("llm.jsonl", calls), ("events.jsonl", events)):
-        (d / name).unlink(missing_ok=True)
-        for e in sorted(rows, key=lambda e: e["t"]):
-            budget.append_chained(d / name, e)
+    return calls, events
+
+
+def compress(tm: Team, speed: float) -> None:
+    """Divide every date of a team's simulated race by `speed` from its start: the race happens `speed` times faster."""
+    def at(t: dt.datetime) -> dt.datetime:
+        return tm.start + (t - tm.start) / speed
+
+    def m(s: str) -> str:
+        return iso(at(budget.parse_time(s)))
+
+    for e in tm.llm + tm.events:
+        e["t"] = m(e["t"])
+    for r in tm.resources:
+        r["created"] = m(r["created"])
+        if r.get("deleted_at"):
+            r["deleted_at"] = m(r["deleted_at"])
+    tm.caps["deadline"] = m(tm.caps["deadline"])
+    if tm.delivered_at:
+        tm.delivered_at = at(tm.delivered_at)
+    if getattr(tm, "delivery", None):
+        d = tm.delivery
+        d.update(delivered_at=m(d["delivered_at"]), elapsed_hours=round(d["elapsed_hours"] / speed, 3), deadline=tm.caps["deadline"])
+        for e in tm.events:
+            if e["event"] == "delivered":
+                e.update({k: d[k] for k in ("delivered_at", "elapsed_hours", "deadline")})
+    tm.speed = speed
+
+
+def replay(root: pathlib.Path, teams: list[Team], jcalls: list[dict], jevents: list[dict]) -> None:
+    """Write each team's race and the jury's work as the real clock reaches them; a snapshot's grade is published once
+    its judges have answered."""
+    jd = root / "jury"
+    jd.mkdir(exist_ok=True)
+    for f in [jd / "llm.jsonl", jd / "events.jsonl", jd / ".llm.jsonl.head", jd / ".events.jsonl.head"]:
+        f.unlink(missing_ok=True)
+    budget.write_json(jd / "budgets.json", {"llm_usd": 100.0})
+    budget.write_json(jd / "snapshots.json", {})
+    ready = {}  # commit -> when its grade is published: its last verdict, or the snapshot itself without a judge
+    for tm in teams:
+        for t, commit, _ in tm.graded:
+            ready[commit] = iso(t)
+    for v in jevents:
+        ready[v["commit"]] = max(ready.get(v["commit"], ""), v["t"])
+    queues = {}
+    for tm in teams:
+        for f in ["llm.jsonl", "events.jsonl", ".llm.jsonl.head", ".events.jsonl.head", "delivery.json"]:
+            (tm.d / f).unlink(missing_ok=True)
+        for sub in ("runners", "sessions"):
+            (tm.d / sub).mkdir(exist_ok=True)
+            for f in (tm.d / sub).glob("*.log"):
+                f.unlink()
+        budget.write_json(tm.d / "mission.json", {"name": tm.name, "harness": tm.harness, "provider": tm.p, "providers": [tm.p],
+                                                 "tier": "frontier", "reasoning": "high", "workspace": str(tm.d / "ws"),
+                                                 "state": str(tm.d), "fake": True})
+        budget.write_json(tm.d / "budgets.json", {k: v for k, v in tm.caps.items() if not k.startswith("frozen")})
+        budget.write_json(tm.d / "resources.json", [])
+        queues[tm.name] = {"llm": sorted(tm.llm, key=lambda e: e["t"]), "events": sorted(tm.events, key=lambda e: e["t"]),
+                           "i": {"llm": 0, "events": 0}, "res": "", "logs": set(), "delivered": False}
+    jq = {"llm": sorted(jcalls, key=lambda e: e["t"]), "events": sorted(jevents, key=lambda e: e["t"]), "i": {"llm": 0, "events": 0}}
+    published: dict[str, dict] = {}
+    print(f"live: replaying {len(teams)} teams; Ctrl-C to stop", flush=True)
+    while True:
+        now = iso(budget.now())
+        for tm in teams:
+            q = queues[tm.name]
+            for kind, f in (("llm", "llm.jsonl"), ("events", "events.jsonl")):
+                rows, i = q[kind], q["i"][kind]
+                while i < len(rows) and rows[i]["t"] <= now:
+                    budget.append_chained(tm.d / f, rows[i])
+                    i += 1
+                q["i"][kind] = i
+            res = [{**r, "state": "deleted" if r.get("deleted_at") and r["deleted_at"] <= now else "alive",
+                    **({} if r.get("deleted_at") and r["deleted_at"] <= now else {"deleted_at": None})}
+                   for r in tm.resources if r["created"] <= now]
+            res = [{k: v for k, v in r.items() if v is not None} for r in res]
+            if json.dumps(res) != q["res"]:
+                budget.write_json(tm.d / "resources.json", res)
+                q["res"] = json.dumps(res)
+            for r in res:
+                if ("r", r["id"]) not in q["logs"]:
+                    (tm.d / "runners" / f"{r['id']}.log").write_text("\n".join(tm.runners.get(r["id"], [])) + "\n")
+                    q["logs"].add(("r", r["id"]))
+            for e in q["events"][:q["i"]["events"]]:
+                if e["event"] == "session_start" and ("s", e["n"]) not in q["logs"]:
+                    (tm.d / "sessions" / f"{e['n']:02d}.log").write_text("\n".join(tm.sessions.get(e["n"], [])) + "\n")
+                    q["logs"].add(("s", e["n"]))
+            if getattr(tm, "delivery", None) and not q["delivered"] and tm.delivery["delivered_at"] <= now:
+                budget.write_json(tm.d / "delivery.json", tm.delivery)
+                budget.write_json(tm.d / "budgets.json", tm.caps)
+                q["delivered"] = True
+            fresh = {c: g for c, g in tm.grades.items() if ready.get(c, "~") <= now}
+            if fresh != published.get(tm.name):
+                published[tm.name] = fresh
+                budget.write_json(jd / "snapshots.json", published)
+        for kind, f in (("llm", "llm.jsonl"), ("events", "events.jsonl")):
+            rows, i = jq[kind], jq["i"][kind]
+            while i < len(rows) and rows[i]["t"] <= now:
+                budget.append_chained(jd / f, rows[i])
+                i += 1
+            jq["i"][kind] = i
+        time.sleep(2)
 
 
 def live(teams: list[Team], rng: random.Random) -> None:
@@ -361,16 +472,30 @@ def live(teams: list[Team], rng: random.Random) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("root")
-    ap.add_argument("--hours", type=float, default=24)
+    ap.add_argument("--hours", type=float, help="hours of race: written before going live (default 24), or replayed (72)")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--live", action="store_true")
+    ap.add_argument("--replay", action="store_true", help="start the race now and write it as it happens")
+    ap.add_argument("--speed", type=float, default=10, help="with --replay: race hours per real hour")
     a = ap.parse_args()
     root = pathlib.Path(a.root)
     cfg = load_config()
+    hours = a.hours or (72 if a.replay else 24)
     end = budget.now()
-    start = end - dt.timedelta(hours=a.hours)
+    start = end - dt.timedelta(hours=hours)
     rng = random.Random(a.seed)
-    teams = [Team(root, p, cfg, random.Random(rng.random()), start, a.hours) for p in NATIVE_HARNESS if p in cfg["providers"]]
+    if a.replay:
+        start, end = end, end + dt.timedelta(hours=hours)
+        teams = [Team(root, p, cfg, random.Random(rng.random()), start, hours) for p in NATIVE_HARNESS if p in cfg["providers"]]
+        for tm in teams:
+            tm.simulate(end)
+            compress(tm, a.speed)
+            tm.snapshots(start + dt.timedelta(hours=hours / a.speed))
+        jcalls, jevents = jury_rows(teams, cfg, rng, start + dt.timedelta(hours=hours / a.speed))
+        print(f"replay: {hours:g} h of race in {hours / a.speed:g} h, from {iso(start)}", flush=True)
+        replay(root, teams, jcalls, jevents)
+        return 0
+    teams = [Team(root, p, cfg, random.Random(rng.random()), start, hours) for p in NATIVE_HARNESS if p in cfg["providers"]]
     for tm in teams:
         tm.simulate(end)
         tm.snapshots(end)

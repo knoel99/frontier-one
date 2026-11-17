@@ -1,6 +1,6 @@
 #!/bin/bash
 # First-boot script of a fake-race VM (cloud-init user data), filled in by `tools/race_vm.py up --fake`: never run by
-# hand. No key reaches this VM and no model is called: tools/fake_race.py writes __HOURS__ hours of synthetic race data
+# hand. No key reaches this VM and no model is called: tools/fake_race.py writes a synthetic race (__FAKEARGS__)
 # and keeps it moving, and the dashboard serves it over HTTPS at <ip>.sslip.io behind its token.
 set -eu
 export HOME=/root DEBIAN_FRONTEND=noninteractive
@@ -26,7 +26,7 @@ unit() {  # name, user, command
   printf '[Unit]\nAfter=network-online.target\n[Service]\nUser=%s\nWorkingDirectory=%s/frontier-one\nEnvironmentFile=%s/race/dashboard.env\nExecStart=%s\nRestart=on-failure\nStandardOutput=append:/var/log/%s.log\nStandardError=append:/var/log/%s.log\n[Install]\nWantedBy=multi-user.target\n' \
     "$2" "$F" "$F" "$3" "$1" "$1" > "/etc/systemd/system/$1.service"
 }
-unit race-fake frontier "/usr/bin/python3 tools/fake_race.py $F/race/missions --hours __HOURS__ --live"
+unit race-fake frontier "/usr/bin/python3 tools/fake_race.py $F/race/missions __FAKEARGS__"
 unit race-dashboard frontier "/usr/bin/python3 -m frontier dashboard --root $F/race/missions --port 8800"
 unit race-caddy root "/usr/local/bin/caddy run --config /etc/caddy/Caddyfile"
 touch /var/log/race-fake.log /var/log/race-dashboard.log && chown frontier: /var/log/race-fake.log /var/log/race-dashboard.log

@@ -2,7 +2,7 @@
 """Run a mission on a Scaleway VM of its own and get the link to its live dashboard.
 
     python3 tools/race_vm.py up MISSION.toml [--zone nl-ams-1] [--type BASIC2-A4C-8G] [--branch master] [--wait]
-    python3 tools/race_vm.py up --fake [--hours 24] [--type BASIC2-A2C-4G] [--wait]   # synthetic data, no key, no LLM
+    python3 tools/race_vm.py up --fake [--speed 10] [--hours 72] [--wait]   # a synthetic race from its start, no key, no LLM
     python3 tools/race_vm.py link SERVER_ID                      # a new single-use login link to its dashboard
     python3 tools/race_vm.py log SERVER_ID [--zone nl-ams-1]     # the tail of the VM's first-boot log
     python3 tools/race_vm.py down SERVER_ID [--zone nl-ams-1]
@@ -156,7 +156,10 @@ def up(a) -> int:
         host = f"{label}.{ip['address'].replace('.', '-')}.sslip.io"
         token = secrets.token_urlsafe(24)
         if a.fake:
-            script = fill(FAKE_INIT.read_text(), {"BRANCH": a.branch, "TOKEN": token, "HOST": host, "HOURS": str(a.hours)})
+            # --speed N: the race starts at boot and plays N times faster; --speed 0: --hours already written, then live
+            fake = (f"--replay --speed {a.speed:g} --hours {a.hours or 72:g}" if a.speed
+                    else f"--hours {a.hours or 24:g} --live")
+            script = fill(FAKE_INIT.read_text(), {"BRANCH": a.branch, "TOKEN": token, "HOST": host, "FAKEARGS": fake})
         else:
             script = fill(INIT.read_text(), {
                 "BRANCH": a.branch, "MISSION_B64": base64.b64encode(mission_for_vm(text).encode()).decode(),
@@ -237,7 +240,8 @@ def main() -> int:
     u = sub.add_parser("up", help="create the race VM and print its dashboard link")
     u.add_argument("mission", nargs="?")
     u.add_argument("--fake", action="store_true", help="no mission: the dashboard of a synthetic race (tools/fake_race.py)")
-    u.add_argument("--hours", type=float, default=24, help="with --fake: hours of race data written before it goes live")
+    u.add_argument("--hours", type=float, help="with --fake: hours of race (72 replayed, or 24 written at once with --speed 0)")
+    u.add_argument("--speed", type=float, default=10, help="with --fake: race hours per real hour, 0 for a race already written")
     u.add_argument("--zone", default="nl-ams-1")
     u.add_argument("--type", help="instance type (default BASIC2-A4C-8G, BASIC2-A2C-4G with --fake)")
     u.add_argument("--branch", default="master", help="branch of the framework the VM clones")
