@@ -244,6 +244,8 @@ recipe, and replaces only the `codex` binary with a stand-in. Their boxes link t
    `dataflow`: where each file the AI reads comes from, and the order of the reads.
 8. [One session](docs/diagrams/launch-4-session.html) ([PNG](docs/diagrams/launch-4-session.png)), `sequence`:
    session 1, function by function, in the order of the trace.
+9. [The jury](docs/diagrams/launch-5-jury.html) ([PNG](docs/diagrams/launch-5-jury.png)), `workflow`: from the teams'
+   files to the ranking; each judge grades one anonymised file on its own, and the verdicts meet only in the median.
 
 ## Repository layout
 
