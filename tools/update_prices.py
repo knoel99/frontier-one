@@ -10,6 +10,7 @@ highest price of their provider and says so.
 
 from __future__ import annotations
 
+import argparse
 import datetime as dt
 import json
 import pathlib
@@ -47,7 +48,10 @@ def per_million(x) -> float | None:
 def main() -> int:
     with open(ROOT / "config" / "providers.toml", "rb") as f:
         providers = tomllib.load(f)["providers"]
-    old = tomllib.loads(PRICES.read_text()) if PRICES.exists() else {}
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--provider", choices=providers, help="refresh prices for this provider only")
+    args = parser.parse_args()
+    old = tomllib.loads(PRICES.read_text()).get("models", {}) if PRICES.exists() else {}
     req = urllib.request.Request("https://openrouter.ai/api/v1/models", headers={"User-Agent": "frontier-prices"})
     with urllib.request.urlopen(req, timeout=60) as r:
         catalog = {m["id"]: m for m in json.load(r)["data"]}
@@ -60,10 +64,17 @@ def main() -> int:
              "# A speed mode multiplies these prices by its price_x (config/providers.toml).", ""]
     missing = []
     for provider, p in providers.items():
-        variants = [v for m in p.get("modes", {}).values() for v in m.get("model", {}).values()]
-        for model in dict.fromkeys([*p["tiers"].values(), *variants]):
-            prev = old.get("models", {}).get(model, {})
-            if prev.get("manual"):
+        refresh = args.provider is None or args.provider == provider
+        previous = {model: entry for model, entry in old.items() if entry.get("provider") == provider}
+        if refresh:
+            variants = [v for m in p.get("modes", {}).values() for v in m.get("model", {}).values()]
+            manual = [model for model, entry in previous.items() if entry.get("manual")]
+            models = dict.fromkeys([*p["tiers"].values(), *variants, *manual])
+        else:
+            models = previous
+        for model in models:
+            prev = previous.get(model, {})
+            if not refresh or prev.get("manual"):
                 entry = prev
             else:
                 hit = next((catalog[c] for c in candidates(provider, model) if c in catalog), None)

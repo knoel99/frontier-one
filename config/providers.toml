@@ -75,8 +75,9 @@ style = "gemini"
 base_url = "https://generativelanguage.googleapis.com/v1beta"
 key_env = "GEMINI_API_KEY"
 effort_field = "generationConfig.thinkingConfig.thinkingLevel"
-tiers = { frontier = "gemini-4-carbon", standard = "gemini-4-argon", light = "gemini-4-hydrogen" }
+tiers = { frontier = "gemini-4-carbon", standard = "gemini-4-neon", light = "gemini-4-hydrogen" }
 reasoning = { low = "low", medium = "medium", high = "high", max = "high" }
+model_reasoning = { "gemini-4-neon" = { max = "xhigh" } }  # Google /models and frontier ping (low, medium, high, xhigh), 2026-11-19
 [providers.google.modes.flex]
 body = { service_tier = "flex" }
 price_x = 0.5
