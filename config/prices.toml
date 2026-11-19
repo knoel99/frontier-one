@@ -69,6 +69,24 @@ source = "https://aistudio.google.com/docs/pricing"
 date = "2026-11-14"
 manual = true
 
+[models."gemini-4-neon"]
+provider = "google"
+input = 3.0
+output = 15.0
+cache_read = 0.15
+cache_write = 0.083333
+source = "openrouter:google/gemini-4-neon"
+date = "2026-11-19"
+
+[models."gemini-4-hydrogen"]
+provider = "google"
+input = 1.5
+output = 7.5
+cache_read = 0.075
+cache_write = 0.083333
+source = "openrouter:google/gemini-4-hydrogen"
+date = "2026-11-19"
+
 [models."gemini-4-argon"]
 provider = "google"
 input = 2.0
@@ -78,15 +96,6 @@ note = "doubles on 2026-12-01"
 source = "https://aistudio.google.com/docs/pricing"
 date = "2026-11-14"
 manual = true
-
-[models."gemini-4-hydrogen"]
-provider = "google"
-input = 1.5
-output = 7.5
-cache_read = 0.075
-cache_write = 0.083333
-source = "openrouter:google/gemini-4-hydrogen"
-date = "2026-11-14"
 
 [models."grok-4.7"]
 provider = "xai"
@@ -192,6 +201,22 @@ cache_read = 0.0375
 source = "openrouter:qwen/qwen3.8-27b"
 date = "2026-11-14"
 
+[models."qwen-3.8-27b"]
+provider = "cerebras"
+input = 0.99
+output = 1.49
+source = "openrouter endpoints of qwen/qwen3.8-27b, provider Cerebras (65,536-token context)"
+date = "2026-11-15"
+manual = true
+
+[models."gpt-oss-120b"]
+provider = "cerebras"
+input = 0.35
+output = 0.75
+source = "openrouter endpoints of openai/gpt-oss-120b, provider Cerebras"
+date = "2026-11-15"
+manual = true
+
 [models."glm-5.3"]
 provider = "zhipu"
 input = 0.084
@@ -214,20 +239,4 @@ input = 0.37
 output = 1.25
 source = "https://docs.z.ai/guides/overview/pricing"
 date = "2026-11-14"
-manual = true
-
-[models."qwen-3.8-27b"]
-provider = "cerebras"
-input = 0.99
-output = 1.49
-source = "openrouter endpoints of qwen/qwen3.8-27b, provider Cerebras (65,536-token context)"
-date = "2026-11-15"
-manual = true
-
-[models."gpt-oss-120b"]
-provider = "cerebras"
-input = 0.35
-output = 0.75
-source = "openrouter endpoints of openai/gpt-oss-120b, provider Cerebras"
-date = "2026-11-15"
 manual = true
