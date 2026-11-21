@@ -17,7 +17,7 @@ import time
 import tomllib
 
 from . import budget as budget_mod
-from . import infra, llm, mission
+from . import infra, llm, mission, params
 from .agent import Ctx, Run
 from .config import ROOT, load_config
 from .gateway import serve
@@ -407,7 +407,7 @@ def start(mission_file: str, prepare_only: bool = False, keep_resources: bool = 
 
     write_settings(state, info["mission"].get("snapshots"))
     threading.Thread(target=_watchdog, args=(run, stop, ws), daemon=True).start()
-    sessions = max_sessions or int(info["mission"].get("harness", {}).get("max_sessions", 20))
+    sessions = max_sessions or int(info["mission"].get("harness", {}).get("max_sessions", params.DEFAULTS["harness.max_sessions"]))
     try:
         if box:  # inside the try: a failed setup still deletes what it created
             box.setup()

@@ -7,6 +7,7 @@
 name = "milady-2027"
 subject = "subject/stage_milady_2027.pdf"   # file (copied into the workspace) or URL (downloaded) of the subject
 workspace = "../mission-milady-2027"        # created as a new git repository if missing
+# state = "../state-milady-2027"            # the mission state; default ~/.frontier/missions/<name>
 duration_hours = 72                          # or: deadline = "2026-11-21T18:00:00+01:00"
 
 [harness]
@@ -29,6 +30,8 @@ budget_usd = 30.0
 [huggingface]
 namespace = ""           # user or organisation; default: the token's user
 visibility = "private"   # private or public: who can see what the AI publishes
+prefix = ""              # in a race: repositories named <prefix>-<team>-<name>, tagged and put in a private collection
+collection = ""          # title of that collection; default: the prefix
 
 [sandbox]
 kind = "none"            # none, or openshell: the harness runs in an NVIDIA OpenShell sandbox (deny-by-default network,
@@ -37,6 +40,7 @@ base_image = "node:22-bookworm"
 # build_ca_bundle = "/path/to/ca.pem"   # a host behind a TLS-intercepting proxy: its CA, trusted while the image builds
 # cpu = 4
 # memory = "8Gi"
+# engine = "docker"                    # container engine of the OpenShell gateway's driver
 
 [network]
 # With a sandbox: hosts the AI may read from during its research (GET only, L7-enforced), on top of the model API,
@@ -56,6 +60,7 @@ weights = [50, 25, 25]
 enabled = true
 grace_minutes = 5
 notice_from_minutes = 15
+notice_calls = 3         # model calls that carry each notice
 time_minutes = [5, 15, 30, 60, 120, 240, 480]
 spend_usd = [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000]
 

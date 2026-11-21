@@ -109,8 +109,12 @@ def cmd_mission(a, cfg) -> int:
     from . import launcher
 
     if a.action == "start":
-        return launcher.start(a.target, prepare_only=a.prepare_only, keep_resources=a.keep_resources,
-                              max_sessions=a.max_sessions, ping=not a.no_ping, dry_run=a.dry_run)
+        try:
+            return launcher.start(a.target, prepare_only=a.prepare_only, keep_resources=a.keep_resources,
+                                  max_sessions=a.max_sessions, ping=not a.no_ping, dry_run=a.dry_run)
+        except ValueError as e:  # a mission file the framework refuses: its problems, without a traceback
+            print(e, file=sys.stderr)
+            return 2
     if a.action == "session":
         return launcher.session(a.target, a.n)
     if a.action == "red-flag":

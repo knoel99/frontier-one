@@ -26,7 +26,7 @@ import tomllib
 import urllib.request
 
 from . import budget as budget_mod
-from . import credentials, llm, prompts, scoring, snapshots
+from . import credentials, llm, params, prompts, scoring, snapshots
 from .config import ROOT, load_config
 from .gateway import base_url_for
 from .harnesses import HARNESSES, McpCommand, artifacts
@@ -43,6 +43,8 @@ def load(path: str | os.PathLike) -> dict:
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as f:
         m = tomllib.load(f)
+    if errors := params.problems(m):
+        raise ValueError("\n".join([f"{path}:", *errors]))
     m["_file"] = str(path)
     m.setdefault("mission", {})
     ws = pathlib.Path(m["mission"].get("workspace", "workspace"))
@@ -50,7 +52,7 @@ def load(path: str | os.PathLike) -> dict:
     st = pathlib.Path(m["mission"].get("state") or STATE_ROOT / m["mission"].get("name", "mission"))
     m["mission"]["state"] = str((path.parent / st).resolve() if not st.is_absolute() else st)
     h = m.setdefault("harness", {})
-    if h.get("name", "auto") == "auto":
+    if h.get("name", params.DEFAULTS["harness.name"]) == "auto":
         h["name"] = NATIVE_HARNESS.get(m.get("llm", {}).get("provider", ""), FALLBACK_HARNESS)
     if h["name"] not in HARNESSES:
         raise ValueError(f"unknown harness {h['name']!r}; known: {', '.join(HARNESSES)}")
@@ -68,9 +70,9 @@ def _deadline(m: dict, start: dt.datetime) -> str | None:
 
 
 def sandbox_kind(m: dict) -> str:
-    kind = m.get("sandbox", {}).get("kind", "none")
-    if kind not in ("none", "openshell"):
-        raise ValueError(f"[sandbox] kind must be none or openshell, not {kind!r}")
+    kind = m.get("sandbox", {}).get("kind", params.DEFAULTS["sandbox.kind"])
+    if kind not in params.SANDBOX_KINDS:
+        raise ValueError(f"[sandbox] kind must be one of {', '.join(params.SANDBOX_KINDS)}, not {kind!r}")
     return kind
 
 
@@ -153,8 +155,8 @@ def _offers_section(ctx) -> str:
 
 def _main_spec(cfg: dict, m: dict):
     try:
-        return llm.resolve(cfg, m["llm"]["provider"], m["harness"].get("tier", "frontier"),
-                           m["harness"].get("reasoning", "high"))
+        return llm.resolve(cfg, m["llm"]["provider"], m["harness"].get("tier", params.DEFAULTS["harness.tier"]),
+                           m["harness"].get("reasoning", params.DEFAULTS["harness.reasoning"]))
     except (KeyError, llm.LLMError):
         return None
 
@@ -193,7 +195,8 @@ def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict]
         f"Generated at {when} by the Frontier launcher. Prices and stock change: the tools give the live values.", "",
         "## Your harness", "",
         f"{h.title} on `{getattr(_main_spec(cfg, m), 'model', '?')}` (provider `{m.get('llm', {}).get('provider')}`, tier "
-        f"`{m['harness'].get('tier', 'frontier')}`, reasoning `{m['harness'].get('reasoning', 'high')}`); its LLM calls "
+        f"`{m['harness'].get('tier', params.DEFAULTS['harness.tier'])}`, reasoning "
+        f"`{m['harness'].get('reasoning', params.DEFAULTS['harness.reasoning'])}`); its LLM calls "
         "are charged to the LLM budget like those of the sub-agents. Its own tools (shell, files, web, native "
         "sub-agents, skills) are yours as well. The speed modes of its provider (under Models below) apply to its "
         "own calls too when it sends the mode's request field; the metering gateway bills the tier each response says "
@@ -225,7 +228,7 @@ def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict]
         f"- Start: {caps.get('start')}. Deadline: {caps.get('deadline') or 'none'}.", "",
         "## Hugging Face", "",
         (f"`hf_publish` publishes to `{hf.get('namespace') or 'the token user'}` with visibility "
-         f"`{hf.get('visibility', 'private')}`." if ctx.run.settings.get("allow_publish") else
+         f"`{hf.get('visibility', params.DEFAULTS['huggingface.visibility'])}`." if ctx.run.settings.get("allow_publish") else
          "No Hugging Face token was given: publishing is not available."), "",
     ]
     return "\n".join(parts)
@@ -241,8 +244,7 @@ def _blocked(m: dict) -> list[str]:
 
 def mission_brief(m: dict, caps: dict, subject: str) -> str:
     g = m.get("grading", {})
-    crit = g.get("criteria") or ["scientific quality", "code and data",
-                                 "efficiency: total spend and time, absolute and against the other teams"]
+    crit = g.get("criteria") or params.DEFAULTS["grading.criteria"]
     w = g.get("weights") or ([] if g.get("criteria") else [f"{v:g}" for v in scoring.WEIGHTS.values()])
     criteria = "\n".join(f"{i + 1}. {c}" + (f" (weight {w[i]})" if i < len(w) else "") for i, c in enumerate(crit))
     budgets = "\n".join([
@@ -350,9 +352,11 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     settings = {"gateway_port": old_settings.get("gateway_port") or _free_port(own), "name": m["mission"].get("name", "mission"),
                 "workspace": str(ws), "harness": m["harness"]["name"],
                 "provider": m.get("llm", {}).get("provider"), "providers": providers_of(m),
-                "tier": m["harness"].get("tier", "frontier"), "reasoning": m["harness"].get("reasoning", "high"),
+                "tier": m["harness"].get("tier", params.DEFAULTS["harness.tier"]),
+                "reasoning": m["harness"].get("reasoning", params.DEFAULTS["harness.reasoning"]),
                 "allow_spend": True, "allow_publish": "huggingface" in m and credentials.available(origin, hf_env),
-                "publish_visibility": hf.get("visibility", "private"), "hf_namespace": hf.get("namespace", ""),
+                "publish_visibility": hf.get("visibility", params.DEFAULTS["huggingface.visibility"]),
+                "hf_namespace": hf.get("namespace", ""),
                 "hf_prefix": hf.get("prefix", ""), "hf_collection": hf.get("collection", ""),
                 "mission_file": m["_file"], "subject": subject, "state": str(state),
                 "sandbox": "" if sandbox_kind(m) == "none" else sandbox_kind(m),
