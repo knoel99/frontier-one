@@ -315,6 +315,7 @@ BASE_TOOLS = ["shell", "read_file", "write_file", "edit_file", "http_request", "
 INFRA_TOOLS = ["scw_offers", "scw_create_instance", "scw_instance", "scw_list_instances", "scw_delete_instance",
                "rp_offers", "rp_create_pod", "rp_pod", "rp_list_pods", "rp_exec", "rp_upload", "rp_logs", "rp_delete_pod",
                "infra_resources", "infra_cleanup", "api_docs", "scaleway", "runpod_mcp"]
+RAW_INFRA_TOOLS = ["api_docs", "scaleway", "runpod_mcp"]  # the rest of INFRA_TOOLS are the ready-made functions
 GROUPS = {"base": BASE_TOOLS, "infra": INFRA_TOOLS, "budget": ["mission_status", "budget_status"], "hf": ["hf_whoami", "hf_publish"],
           "math": ["sympy"], "mission": ["deliver"]}
 

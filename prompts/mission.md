@@ -23,11 +23,8 @@ Carry out the research that the internship subject describes, and deliver its re
   doubling costs the same, and against the teams whose science is of the same order.
 
 Scientific quality and code and data are graded by an anonymous jury on absolute scales, the same for any research
-whatever its means. A team that did not call `deliver` is classified when its repository holds 90 % of the
-deliverables; the stewards take points off for infractions found in the ledgers. At fixed times (5, 15 and 30 minutes,
-then 1, 2, 4, 8 hours and so on) and spends (5, 10, 20, 50, 100 USD and so on), a notice asks you to bring the report up
-to date with what you have; the framework then takes a snapshot of the repository, which the jury grades to draw your
-quality against time and against spend.
+whatever its means. A team that did not call `deliver` is classified when its repository holds {{classified_share}} % of the
+deliverables; the stewards take points off for infractions found in the ledgers.{{snapshots}}
 
 ## Budgets and time
 
@@ -37,7 +34,7 @@ These are hard caps enforced by the framework: a model call or a cloud resource 
 refused. `mission_status` gives at any moment what the race dashboard shows about your mission: spend and what is
 left of each budget, your rate of spend and when each cap would be reached at that rate, compared with the time left,
 tokens by model, sub-agents, machines and failed tool calls. Use it to plan. `budget_status` is its short form.
-When a budget crosses 10, 25, 50, 80, 95 and 98 % of its cap, a `[Frontier budget notice: …]` with the current
+When a budget crosses {{milestones}} % of its cap, a `[Frontier budget notice: …]` with the current
 figures is added to your next model requests. A call is refused as soon as its worst case (the whole context plus the
 largest answer) exceeds what is left, so the last part of a budget cannot be spent in long calls.
 
@@ -82,7 +79,7 @@ All in this repository (commit as you go), then call `deliver`:
 - `CITATION.cff` for the repository, and the answers to the NeurIPS paper checklist (reproducibility, statistical
   significance, compute, licences of the assets used, use of AI) in the report or in `CHECKLIST.md`.
 
-At `deliver` the framework checks DELIVERY.md, COMPLIANCE.md and DECISIONS.md, deletes the cloud resources still
+At `deliver` the framework checks {{required}}, deletes the cloud resources still
 running, writes `COSTS.md` from its ledgers, and freezes the clock and the spend. Work after `deliver` does not
 count.
 

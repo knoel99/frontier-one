@@ -26,7 +26,7 @@ import tomllib
 import urllib.request
 
 from . import budget as budget_mod
-from . import credentials, llm
+from . import credentials, llm, prompts, scoring, snapshots
 from .config import ROOT, load_config
 from .gateway import base_url_for
 from .harnesses import HARNESSES, McpCommand, artifacts
@@ -243,7 +243,7 @@ def mission_brief(m: dict, caps: dict, subject: str) -> str:
     g = m.get("grading", {})
     crit = g.get("criteria") or ["scientific quality", "code and data",
                                  "efficiency: total spend and time, absolute and against the other teams"]
-    w = g.get("weights") or ([] if g.get("criteria") else [50, 25, 25])
+    w = g.get("weights") or ([] if g.get("criteria") else [f"{v:g}" for v in scoring.WEIGHTS.values()])
     criteria = "\n".join(f"{i + 1}. {c}" + (f" (weight {w[i]})" if i < len(w) else "") for i, c in enumerate(crit))
     budgets = "\n".join([
         f"- LLM: {caps.get('llm_usd', 'no cap')} USD on {', '.join(providers_of(m))}.",
@@ -251,11 +251,25 @@ def mission_brief(m: dict, caps: dict, subject: str) -> str:
         f"- Start: {caps.get('start')}. Deadline: {caps.get('deadline') or 'none'}."]
         + ([f"- Network: requests to {', '.join(_blocked(m))} are refused and recorded; the stewards take points off "
             "for each blocked host a team tries."] if _blocked(m) else []))
-    text = (ROOT / "prompts" / "mission.md").read_text()
-    for k, v in {"name": m["mission"].get("name", "mission"), "subject": subject, "criteria": criteria,
-                 "budgets": budgets}.items():
-        text = text.replace("{{" + k + "}}", v)
-    return text
+    return prompts.render("mission", name=m["mission"].get("name", "mission"), subject=subject, criteria=criteria,
+                          budgets=budgets, required=prompts.and_list(REQUIRED),
+                          snapshots=_snapshot_sentence({**snapshots.DEFAULTS, **m.get("snapshots", {})}))
+
+
+def _snapshot_sentence(s: dict) -> str:
+    if not s["enabled"]:
+        return ""
+    minutes = [f"{v:g}" for v in s["time_minutes"][:7] if v < 60]
+    hours = [f"{v / 60:g}" for v in s["time_minutes"][:7] if v >= 60]
+    times = ", then ".join(([prompts.and_list(minutes) + " minutes"] if minutes else [])
+                           + ([", ".join(hours) + " hours"] if hours else []))
+    spends = ", ".join(f"{v:g}" for v in s["spend_usd"][:5])
+    at = " and ".join(([f"times ({times} and so on)"] if times else []) + ([f"spends ({spends} USD and so on)"] if spends else []))
+    if not at:
+        return ""
+    return (f" At fixed {at}, the framework takes a snapshot of the repository, which the jury grades to draw your "
+            f"quality against time and against spend; from {s['notice_from_minutes']:g} minutes on, a notice first asks "
+            "you to bring the report up to date with what you have.")
 
 
 AGENTS_MD = """# AGENTS.md

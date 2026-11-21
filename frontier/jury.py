@@ -30,9 +30,9 @@ import sys
 
 from . import llm
 from .budget import CLOUD_CURRENCY, Budget, parse_time, read_json, read_jsonl, write_json
-from .config import ROOT, load_config
+from .config import load_config
 from .harnesses import HARNESSES, McpCommand, artifacts
-from . import scoring
+from . import prompts, scoring
 from .mission import report_files
 
 CRITERIA = ("scientific_quality", "artifacts", "efficiency")
@@ -271,7 +271,7 @@ def run(root: pathlib.Path, subject: str, context: str, out: pathlib.Path, judge
     out.mkdir(parents=True, exist_ok=True)
     b = Budget(out)
     b.set_caps(llm_usd=cap_usd)
-    brief = (ROOT / "prompts" / "jury.md").read_text()
+    brief = prompts.render("jury")
     states = sorted(p.parent for p in root.glob("*/mission.json"))
     if teams:
         states = [s for s in states if s.name in teams]

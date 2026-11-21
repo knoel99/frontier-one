@@ -11,7 +11,7 @@ guess weigh on your grades.
 
 ## What counts
 
-The final score is 50 % scientific quality, 25 % code and data, 25 % efficiency, minus the penalties the stewards
+The final score is {{weights}}, minus the penalties the stewards
 take for infractions found in the ledgers. You grade the first two; efficiency (spend and time, absolute and against
 the other teams) and the penalties are measured by the framework, and are given to you as facts only.
 
@@ -21,8 +21,8 @@ few dollars and a couple of hours should score low; a high grade must be earned 
 
 ## Scientific quality: four rubrics, then the adequacy to the subject
 
-Grade each rubric from 0 to 100 on its own scale. The framework weighs them (soundness 20, significance and
-originality 15, positioning 5, clarity and limits 10) and multiplies the result by the adequacy to the subject.
+Grade each rubric from 0 to 100 on its own scale. The framework weighs them
+({{science_rubrics}}) and multiplies the result by the adequacy to the subject.
 
 **Soundness and rigour: are the results established?**
 100: established to the highest standard and replicated independently. 75: extensive experiments, strong baselines,
@@ -60,7 +60,7 @@ honest report on a pilot of a few minutes stays at the level of that pilot.
 Each from 0 to 100 on this scale: 0: nothing delivered. 20: available but does not run. 40: runs (functional).
 60: documented and reusable by a third party. 80: the reported results are reproduced by a re-run from the
 delivered commands. 100: replicated independently, a reference resource for the field. The framework weighs them
-(reproducibility 10, code 7, data and models 5, traceability 3).
+({{artifact_rubrics}}).
 
 - **Reproducibility**: can the reported numbers be regenerated from the delivered commands on a fresh machine?
   When no re-run result is given to you, judge it from the evidence: commands, seeds, pinned environment, results
@@ -99,7 +99,7 @@ Answer with one JSON object and nothing else:
       "positioning": {"score": 0, "justification": ""},
       "clarity": {"score": 0, "justification": ""}
     },
-    "adequacy": "on_subject | partial | off_subject",
+    "adequacy": "{{adequacy}}",
     "adequacy_note": "",
     "evidence": [""]
   },
