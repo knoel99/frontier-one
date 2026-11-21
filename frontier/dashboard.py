@@ -41,6 +41,7 @@ import urllib.parse
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from . import archive as archive_mod
 from . import llm as llm_mod
 from . import scoring
 from .budget import Budget, llm_cost, now, parse_time, read_json, read_jsonl, write_json
@@ -375,7 +376,7 @@ def snapshot(root: pathlib.Path) -> dict:
             "feed": feed[::-1],
             "subagents": history, "activities": [a for t in teams for a in t["activities"]],
             "model_calls": [{**c, "team": t["name"]} for t in teams for c in t.get("model_calls", [])],
-            "evaluate": evaluate_state(root), "panel": panel_state(root)}
+            "evaluate": evaluate_state(root), "panel": panel_state(root), "archive": archive_mod.latest(root)}
 
 
 REPORT_MAX = 400_000  # characters of one report file sent to the page
@@ -678,6 +679,8 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._deny("open the dashboard with a login link (tools/race_vm.py link)")
         csp, cache = CSP, "no-store"
         url = urllib.parse.urlsplit(self.path)
+        if url.path == "/api/archive":
+            return self._archive()
         if m := PDF.fullmatch(url.path):
             f = report_pdf(self.root, urllib.parse.unquote(m.group(1)), urllib.parse.unquote(m.group(2)))
             if f is None:
@@ -705,6 +708,27 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             body, ctype = PAGE.encode(), "text/html; charset=utf-8"
         self._reply(body, ctype, csp, cache, https)
+
+    def _archive(self) -> None:
+        """The latest validated archive (frontier/archive.py), streamed: it can weigh hundreds of megabytes."""
+        for _ in range(3):  # a newer archive may delete the one just named: take the newer
+            m = archive_mod.latest(self.root)
+            if not m:
+                break
+            try:
+                src = open(self.root / ".archive" / m["archive"], "rb")  # once open, it stays readable if deleted
+            except FileNotFoundError:
+                continue
+            with src:
+                self.send_response(200)
+                for k, v in (("Content-Type", "application/gzip"), ("Content-Length", str(m["bytes"])),
+                             ("Content-Disposition", f'attachment; filename="{m["archive"]}"'), ("X-Archive-Sha256", m["sha256"]),
+                             ("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"), ("Referrer-Policy", "no-referrer")):
+                    self.send_header(k, v)
+                self.end_headers()
+                shutil.copyfileobj(src, self.wfile)
+            return
+        self._reply(b"no archive yet: one is taken at the first evaluation\n", "text/plain; charset=utf-8", status=404)
 
     def _reply(self, body: bytes, ctype: str, csp: str = CSP, cache: str = "no-store", https: bool = False,
                status: int = 200) -> None:

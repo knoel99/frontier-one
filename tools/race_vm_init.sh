@@ -64,8 +64,10 @@ unit() {  # name, user, command
 unit race-dashboard frontier "/usr/bin/python3 -m frontier dashboard --port 8800"
 unit race-mission frontier "/usr/bin/python3 -m frontier mission start $F/race/mission.toml"
 unit race-caddy root "/usr/local/bin/caddy run --config /etc/caddy/Caddyfile"
-touch /var/log/race-dashboard.log /var/log/race-mission.log && chown frontier: /var/log/race-dashboard.log /var/log/race-mission.log
-systemctl daemon-reload && systemctl enable --now race-caddy race-dashboard race-mission
+unit race-archive frontier "/usr/bin/python3 -m frontier archive --watch"  # tools/race_vm.py collect fetches it
+touch /var/log/race-dashboard.log /var/log/race-mission.log /var/log/race-archive.log
+chown frontier: /var/log/race-dashboard.log /var/log/race-mission.log /var/log/race-archive.log
+systemctl daemon-reload && systemctl enable --now race-caddy race-dashboard race-mission race-archive
 # the certificate comes from Let's Encrypt within a minute or two; the report says whether it came, with Caddy's log
 for i in $(seq 60); do [ "$(curl -s -o /dev/null -m 5 -w '%{http_code}' https://__HOST__/)" != 000 ] && break; sleep 5; done
 echo "== HTTPS: $(curl -s -o /dev/null -m 5 -w '%{http_code}' https://__HOST__/) (403 without the token is the expected answer)"

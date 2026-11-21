@@ -214,6 +214,8 @@ def main(argv=None) -> int:
     sub.add_parser("harnesses", help="supported harnesses and the files generated for each")
     sub.add_parser("dashboard", help="live race dashboard (see frontier/dashboard.py --help)", add_help=False)
     sub.add_parser("jury", help="grade and rank the teams of a race (see frontier/jury.py --help)", add_help=False)
+    sub.add_parser("archive", help="archive a race's analysis data, at each evaluation with --watch (frontier/archive.py)",
+                   add_help=False)
     rp = sub.add_parser("reap", help="dead-man sweep: delete what overran its max_hours or budget (for cron)")
     rp.add_argument("state")
     c = sub.add_parser("cleanup", help="delete the resources a run left alive")
@@ -223,6 +225,10 @@ def main(argv=None) -> int:
         from .dashboard import main as dashboard_main
 
         return dashboard_main(argv[1:])
+    if argv[:1] == ["archive"]:
+        from .archive import main as archive_main
+
+        return archive_main(argv[1:])
     if argv[:1] == ["jury"]:
         from .jury import main as jury_main
 
