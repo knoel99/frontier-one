@@ -1,0 +1,45 @@
+# A race: the missions of every team in one file. Copy this file, fill it, then:
+#   python3 -m frontier race write my-race.toml    # writes <root>/<runner>/mission.toml for each runner
+#   python3 -m frontier race start my-race.toml    # starts every runner's launcher in the background, then returns
+#   python3 -m frontier race status my-race.toml
+#   python3 -m frontier race stop my-race.toml     # each launcher ends its session and deletes what it left alive
+# Every section of a mission file may appear here (config/mission.example.toml says what each key means): the
+# top-level sections hold what all runners share, each [[runners]] the sections that differ, merged over them key by
+# key. Each runner's state is <root>/<runner name> and its workspace <root>/<runner name>/ws, unless it sets them.
+
+[race]
+name = "milady-2027"
+# root = "../races/milady-2027"   # default ~/.frontier/races/<name>
+
+[mission]
+subject = "subject/stage_milady_2027.pdf"   # relative to this file
+duration_hours = 72
+
+[llm]
+budget_usd = 50.0
+
+[scaleway]
+budget_eur = 30.0
+
+[runpod]
+budget_usd = 30.0
+
+[huggingface]
+prefix = "milady-2027"
+
+[[runners]]
+[runners.mission]
+name = "openai"
+[runners.llm]
+provider = "openai"
+[runners.harness]
+name = "codex"
+
+[[runners]]
+[runners.mission]
+name = "anthropic"
+[runners.llm]
+provider = "anthropic"
+[runners.harness]
+name = "claude"
+reasoning = "max"

@@ -122,6 +122,22 @@ def cmd_mission(a, cfg) -> int:
         return 2
 
 
+def cmd_race(a, cfg) -> int:
+    from . import mission, race
+
+    try:
+        r = race.load(a.target)
+    except mission.MissionFileError as e:
+        print(e, file=sys.stderr)
+        return 2
+    for name, v in {"write": race.write, "start": race.start, "stop": race.stop, "status": race.status}[a.action](r).items():
+        if a.action == "status":
+            v = (f"running (pid {v['pid']})" if v["running"] else "not running") \
+                + (", delivered" if v["delivered"] else "") + f", log {v['log']}"
+        print(f"{name}: {v}")
+    return 0
+
+
 def red_flag(state: pathlib.Path, minutes: float | None, reason: str | None) -> int:
     """Neutralise time a team lost to an incident outside its control: the jury subtracts it from its delay."""
     from .budget import append_chained, now
@@ -215,6 +231,9 @@ def main(argv=None) -> int:
     ms.add_argument("--keep-resources", action="store_true")
     ms.add_argument("--max-sessions", type=int)
     ms.add_argument("--no-ping", action="store_true", help="do not check the LLM keys with a tiny call")
+    rc = sub.add_parser("race", help="write, start, stop or check every mission of a race (see config/race.example.toml)")
+    rc.add_argument("action", choices=["write", "start", "stop", "status"])
+    rc.add_argument("target", help="the race .toml file")
     sub.add_parser("harnesses", help="supported harnesses and the files generated for each")
     sub.add_parser("dashboard", help="live race dashboard (see frontier/dashboard.py --help)", add_help=False)
     sub.add_parser("jury", help="grade and rank the teams of a race (see frontier/jury.py --help)", add_help=False)
@@ -240,7 +259,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
     return {"run": cmd_run, "plan": cmd_plan, "ping": cmd_ping, "docs": cmd_docs, "tools": cmd_tools,
-            "cleanup": cmd_cleanup, "call": cmd_call, "mission": cmd_mission, "harnesses": cmd_harnesses,
+            "cleanup": cmd_cleanup, "call": cmd_call, "mission": cmd_mission, "race": cmd_race, "harnesses": cmd_harnesses,
             "reap": cmd_reap}[a.cmd](a, cfg)
 
 
