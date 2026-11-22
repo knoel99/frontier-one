@@ -68,7 +68,7 @@ function theme(t){const r=document.documentElement;if(t==='auto')delete r.datase
  const b=$('theme');b.textContent=THEMES[t];b.setAttribute('aria-label',`Theme: ${t}. Change it`);render()}
 $('theme').onclick=()=>{const cur=document.documentElement.dataset.theme||'auto';theme(cur==='auto'?'light':cur==='light'?'dark':'auto')};
 theme(document.documentElement.dataset.theme||'auto');
-let rs;new ResizeObserver(()=>{clearTimeout(rs);rs=setTimeout(()=>{if(S.d)VIEWS[S.tab]()},150)}).observe($('main'));
+let rs,rw;new ResizeObserver(([e])=>{const w=e.contentRect.width;if(w===rw)return;rw=w;clearTimeout(rs);rs=setTimeout(render,150)}).observe($('main'));  // the charts follow the width; render keeps what is open (a card opening adds a scrollbar, which narrows the page)
 document.querySelectorAll('[data-icon]').forEach(e=>e.innerHTML=`<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">${ICONS[e.dataset.icon]}</svg>`);
 const first=location.hash.slice(1);if(VIEWS[first])show(first);
 load();if(!window.__STATE__)setInterval(()=>{if(!S.paused&&document.visibilityState==='visible')load()},5000);

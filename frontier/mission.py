@@ -68,6 +68,16 @@ def load(path: str | os.PathLike) -> dict:
     return m
 
 
+def states(root: pathlib.Path) -> list[pathlib.Path]:
+    """The state directories of the missions under `root`: a race is the missions that share one."""
+    return sorted(p.parent for p in root.glob("*/mission.json"))
+
+
+def workspace_of(state: pathlib.Path) -> pathlib.Path:
+    """A mission's workspace: the one its mission.json names, else ws/ in its state directory."""
+    return pathlib.Path(budget_mod.read_json(state / "mission.json", {}).get("workspace") or state / "ws")
+
+
 def _deadline(m: dict, start: dt.datetime) -> str | None:
     if m["mission"].get("deadline"):
         return budget_mod.parse_time(m["mission"]["deadline"]).isoformat(timespec="seconds")
@@ -572,7 +582,7 @@ def costs_markdown(st: dict, resources: list[dict], pubs: list[dict]) -> str:
                      f"{c['currency']}.")
     lines += ["", "| provider | resource | id | type | price/h | max h | created | deleted |", "|---|---|---|---|---:|---:|---|---|"]
     for r in resources:
-        price = r.get("eur_per_hour") or r.get("usd_per_hour")
+        price = budget_mod.price_per_hour(r)
         lines.append(f"| {r['provider']} | {r.get('kind')} | {r['id']} | {r.get('type')} | {price} | {r.get('max_hours')} | "
                      f"{r.get('created')} | {r.get('deleted_at', '-')} |")
     lines += ["", "## Time", "", f"Elapsed: {st.get('elapsed_hours')} h. Deadline: {st.get('deadline') or 'none'}.", ""]

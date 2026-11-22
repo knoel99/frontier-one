@@ -34,8 +34,10 @@ from .config import load_config
 from .harnesses import HARNESSES, McpCommand, artifacts
 from . import prompts, scoring
 from .mission import report_files
+from .mission import states as mission_states
 
 CRITERIA = ("scientific_quality", "artifacts", "efficiency")
+DEFAULT_JUDGES = ("openai", "anthropic", "google")
 RECORDS = ("DELIVERY.md", "COMPLIANCE.md", "CHECKLIST.md", "DECISIONS.md")
 MAX_DOC = 30_000  # characters of one record in a judge's file
 MAX_RESULTS = 120_000  # characters of small result files in a judge's file
@@ -272,7 +274,7 @@ def run(root: pathlib.Path, subject: str, context: str, out: pathlib.Path, judge
     b = Budget(out)
     b.set_caps(llm_usd=cap_usd)
     brief = prompts.render("jury")
-    states = sorted(p.parent for p in root.glob("*/mission.json"))
+    states = mission_states(root)
     if teams:
         states = [s for s in states if s.name in teams]
     specs = {p: llm.resolve(cfg, p, "frontier", "high") for p in judges}
@@ -441,7 +443,7 @@ def main(argv: list[str] | None = None) -> int:
     subject = (subprocess.run(["pdftotext", "-layout", str(subj), "-"], capture_output=True, text=True, check=True).stdout
                if subj.suffix.lower() == ".pdf" else subj.read_text())
     res = run(pathlib.Path(a.root), subject, pathlib.Path(a.context).read_text(), pathlib.Path(a.out),
-              a.judge or (read_json(pathlib.Path(a.out) / "panel.json", {}) or {}).get("judges") or ["openai", "anthropic", "google"],
+              a.judge or (read_json(pathlib.Path(a.out) / "panel.json", {}) or {}).get("judges") or list(DEFAULT_JUDGES),
               a.cap_usd, a.team or None,
               pathlib.Path(a.calibration).read_text() if a.calibration else "")
     out = pathlib.Path(a.out)

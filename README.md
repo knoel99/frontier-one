@@ -84,8 +84,8 @@ To test a change, run `python3 -m pytest`, `python3 -m ruff check .`, and `pytho
 ### A race on its own VM
 
 `python3 tools/race_vm.py up mission.toml` runs a mission on a new Scaleway VM and prints the link to its live
-dashboard, `https://<ip>.sslip.io/?t=<token>`. The dashboard is served over HTTPS, and any request without the
-token gets a 403. The keys come from the Key-value secret `frontier-keys` (Secret Manager, Paris, path `/`), one
+dashboard, a login link `https://<ip>.sslip.io/?k=…` signed with the VM's token and valid 15 minutes. The dashboard is
+served over HTTPS, and any request without a session gets a 403. The keys come from the Key-value secret `frontier-keys` (Secret Manager, Paris, path `/`), one
 field per variable name (`OPENAI_API_KEY`, `HF_TOKEN`, …). The VM reads them with an IAM key made for this race,
 which expires a day after the mission ends. The mission and its harness run as a non-root user. Claude Code refuses
 to skip permissions as root. `python3 tools/race_vm.py log <id>` prints the VM's first-boot log, and

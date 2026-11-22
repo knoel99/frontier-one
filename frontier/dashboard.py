@@ -54,10 +54,11 @@ from . import archive as archive_mod
 from . import credentials, params, scoring
 from . import llm as llm_mod
 from . import race as race_mod
-from .budget import Budget, llm_cost, now, parse_time, read_json, read_jsonl, write_json
+from .budget import Budget, llm_cost, now, parse_time, price_per_hour, read_json, read_jsonl, write_json
 from .config import ROOT, load_config
+from .jury import DEFAULT_JUDGES
 from .mission import STATE_ROOT as ROOT_DEFAULT
-from .mission import MissionFileError, report_files
+from .mission import MissionFileError, report_files, states, workspace_of
 
 FEED = 300  # actions kept in the global feed
 LINK_MINUTES = 15
@@ -259,7 +260,7 @@ def activities(name: str, settings: dict, events: list[dict], subs: list[dict], 
             out.append({"team": name, "kind": kind, "provider": r["model"].split("/")[0], "label": r["agent"],
                         "start": r["start"], "end": r["end"], "detail": f"{r['model']}@{r['effort']}, {r['usd']:.4f} USD"})
     for r in resources:
-        price = r.get("eur_per_hour") or r.get("usd_per_hour")
+        price = price_per_hour(r)
         out.append({"team": name, "kind": "machine", "provider": r["provider"], "label": r.get("name") or r["id"],
                     "start": r.get("created"), "end": r.get("deleted_at"), "detail": f"{r.get('type')}, {price}/h"})
     return [a for a in out if a["start"]]
@@ -272,7 +273,7 @@ def runner_activity(d: pathlib.Path, resources: list[dict], at) -> list[dict]:
     for r in resources:
         created, ended = parse_time(r.get("created")), parse_time(r.get("deleted_at"))
         hours = ((ended or at) - created).total_seconds() / 3600 if created else 0.0
-        price = r.get("eur_per_hour") or r.get("usd_per_hour") or 0
+        price = price_per_hour(r) or 0
         log = d / "runners" / f"{r['id']}.log"
         text = log.read_text(errors="replace") if log.exists() else ""
         out.append({"provider": r["provider"], "id": r["id"], "name": r.get("name"), "type": r.get("type"),
@@ -287,7 +288,7 @@ def runner_activity(d: pathlib.Path, resources: list[dict], at) -> list[dict]:
 def simulation_series(resources: list[dict], at) -> list[list]:
     """Cumulative spend of the rented machines over time, EUR counted at par with USD as the snapshots do: a point at
     each creation and deletion, where the slope changes, and one now."""
-    spans = [(parse_time(r.get("created")), parse_time(r.get("deleted_at")) or at, r.get("eur_per_hour") or r.get("usd_per_hour") or 0)
+    spans = [(parse_time(r.get("created")), parse_time(r.get("deleted_at")) or at, price_per_hour(r) or 0)
              for r in resources if r.get("created")]
     times = sorted({t for a, b, _ in spans for t in (a, b) if t <= at} | ({at} if spans else set()))
     return [[t.isoformat(timespec="seconds"), round(sum(max(0.0, (min(b, t) - a).total_seconds()) / 3600 * p
@@ -331,7 +332,7 @@ def team_state(d: pathlib.Path, at: dt.datetime | None = None) -> dict:
         created = parse_time(r.get("created"))
         hours = (at - created).total_seconds() / 3600 if created else 0
         alive.append({"provider": r["provider"], "id": r["id"], "type": r.get("type"), "name": r.get("name"),
-                      "price_h": r.get("eur_per_hour") or r.get("usd_per_hour"), "hours": round(hours, 2),
+                      "price_h": price_per_hour(r), "hours": round(hours, 2),
                       "max_hours": r.get("max_hours")})
     subs = subagents(events, llm, sessions, at)
     runners = runner_activity(d, b.resources(), at)
@@ -366,11 +367,11 @@ def snapshot(root: pathlib.Path) -> dict:
     grades = read_json(root / "jury" / "snapshots.json", {}) or {}
     at = race_now(root)
     teams = []
-    for p in sorted(root.glob("*/mission.json")):
+    for d in states(root):
         try:
-            teams.append(team_state(p.parent, at))
+            teams.append(team_state(d, at))
         except (OSError, ValueError, KeyError) as e:  # a file being rewritten: skip this team for this refresh
-            print(f"dashboard: {p.parent.name}: {e}", file=sys.stderr)
+            print(f"dashboard: {d.name}: {e}", file=sys.stderr)
     for t in teams:
         g = grades.get(t["name"], {})
         for sn in t["snapshots"]:
@@ -392,7 +393,6 @@ def snapshot(root: pathlib.Path) -> dict:
 REPORT_MAX = 400_000  # characters of one report file sent to the page
 
 
-DEFAULT_JUDGES = ("openai", "anthropic", "google")  # frontier/jury.py's default panel
 JUDGE_USAGE = {"input": 30000, "cached": 15000, "output": 4000}  # one verdict's tokens, until the jury has answered once
 
 
@@ -468,7 +468,7 @@ def reports(root: pathlib.Path, name: str) -> dict | None:
     d = team_dir(root, name)
     if d is None:
         return None
-    ws = pathlib.Path(read_json(d / "mission.json", {}).get("workspace") or d / "ws")
+    ws = workspace_of(d)
     if not ws.is_dir():
         return {"files": [], "pdfs": []}
     clock = read_json(root / "clock.json")  # a replayed race: its files were written on its own clock
@@ -512,7 +512,7 @@ def tex_pdf(root: pathlib.Path, name: str, path: str) -> pathlib.Path | str:
     r = reports(root, name)
     if r is None or path not in [f["path"] for f in r["files"] if f["kind"] == "tex"]:
         return "no such LaTeX file"
-    src = pathlib.Path(read_json(root / name / "mission.json", {}).get("workspace") or root / name / "ws") / path
+    src = workspace_of(root / name) / path
     out = pdf_cache(root, name, path, src)
     if out.is_file():
         return out
@@ -547,7 +547,7 @@ def report_pdf(root: pathlib.Path, name: str, path: str) -> pathlib.Path | None:
     r = reports(root, name)
     if r is None or path not in r["pdfs"]:
         return None
-    return pathlib.Path(read_json(root / name / "mission.json", {}).get("workspace") or root / name / "ws") / path
+    return workspace_of(root / name) / path
 
 
 def jury_state(d: pathlib.Path) -> dict:
