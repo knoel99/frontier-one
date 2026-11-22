@@ -36,6 +36,7 @@ class Param:
     choices: Callable[[], list[str]] | None = None
     minimum: float | None = None
     required: bool = False
+    form: bool = True  # False: an older form the files may hold and a form does not offer
 
     def __post_init__(self):
         if self.kind not in KINDS or self.scope not in ("race", "runner"):
@@ -54,7 +55,7 @@ def _providers() -> list[str]:
 
 def _key_sources(section: str) -> tuple[Param, ...]:
     return tuple(Param(f"{section}.{k}", "str", None, "runner", f"older form of a key source: the variable holding the {section} key "
-                       "(prefer [secrets])") for k in ("key_env", "token_env"))
+                       "(prefer [secrets])", form=False) for k in ("key_env", "token_env"))
 
 
 _SNAP = snapshots.DEFAULTS
@@ -192,3 +193,8 @@ def problems(m: dict) -> list[str]:
         if p.required and k not in (m.get(section) if isinstance(m.get(section), dict) else {}):
             out.append(f"{p.key} is missing: add {k} to [{section}] ({p.doc}).")
     return out
+
+
+def schema() -> list[dict]:
+    """The table as JSON-ready rows, for a form: `choices` evaluated to a list, or None."""
+    return [{**vars(p), "choices": p.choices() if p.choices else None} for p in PARAMS if p.form]

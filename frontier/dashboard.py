@@ -9,6 +9,13 @@ that keeps no cookie). Opening one sets a signed session cookie (SESSION_DAYS) a
 carries a valid session passes whatever link it repeats, so a link that leaked opens nothing once it expired.
 A dashboard reachable from the Internet (tools/race_vm.py) is served this way, behind HTTPS.
 
+    python3 -m frontier dashboard --race race.toml                 # also edits, starts and stops that race (Setup tab)
+
+With --race the dashboard can spend money, so it is never open: without FRONTIER_DASHBOARD_TOKEN it makes a token of its
+own and prints a login link at start. --root then defaults to the race's root (to ~/.frontier/races/<file stem> while
+the file is missing or refused, and to the new root once a save sets one). It then also writes that file and starts
+and stops its launchers.
+
 Read-only: it reads the framework's ledgers (llm.jsonl, resources.json, events.jsonl, budgets.json, delivery.json)
 and the harness session logs; it writes nothing in the missions. The scientific quality of each snapshot comes from
 <root>/jury/snapshots.json, {team: {snapshot commit: {"scientific_quality": x, "artifacts": y}}} (or a bare number for
@@ -22,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import copy
 import gzip
 import hashlib
 import hmac
@@ -37,17 +45,19 @@ import sys
 import tempfile
 import threading
 import time
+import tomllib
 import urllib.parse
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import archive as archive_mod
+from . import credentials, params, scoring
 from . import llm as llm_mod
-from . import scoring
+from . import race as race_mod
 from .budget import Budget, llm_cost, now, parse_time, read_json, read_jsonl, write_json
 from .config import ROOT, load_config
 from .mission import STATE_ROOT as ROOT_DEFAULT
-from .mission import report_files
+from .mission import MissionFileError, report_files
 
 FEED = 300  # actions kept in the global feed
 LINK_MINUTES = 15
@@ -593,9 +603,95 @@ def standings(teams: list[dict]) -> None:
                        "final": None if e is None else scoring.final(x["quality"], x["artifacts"], e)}
 
 
+SETUP_MAX = 256 * 1024  # bytes of a race posted by the Setup tab
+_racing = threading.Lock()  # one save, start or stop at a time: a start never reads a file being replaced
+
+
+def _checked(raw: dict | None, file: pathlib.Path) -> dict | None:
+    try:
+        return race_mod.check(copy.deepcopy(raw), file) if isinstance(raw, dict) else None
+    except MissionFileError:
+        return None
+
+
+def setup_state(file: pathlib.Path) -> dict:
+    """What the Setup tab shows: the parameters, the race file as written (null when missing) and its problems, the
+    runners' status, and the framework's providers with their model per tier."""
+    cfg = load_config()
+    raw, problems, status = None, [], {}
+    if file.exists():
+        try:
+            raw = tomllib.loads(file.read_text())
+            status = race_mod.status(race_mod.check(copy.deepcopy(raw), file))
+        except tomllib.TOMLDecodeError as e:
+            problems = [f"not valid TOML: {e}"]
+        except MissionFileError as e:
+            problems = str(e).splitlines()[1:]  # the first line names the file
+    return {"schema": params.schema(), "services": [n for n, x in credentials.services(cfg).items() if x.kind == "service"],
+            "providers": {n: p.get("tiers", {}) for n, p in cfg["providers"].items()},
+            "race": raw, "problems": problems, "status": status, "file": str(file)}
+
+
+def _secrets(r: dict | None) -> dict[tuple[str, str], object]:
+    """{(runner name, or "" for the shared [secrets], variable): source} of a parsed race."""
+    out: dict[tuple[str, str], object] = {}
+    runners = r.get("runners") if isinstance(r, dict) and isinstance(r.get("runners"), list) else []
+    for x in [r, *runners] if isinstance(r, dict) else []:
+        m = x.get("mission") if isinstance(x, dict) else None
+        if isinstance(x, dict) and isinstance(x.get("secrets"), dict):
+            where = "" if x is r else str(m.get("name") if isinstance(m, dict) else "")
+            out.update({(where, var): src for var, src in x["secrets"].items()})
+    return out
+
+
+def save_setup(file: pathlib.Path, body: object) -> tuple[int, dict]:
+    """Check a race posted by the page as race.load checks a file, then write it whole, as posted. From the browser a
+    secret comes from env:NAME or a proxy: a file: or cmd: source runs or reads on this host, so it stays only when the
+    file already holds it byte for byte in that place."""
+    new = body.get("race") if isinstance(body, dict) else None
+    if not isinstance(new, dict):
+        return 400, {"problems": ['the body is {"race": {...}}']}
+    try:
+        old = tomllib.loads(file.read_text()) if file.exists() else None
+    except tomllib.TOMLDecodeError:
+        old = None
+    held = _secrets(old)
+    out = [f"{where + ': ' if where else ''}secrets.{var}: only env:NAME or proxy can be set here; a file: or cmd: source "
+           "is written by hand in the race file." for (where, var), src in _secrets(new).items()
+           if not (src == "proxy" or isinstance(src, str) and src.startswith("env:") or held.get((where, var)) == src)]
+    try:
+        checked = race_mod.check(copy.deepcopy(new), file)
+        text = race_mod.dumps(new)
+    except MissionFileError as e:
+        out += str(e).splitlines()[1:]
+    except TypeError as e:  # a value TOML has no form for, which the checks let through
+        out.append(str(e))
+    if out:
+        return 400, {"problems": out}
+    running = sorted({n for r in (_checked(old, file), checked) if r for n, x in race_mod.status(r).items() if x["running"]})
+    if running:
+        return 409, {"problems": [f"{', '.join(running)} running: stop the race before changing its file."]}
+    tmp = file.with_name(f".{file.name}.{secrets.token_hex(4)}.tmp")
+    tmp.write_text(text)
+    os.replace(tmp, file)
+    return 200, setup_state(file)
+
+
+def race_action(file: pathlib.Path, action: str) -> tuple[int, dict]:
+    """Start or stop the race of the file on disk; the page polls the status that follows."""
+    try:
+        r = race_mod.load(file)
+    except FileNotFoundError:
+        return 409, {"problems": ["no race file yet: save the race first."]}
+    except MissionFileError as e:
+        return 409 if action == "start" else 400, {"problems": str(e).splitlines()[1:] or [str(e)]}
+    result = race_mod.start(r) if action == "start" else race_mod.stop(r, wait_s=0)
+    return 200, {"result": result, "status": race_mod.status(r)}
+
+
 WEB = pathlib.Path(__file__).with_name("web")
 # One classic script sharing its globals, in this order: a top-level const or statement runs before its first use.
-SCRIPTS = ("core", "charts", "overview", "teams", "analysis", "jury", "markdown", "reports", "main")
+SCRIPTS = ("core", "charts", "overview", "teams", "analysis", "jury", "markdown", "reports", "setup", "main")
 
 
 def page() -> str:
@@ -620,6 +716,8 @@ PDF_CSP = "frame-ancestors 'self'"  # the Results tab shows it in a frame; the b
 class _Handler(BaseHTTPRequestHandler):
     root: pathlib.Path = ROOT_DEFAULT
     token: str = ""
+    race_file: pathlib.Path | None = None  # --race: the Setup tab and its routes
+    root_from_race = False  # no --root: the root follows the race file's
     server_version, sys_version = "frontier-dashboard", ""
 
     def log_message(self, *a):
@@ -664,6 +762,8 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._session_ok() or (origin and origin != self.headers.get("Host", "")):
             return self._deny("no session")
         path = urllib.parse.urlsplit(self.path).path
+        if path in ("/api/setup", "/api/race/start", "/api/race/stop"):
+            return self._setup(path)
         if path == "/api/evaluate":
             ok = request_evaluation(self.root)
             return self._reply(json.dumps({"requested": ok}).encode(), "application/json", status=200 if ok else 409)
@@ -692,6 +792,8 @@ class _Handler(BaseHTTPRequestHandler):
         url = urllib.parse.urlsplit(self.path)
         if url.path == "/api/archive":
             return self._archive()
+        if url.path == "/api/setup":
+            return self._setup(url.path)
         if m := PDF.fullmatch(url.path):
             f = report_pdf(self.root, urllib.parse.unquote(m.group(1)), urllib.parse.unquote(m.group(2)))
             if f is None:
@@ -716,9 +818,34 @@ class _Handler(BaseHTTPRequestHandler):
             csp, cache = DIAGRAM_CSP, "private, max-age=3600"  # an Archify page runs its own viewer, fonts inlined
         elif self.path.startswith("/api/state"):
             body, ctype = json.dumps(snapshot(self.root), separators=(",", ":")).encode(), "application/json"
-        else:
-            body, ctype = PAGE.encode(), "text/html; charset=utf-8"
+        else:  # with --race, a flag tells the page to ask for its Setup tab
+            page_ = PAGE.replace("<script>", "<script>window.__SETUP__=1;", 1) if self.race_file else PAGE
+            body, ctype = page_.encode(), "text/html; charset=utf-8"
         self._reply(body, ctype, csp, cache, https)
+
+    def _setup(self, path: str) -> None:
+        """The Setup tab's routes, behind a session (main never serves --race without a token)."""
+        if not self.race_file:
+            return self._reply(b"no race file: start the dashboard with --race FILE\n", "text/plain; charset=utf-8", status=404)
+        if not self.token:
+            return self._deny("no session")
+        if self.command == "GET":
+            code, out = 200, setup_state(self.race_file)
+        elif path == "/api/setup":
+            n = int(self.headers.get("Content-Length") or 0)
+            try:
+                body = json.loads(self.rfile.read(n)) if 0 < n <= SETUP_MAX else None
+            except ValueError:
+                body = None
+            with _racing:
+                code, out = (save_setup(self.race_file, body) if body is not None else
+                             (400, {"problems": [f"the body is not JSON of at most {SETUP_MAX // 1024} KiB"]}))
+            if code == 200 and self.root_from_race:
+                type(self).root = pathlib.Path(race_mod.load(self.race_file)["race"]["root"])
+        else:
+            with _racing:
+                code, out = race_action(self.race_file, path.rsplit("/", 1)[1])
+        self._reply(json.dumps(out, default=str).encode(), "application/json", status=code)
 
     def _archive(self) -> None:
         """The latest validated archive (frontier/archive.py), streamed: it can weigh hundreds of megabytes."""
@@ -765,21 +892,32 @@ class _Handler(BaseHTTPRequestHandler):
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python3 -m frontier dashboard")
-    ap.add_argument("--root", default=str(ROOT_DEFAULT), help="directory holding the missions' state directories")
+    ap.add_argument("--root", help=f"directory holding the missions' state directories (default {ROOT_DEFAULT}, or the race's)")
+    ap.add_argument("--race", help="the race file this dashboard edits, starts and stops (the Setup tab)")
     ap.add_argument("--port", type=int, default=8800)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--once", help="write a static HTML snapshot to this file and exit")
     a = ap.parse_args(argv)
-    root = pathlib.Path(a.root).expanduser()
+    race_file = pathlib.Path(a.race).expanduser().resolve() if a.race else None
+    root = pathlib.Path(a.root).expanduser() if a.root else ROOT_DEFAULT
+    if race_file and not a.root:
+        try:
+            root = pathlib.Path(race_mod.load(race_file)["race"]["root"])
+        except (OSError, MissionFileError):
+            root = race_mod.RACES / race_file.stem
     if a.once:
         state = json.dumps(snapshot(root)).replace("</", "<\\/")
         pathlib.Path(a.once).write_text(PAGE.replace("<script>", f"<script>window.__STATE__={state};", 1))
         print(f"wrote {a.once}")
         return 0
-    _Handler.root = root
+    _Handler.root, _Handler.race_file, _Handler.root_from_race = root, race_file, bool(race_file and not a.root)
     _Handler.token = os.environ.get("FRONTIER_DASHBOARD_TOKEN", "")
     srv = ThreadingHTTPServer((a.host, a.port), _Handler)
-    print(f"dashboard on http://{a.host}:{a.port} for {root}", file=sys.stderr)
+    url = f"http://{a.host}:{srv.server_address[1]}"
+    print(f"dashboard on {url} for {root}", file=sys.stderr)
+    if race_file and not _Handler.token:  # it can start a race, so it is never open: a token of its own, as Jupyter does
+        _Handler.token = secrets.token_urlsafe(24)
+        print(f"open it within {LINK_MINUTES} min with {login_link(url, _Handler.token)}", file=sys.stderr)
     srv.serve_forever()
     return 0
 

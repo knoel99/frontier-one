@@ -36,6 +36,12 @@ def load(path: str | os.PathLike) -> dict:
         r = tomllib.loads(path.read_text())
     except tomllib.TOMLDecodeError as e:
         raise MissionFileError(f"{path}: not valid TOML: {e}") from e
+    return check(r, path)
+
+
+def check(r: dict, path: pathlib.Path) -> dict:
+    """`r`, a parsed race file, as load returns it (changed in place); `path`, absolute, names the file in the
+    messages and anchors its relative paths."""
     r["_file"] = str(path)
     out = []
     race = r.get("race") if isinstance(r.get("race"), dict) else {}
@@ -115,13 +121,21 @@ def _key(k: str) -> str:
     return k if re.fullmatch(r"[A-Za-z0-9_-]+", k) else _value(k)
 
 
-def dumps(m: dict) -> str:
-    """A mission as TOML: sections of plain values, and arrays of tables such as [[skills]]."""
+def _tables(v) -> bool:
+    return isinstance(v, dict) or isinstance(v, list) and bool(v) and all(isinstance(x, dict) for x in v)
+
+
+def dumps(m: dict, prefix: str = "") -> str:
+    """A mission or a race as TOML: sections of plain values, arrays of tables such as [[skills]], and the tables
+    inside them such as [runners.mission]."""
     lines = []
     for section, body in m.items():
+        name = prefix + _key(section)
         for table in body if isinstance(body, list) else [body]:
-            lines += [f"[[{_key(section)}]]" if isinstance(body, list) else f"[{_key(section)}]",
-                      *(f"{_key(k)} = {_value(v)}" for k, v in table.items()), ""]
+            lines += [f"[[{name}]]" if isinstance(body, list) else f"[{name}]",
+                      *(f"{_key(k)} = {_value(v)}" for k, v in table.items() if not _tables(v)), ""]
+            if inner := {k: v for k, v in table.items() if _tables(v)}:
+                lines.append(dumps(inner, name + "."))
     return "\n".join(lines)
 
 

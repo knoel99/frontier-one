@@ -20,7 +20,8 @@ framework does the rest:
 
 A race is N such missions run in parallel, one per provider and harness, on the same subject with the same caps.
 One race file holds them all: the shared sections once, and one `[[runners]]` per team for what differs
-(`config/race.example.toml`); `python3 -m frontier race start|status|stop race.toml` runs every team at once.
+(`config/race.example.toml`); `python3 -m frontier race start|status|stop race.toml` runs every team at once. `python3 -m frontier dashboard --race race.toml`
+adds a Setup tab that edits that file and starts and stops the race; it prints a login link, since it can spend money.
 
 ![A Frontier One race](docs/diagrams/race.png)
 
