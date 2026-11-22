@@ -6,6 +6,7 @@ import http.client
 import json
 import pathlib
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -86,6 +87,15 @@ def test_a_runner_overrides_a_shared_key_and_a_shared_key_reaches_every_runner(t
     ('[race]\nname = "r"\n' + SHARED + RUNNERS.replace('provider = "anthropic"', ""), ["anthropic: llm.provider is missing"]),
     ('[race]\nname = "r"\n' + SHARED.replace("[llm]", 'workspace = "w"\n[llm]') + RUNNERS,
      ["mission.workspace in the shared [mission]", "[runners.mission]"]),
+    ('[race]\nname = "r"\n' + SHARED + RUNNERS.replace('"anthropic"', '"race.json"', 1), ["'race.json'", "its own files"]),
+    ('[race]\nname = "r"\n' + SHARED + RUNNERS.replace('"anthropic"', '"' + "x" * 64 + '"', 1), ["not a folder name", "at most 63"]),
+    ('[race]\nname = "r"\n' + SHARED + RUNNERS.replace('name = "openai"', 'name = "openai"\nstate = "s"')
+     .replace('name = "anthropic"', 'name = "anthropic"\nstate = "s"'), ["anthropic: mission.state = ", "is also openai's mission.state"]),
+    ('mission = 5\n[race]\nname = "r"\n' + RUNNERS, ["mission = 5 is not a table"]),
+    ('llm = "x"\n[race]\nname = "r"\n' + SHARED.split("[llm]")[0] + RUNNERS, ["llm = 'x' is not a table", "[llm]"]),
+    ('[race]\nname = "r"\n' + SHARED.replace("[llm]", "[[llm]]") + RUNNERS, ["llm = [{'budget_usd': 5.0}] is not a table"]),
+    ('[race]\nname = "r"\n' + SHARED + '[[runners]]\nllm = "x"\n[runners.mission]\nname = "a"\n',
+     ["#1: llm = 'x' is not a table", "[runners.llm]"]),
 ])
 def test_a_bad_race_file_is_refused_with_its_fix(tmp_path, body, words):
     f = race_file(tmp_path, body)
@@ -147,6 +157,32 @@ def test_start_status_and_stop_drive_every_runner(tmp_path):
     race.stop(r, wait_s=20)
 
 
+def test_a_process_that_took_a_dead_launcher_s_pid_is_never_taken_for_it_nor_signalled(tmp_path):
+    r = race.load(race_file(tmp_path))
+    files = race.write(r)
+    other = subprocess.Popen(["tail", "-f", str(files["openai"])], stdout=subprocess.DEVNULL)  # names the mission file
+    try:
+        dashboard.write_json(tmp_path / "root" / "race.json", {"openai": {"pid": other.pid, "argv": [*race.LAUNCH, str(files["openai"])]}})
+        assert wait_for(lambda: pathlib.Path(f"/proc/{other.pid}/cmdline").read_bytes().startswith(b"tail"))
+        assert race.status(r)["openai"]["running"] is False and race.stop(r, wait_s=0)["openai"] == "was not running"
+        assert other.poll() is None
+    finally:
+        other.kill()
+        other.wait()
+
+
+@pytest.mark.parametrize("text", ["{not json", "", "[]", '{"openai": 5}'])
+def test_a_corrupt_launcher_record_is_a_problem_naming_the_file_and_its_fix(tmp_path, text):
+    r = race.load(race_file(tmp_path))
+    (tmp_path / "root").mkdir()
+    (tmp_path / "root" / "race.json").write_text(text)
+    for act in (race.status, lambda r: race.stop(r, wait_s=0), race.start):
+        with pytest.raises(mission.MissionFileError) as e:
+            act(r)
+        assert str(tmp_path / "root" / "race.json") in str(e.value) and "then delete it" in str(e.value)
+    assert not (tmp_path / "root" / "openai" / "launcher.log").exists()
+
+
 DRIVER = """import pathlib, sys
 from frontier import launcher, mission
 launcher.HARNESS_CONF = pathlib.Path(sys.argv[1])
@@ -194,13 +230,18 @@ def setup_server(tmp_path, monkeypatch):
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     session = "frontier_dashboard=" + dashboard._session("s3cret-token")
 
-    def req(method, path, body=None, cookie=session):
+    def req(method, path, body=None, cookie=session, **headers):
+        """A save names the version of the file on disk unless the body names one."""
+        if path == "/api/setup" and method == "POST" and isinstance(body, dict) and "race" in body and "version" not in body:
+            body = {**body, "version": dashboard.setup_state(Handler.race_file)["version"]}
         c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=10)
-        c.request(method, path, body=None if body is None else json.dumps(body), headers={"Cookie": cookie} if cookie else {})
+        headers = {"Origin": f"http://127.0.0.1:{srv.server_address[1]}", **({"Cookie": cookie} if cookie else {}), **headers}
+        c.request(method, path, body=None if body is None else json.dumps(body), headers={k: v for k, v in headers.items() if v})
         r = c.getresponse()
         data = r.read()
         return r.status, json.loads(data) if r.headers["Content-Type"] == "application/json" else data
 
+    req.port = srv.server_address[1]
     yield req, Handler
     srv.shutdown()
 
@@ -283,3 +324,61 @@ def test_the_race_starts_and_stops_from_the_dashboard_and_its_file_is_frozen_whi
     assert wait_for(lambda: not any(s["running"] for s in req("GET", "/api/setup")[1]["status"].values()))
     assert all((root / n / "marker").read_text() == "cleaned" for n in ("openai", "anthropic"))
     assert req("POST", "/api/setup", {"race": changed})[0] == 200
+
+
+def test_a_write_is_taken_only_from_this_page_never_from_another_origin_of_the_same_host(tmp_path, setup_server):
+    req, _ = setup_server
+    f, here = tmp_path / "race.toml", f"127.0.0.1:{req.port}"
+    assert req("POST", "/api/setup", {"race": a_race(tmp_path)})[0] == 200
+    before = f.read_text()
+    changed = a_race(tmp_path) | {"llm": {"budget_usd": 100000}}
+    for headers in [{"Origin": None}, {"Origin": "null"}, {"Origin": "http://127.0.0.1:1"}, {"Origin": f"https://{here}"},
+                    {"Sec-Fetch-Site": "same-site"}, {"Sec-Fetch-Site": "cross-site"}]:
+        for path in ("/api/setup", "/api/race/start", "/api/race/stop", "/api/evaluate", "/api/panel"):
+            assert req("POST", path, {"race": changed} if path == "/api/setup" else {}, **headers)[0] == 403, (headers, path)
+    assert f.read_text() == before and not (tmp_path / "root" / "race.json").exists()
+    assert req("POST", "/api/setup", {"race": changed}, **{"Sec-Fetch-Site": "same-origin"})[0] == 200
+    assert req("POST", "/api/race/stop", {}, Origin=f"https://{here}", **{"X-Forwarded-Proto": "https"})[0] == 200  # behind Caddy
+
+
+def test_a_save_keeps_the_file_s_mode_and_never_overwrites_a_file_changed_since_the_page_read_it(tmp_path, setup_server):
+    req, _ = setup_server
+    f = tmp_path / "race.toml"
+    code, d = req("GET", "/api/setup")
+    assert d["version"] == "none" and req("POST", "/api/setup", {"race": a_race(tmp_path), "version": "stale"})[0] == 409
+    code, d = req("POST", "/api/setup", {"race": a_race(tmp_path), "version": "none"})
+    assert code == 200 and d["version"] == req("GET", "/api/setup")[1]["version"] != "none"
+    f.chmod(0o600)
+    f.write_text(f.read_text().replace("budget_usd = 5.0", "budget_usd = 9.0"))  # by hand, under the open page
+    by_hand = f.read_text()
+    code, out = req("POST", "/api/setup", {"race": a_race(tmp_path), "version": d["version"]})
+    assert code == 409 and "changed on disk" in out["problems"][0] and "reload the page" in out["problems"][0] and f.read_text() == by_hand
+    assert req("POST", "/api/setup", {"race": a_race(tmp_path)})[0] == 200 and f.stat().st_mode & 0o777 == 0o600
+
+
+def test_an_unexpected_error_of_the_setup_routes_is_an_answer_and_the_tab_goes_on(tmp_path, setup_server, monkeypatch):
+    req, _ = setup_server
+    assert req("POST", "/api/setup", {"race": a_race(tmp_path)})[0] == 200
+    (tmp_path / "root").mkdir()
+    (tmp_path / "root" / "race.json").write_text("{not json")
+    code, d = req("GET", "/api/setup")
+    assert code == 200 and "race.json is not the record of the race's launchers" in d["problems"][0]
+    assert req("POST", "/api/race/start")[0] == 409 and req("POST", "/api/race/stop")[0] == 400
+    monkeypatch.setattr(race, "status", lambda r: 1 / 0)
+    assert req("GET", "/api/setup") == (500, {"problems": ["ZeroDivisionError: division by zero"]})
+    monkeypatch.undo()
+    assert req("GET", "/api/setup")[0] == 200
+
+
+def test_a_save_gives_back_the_file_s_own_numbers_that_the_browser_sent_back_as_doubles(tmp_path, setup_server):
+    req, _ = setup_server
+    f, by_hand = tmp_path / "race.toml", a_race(tmp_path)
+    by_hand["harness"] = {"max_sessions": 9007199254740993}
+    by_hand["mission"]["duration_hours"] = 2.0
+    f.write_text(race.dumps(by_hand))
+    sent = json.loads(json.dumps(by_hand).replace("9007199254740993", "9007199254740992").replace("2.0", "2"))
+    sent["runners"][0]["llm"]["budget_usd"] = 3
+    assert req("POST", "/api/setup", {"race": sent})[0] == 200
+    saved = tomllib.loads(f.read_text())
+    assert saved["harness"]["max_sessions"] == 9007199254740993 and repr(saved["mission"]["duration_hours"]) == "2.0"
+    assert saved["runners"][0]["llm"]["budget_usd"] == 3

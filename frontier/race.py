@@ -27,6 +27,12 @@ RACES = pathlib.Path.home() / ".frontier" / "races"
 RACE_KEYS = ["name", "root"]
 LAUNCH = [sys.executable, "-m", "frontier", "mission", "start"]
 SAFE_NAME = re.compile(r"[\w.-]+")  # what the dashboard accepts as a team folder (dashboard._team_dir)
+NAME_CHARS = 63  # a folder name: 63 characters of at most 4 bytes in UTF-8 stay within the 255 bytes of a file name
+OWN = ("race.json", "jury", "requests", "clock.json")  # the race folder's own files: race.json, and the dashboard's
+
+
+def _folder(name) -> bool:
+    return isinstance(name, str) and bool(SAFE_NAME.fullmatch(name)) and not name.startswith(".") and len(name) <= NAME_CHARS
 
 
 def load(path: str | os.PathLike) -> dict:
@@ -49,8 +55,8 @@ def check(r: dict, path: pathlib.Path) -> dict:
     name = race.get("name")
     if not name:
         out.append('race.name is missing: add [race] with name = "..." (the folder of the race).')
-    elif not isinstance(name, str) or not SAFE_NAME.fullmatch(name) or name.startswith("."):
-        out.append(f"race.name = {name!r} is not a folder name: use letters, digits, '.', '-' and '_'.")
+    elif not _folder(name):
+        out.append(f"race.name = {name!r} is not a folder name: use letters, digits, '.', '-' and '_', at most {NAME_CHARS}.")
     if not isinstance(race.get("root", ""), str):
         out.append(f"race.root = {race['root']!r} is not a string: put the folder in quotes.")
     elif name:
@@ -62,22 +68,37 @@ def check(r: dict, path: pathlib.Path) -> dict:
         runners = []
     if not runners:
         out.append('no runner: add one [[runners]] per team, with [runners.mission] name = "...".')
+    out += [f"{k} = {v!r} is not a table: write it as [{k}] with its keys, or remove it." for k, v in r.items()
+            if k not in ("race", "runners", "skills", "_file") and not isinstance(v, dict)]
     seen: list[str] = []
     for i, x in enumerate(runners, 1):
+        out += [f"[[runners]] #{i}: {k} = {v!r} is not a table: write it as [runners.{k}] with its keys, or remove it."
+                for k, v in x.items() if k != "skills" and not isinstance(v, dict)]
         rn = x.get("mission", {}).get("name") if isinstance(x.get("mission"), dict) else None
         if not rn:
             out.append(f'[[runners]] #{i} has no mission.name: add [runners.mission] name = "...".')
-        elif not isinstance(rn, str) or not SAFE_NAME.fullmatch(rn) or rn.startswith("."):
-            out.append(f"[[runners]] #{i}: mission.name = {rn!r} is not a folder name: use letters, digits, '.', '-' and '_'.")
+        elif not _folder(rn):
+            out.append(f"[[runners]] #{i}: mission.name = {rn!r} is not a folder name: use letters, digits, '.', '-' and '_', "
+                       f"at most {NAME_CHARS}.")
+        elif rn in OWN:
+            out.append(f"[[runners]] #{i}: mission.name = {rn!r} is a name the race folder uses for its own files: choose another.")
         elif rn in seen:
             out.append(f"[[runners]] #{i}: two runners are named {rn!r}: give each runner a name of its own.")
         else:
             seen.append(rn)
     mergeable = not out  # a runner's mission is merged and checked only once the race and its names are sound
     out += [f"mission.{k} in the shared [mission] would be the same folder for every runner: move it to "
-            f"[runners.mission] or remove it." for k in ("state", "workspace") if k in r.get("mission", {})]
+            f"[runners.mission] or remove it." for k in ("state", "workspace") if isinstance(r.get("mission"), dict) and k in r["mission"]]
     if mergeable:
-        out += [f"{rn}: {p}" for rn, m in missions(r).items() for p in params.problems(m)]
+        ms = missions(r)
+        out += [f"{rn}: {p}" for rn, m in ms.items() for p in params.problems(m)]
+        used: dict[str, tuple[str, str]] = {}
+        for rn, m in ms.items():
+            for k in ("state", "workspace"):
+                f = os.path.normpath(str(m["mission"][k]))
+                o = used.setdefault(f, (rn, k))
+                if o[0] != rn:
+                    out.append(f"{rn}: mission.{k} = {f} is also {o[0]}'s mission.{o[1]}: give each runner a folder of its own.")
     if out:
         raise MissionFileError("\n".join([f"{path}:", *out]))
     return r
@@ -154,22 +175,37 @@ def write(race: dict) -> dict[str, pathlib.Path]:
 
 
 def _pid(race: dict, name: str, rec: dict) -> int | None:
-    """The recorded pid of the runner's launcher if that process still runs its mission file, else None."""
-    pid = (rec.get(name) or {}).get("pid")
+    """The recorded pid of the runner's launcher if that process still runs the very command it was started with, else
+    None: a zombie's cmdline is empty, and a process that took the pid since runs another command."""
+    pid, argv = (rec.get(name) or {}).get("pid"), (rec.get(name) or {}).get("argv")
     # shortcut: /proc is Linux only; elsewhere every launcher reads as not running. Upgrade when a race runs on macOS.
     try:
-        cmd = pathlib.Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+        cmd = pathlib.Path(f"/proc/{pid}/cmdline").read_bytes()
     except (OSError, TypeError):
         return None
-    return pid if str(_dir(race, name) / "mission.toml").encode() in cmd else None  # a zombie's cmdline is empty
+    return pid if isinstance(argv, list) and cmd == b"".join(os.fsencode(str(a)) + b"\0" for a in argv) else None
 
 
 def _record(race: dict) -> pathlib.Path:
     return pathlib.Path(race["race"]["root"]) / "race.json"
 
 
+def _launchers(race: dict) -> dict:
+    """race.json, the launchers started: {runner: {"pid", "argv", "started"}}."""
+    f = _record(race)
+    try:
+        rec = budget.read_json(f, {})
+    except ValueError:
+        rec = None
+    if not isinstance(rec, dict) or not all(isinstance(x, dict) for x in rec.values()):
+        raise MissionFileError(f"{f}:\n{f} is not the record of the race's launchers: check that no launcher of the race "
+                               "still runs (ps -ef | grep 'mission start'), then delete it.")
+    return rec
+
+
 def start(race: dict, argv: list[str] | None = None) -> dict[str, str]:
     """Start the launcher of every runner that is neither running nor delivered, each in a session of its own; at once."""
+    _launchers(race)
     files, ms = write(race), missions(race)
     out = {}
 
@@ -180,11 +216,12 @@ def start(race: dict, argv: list[str] | None = None) -> dict[str, str]:
             elif (pathlib.Path(ms[name]["mission"]["state"]) / "delivery.json").exists():
                 out[name] = "delivered: not started again"
             else:
+                cmd = [*(argv or LAUNCH), str(f)]
                 with open(f.parent / "launcher.log", "a") as log:
-                    p = subprocess.Popen([*(argv or LAUNCH), str(f)], cwd=ROOT, start_new_session=True,
+                    p = subprocess.Popen(cmd, cwd=ROOT, start_new_session=True,
                                          stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                                          env={**os.environ, "PYTHONUNBUFFERED": "1"})  # the log is read live
-                rec[name] = {"pid": p.pid, "started": budget.now().isoformat(timespec="seconds")}
+                rec[name] = {"pid": p.pid, "argv": cmd, "started": budget.now().isoformat(timespec="seconds")}
                 out[name] = f"started (pid {p.pid})"
 
     budget.update_json(_record(race), launch, default={})
@@ -193,7 +230,7 @@ def start(race: dict, argv: list[str] | None = None) -> dict[str, str]:
 
 def stop(race: dict, wait_s: float = 60) -> dict[str, str]:
     """SIGINT to every live launcher (its cleanup deletes the billed machines; never SIGKILL it), then wait up to wait_s."""
-    rec = budget.read_json(_record(race), {})
+    rec = _launchers(race)
     live = {n: pid for n in missions(race) if (pid := _pid(race, n, rec))}
     for pid in live.values():
         try:
@@ -209,7 +246,7 @@ def stop(race: dict, wait_s: float = 60) -> dict[str, str]:
 
 
 def status(race: dict) -> dict[str, dict]:
-    rec = budget.read_json(_record(race), {})
+    rec = _launchers(race)
     return {n: {"running": bool(pid := _pid(race, n, rec)), "pid": pid,
                 "delivered": (pathlib.Path(m["mission"]["state"]) / "delivery.json").exists(),
                 "log": str(_dir(race, n) / "launcher.log")} for n, m in missions(race).items()}

@@ -614,14 +614,19 @@ def _checked(raw: dict | None, file: pathlib.Path) -> dict | None:
         return None
 
 
+def _version(data: bytes | None) -> str:
+    return "none" if data is None else hashlib.sha256(data).hexdigest()[:20]
+
+
 def setup_state(file: pathlib.Path) -> dict:
-    """What the Setup tab shows: the parameters, the race file as written (null when missing) and its problems, the
-    runners' status, and the framework's providers with their model per tier."""
+    """What the Setup tab shows: the parameters, the race file as written (null when missing), its version and its
+    problems, the runners' status, and the framework's providers with their model per tier."""
     cfg = load_config()
     raw, problems, status = None, [], {}
-    if file.exists():
+    data = file.read_bytes() if file.exists() else None
+    if data is not None:
         try:
-            raw = tomllib.loads(file.read_text())
+            raw = tomllib.loads(data.decode())
             status = race_mod.status(race_mod.check(copy.deepcopy(raw), file))
         except tomllib.TOMLDecodeError as e:
             problems = [f"not valid TOML: {e}"]
@@ -629,7 +634,7 @@ def setup_state(file: pathlib.Path) -> dict:
             problems = str(e).splitlines()[1:]  # the first line names the file
     return {"schema": params.schema(), "services": [n for n, x in credentials.services(cfg).items() if x.kind == "service"],
             "providers": {n: p.get("tiers", {}) for n, p in cfg["providers"].items()},
-            "race": raw, "problems": problems, "status": status, "file": str(file)}
+            "race": raw, "version": _version(data), "problems": problems, "status": status, "file": str(file)}
 
 
 def _secrets(r: dict | None) -> dict[tuple[str, str], object]:
@@ -644,17 +649,33 @@ def _secrets(r: dict | None) -> dict[tuple[str, str], object]:
     return out
 
 
+def _exact(new, old):
+    """`new` with each number equal, as a double, to the file's number in the same place given back as the file's own: in
+    the browser a number is a double, so 9007199254740993 comes back as 9007199254740992 and 2.0 as 2."""
+    if isinstance(new, dict) and isinstance(old, dict):
+        return {k: _exact(v, old.get(k)) for k, v in new.items()}
+    if isinstance(new, list) and isinstance(old, list):
+        return [_exact(v, o) for v, o in zip(new, old, strict=False)] + new[len(old):]
+    number = [isinstance(x, (int, float)) and not isinstance(x, bool) for x in (new, old)]
+    return old if all(number) and float(old) == new else new
+
+
 def save_setup(file: pathlib.Path, body: object) -> tuple[int, dict]:
     """Check a race posted by the page as race.load checks a file, then write it whole, as posted. From the browser a
     secret comes from env:NAME or a proxy: a file: or cmd: source runs or reads on this host, so it stays only when the
-    file already holds it byte for byte in that place."""
+    file already holds it byte for byte in that place. `version` is the one of the file the page's form was built from."""
     new = body.get("race") if isinstance(body, dict) else None
     if not isinstance(new, dict):
-        return 400, {"problems": ['the body is {"race": {...}}']}
+        return 400, {"problems": ['the body is {"race": {...}, "version": "..."}']}
+    data = file.read_bytes() if file.exists() else None
+    if body.get("version") != _version(data):
+        return 409, {"problems": ["the race file changed on disk since this page read it: reload the page, then make your "
+                                  "changes again."]}
     try:
-        old = tomllib.loads(file.read_text()) if file.exists() else None
-    except tomllib.TOMLDecodeError:
+        old = tomllib.loads(data.decode()) if data is not None else None
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError):
         old = None
+    new = _exact(new, old)
     held = _secrets(old)
     out = [f"{where + ': ' if where else ''}secrets.{var}: only env:NAME or proxy can be set here; a file: or cmd: source "
            "is written by hand in the race file." for (where, var), src in _secrets(new).items()
@@ -673,20 +694,22 @@ def save_setup(file: pathlib.Path, body: object) -> tuple[int, dict]:
         return 409, {"problems": [f"{', '.join(running)} running: stop the race before changing its file."]}
     tmp = file.with_name(f".{file.name}.{secrets.token_hex(4)}.tmp")
     tmp.write_text(text)
+    if data is not None:
+        shutil.copymode(file, tmp)
     os.replace(tmp, file)
     return 200, setup_state(file)
 
 
 def race_action(file: pathlib.Path, action: str) -> tuple[int, dict]:
     """Start or stop the race of the file on disk; the page polls the status that follows."""
+    if not file.exists():
+        return 409, {"problems": ["no race file yet: save the race first."]}
     try:
         r = race_mod.load(file)
-    except FileNotFoundError:
-        return 409, {"problems": ["no race file yet: save the race first."]}
+        result = race_mod.start(r) if action == "start" else race_mod.stop(r, wait_s=0)
+        return 200, {"result": result, "status": race_mod.status(r)}
     except MissionFileError as e:
         return 409 if action == "start" else 400, {"problems": str(e).splitlines()[1:] or [str(e)]}
-    result = race_mod.start(r) if action == "start" else race_mod.stop(r, wait_s=0)
-    return 200, {"result": result, "status": race_mod.status(r)}
 
 
 WEB = pathlib.Path(__file__).with_name("web")
@@ -756,11 +779,15 @@ class _Handler(BaseHTTPRequestHandler):
         return not self.token or bool(cookie and _valid_session(self.token, cookie.value))
 
     def do_POST(self):
-        """The two writes: ask for an on-demand evaluation, change the jury's panel. A session cookie (SameSite=Lax:
-        never sent by a cross-site POST) and, when the browser states it, an Origin of this host."""
-        origin = urllib.parse.urlsplit(self.headers.get("Origin", "")).netloc
-        if not self._session_ok() or (origin and origin != self.headers.get("Host", "")):
+        """The writes: an on-demand evaluation, the jury's panel, and with --race the Setup tab's. A session cookie, and
+        proof that this page sent it: SameSite=Lax still lets a page on another port of this host POST (same site, other
+        origin), with Origin null when it hides its referrer. So the Origin must be this server's and, when the browser
+        states it, Sec-Fetch-Site same-origin; a client that is no browser sends the Origin of the server it calls."""
+        here = f"{'https' if self.headers.get('X-Forwarded-Proto') == 'https' else 'http'}://{self.headers.get('Host', '')}"
+        if not self._session_ok():
             return self._deny("no session")
+        if self.headers.get("Origin", "").lower() != here.lower() or self.headers.get("Sec-Fetch-Site", "same-origin") != "same-origin":
+            return self._deny(f"a write is accepted from this page only (Origin {here})")
         path = urllib.parse.urlsplit(self.path).path
         if path in ("/api/setup", "/api/race/start", "/api/race/stop"):
             return self._setup(path)
@@ -829,22 +856,25 @@ class _Handler(BaseHTTPRequestHandler):
             return self._reply(b"no race file: start the dashboard with --race FILE\n", "text/plain; charset=utf-8", status=404)
         if not self.token:
             return self._deny("no session")
-        if self.command == "GET":
-            code, out = 200, setup_state(self.race_file)
-        elif path == "/api/setup":
-            n = int(self.headers.get("Content-Length") or 0)
-            try:
-                body = json.loads(self.rfile.read(n)) if 0 < n <= SETUP_MAX else None
-            except ValueError:
-                body = None
-            with _racing:
-                code, out = (save_setup(self.race_file, body) if body is not None else
-                             (400, {"problems": [f"the body is not JSON of at most {SETUP_MAX // 1024} KiB"]}))
-            if code == 200 and self.root_from_race:
-                type(self).root = pathlib.Path(race_mod.load(self.race_file)["race"]["root"])
-        else:
-            with _racing:
-                code, out = race_action(self.race_file, path.rsplit("/", 1)[1])
+        try:
+            if self.command == "GET":
+                code, out = 200, setup_state(self.race_file)
+            elif path == "/api/setup":
+                n = int(self.headers.get("Content-Length") or 0)
+                try:
+                    body = json.loads(self.rfile.read(n)) if 0 < n <= SETUP_MAX else None
+                except ValueError:
+                    body = None
+                with _racing:
+                    code, out = (save_setup(self.race_file, body) if body is not None else
+                                 (400, {"problems": [f"the body is not JSON of at most {SETUP_MAX // 1024} KiB"]}))
+                if code == 200 and self.root_from_race:
+                    type(self).root = pathlib.Path(race_mod.load(self.race_file)["race"]["root"])
+            else:
+                with _racing:
+                    code, out = race_action(self.race_file, path.rsplit("/", 1)[1])
+        except Exception as e:  # noqa: BLE001 - the page always gets an answer it can show, and the server goes on
+            code, out = 500, {"problems": [f"{type(e).__name__}: {e}"]}
         self._reply(json.dumps(out, default=str).encode(), "application/json", status=code)
 
     def _archive(self) -> None:

@@ -727,7 +727,8 @@ def test_dashboard_serves_a_team_report_and_takes_an_evaluation_request_only_fro
 
     def req(method, path, cookie=cookie, body=None, **headers):
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-        c.request(method, path, body=body, headers={**({"Cookie": cookie} if cookie else {}), **headers})
+        origin = {"Origin": f"http://127.0.0.1:{port}"}
+        c.request(method, path, body=body, headers={**origin, **({"Cookie": cookie} if cookie else {}), **headers})
         r = c.getresponse()
         return r.status, r.headers, r.read()
 
@@ -745,6 +746,8 @@ def test_dashboard_serves_a_team_report_and_takes_an_evaluation_request_only_fro
         (root / "requests").mkdir()
         assert req("POST", "/api/evaluate", cookie="")[0] == 403
         assert req("POST", "/api/evaluate", Origin="https://evil.example")[0] == 403
+        assert req("POST", "/api/evaluate", Origin="null")[0] == 403 and req("POST", "/api/evaluate", Origin="http://127.0.0.1:1")[0] == 403
+        assert req("POST", "/api/panel", body=json.dumps({"judges": ["xai"]}), Origin="null")[0] == 403
         assert req("POST", "/api/evaluate", Origin=f"http://127.0.0.1:{port}")[0] == 200
         assert req("POST", "/api/evaluate")[0] == 409  # one pending at a time
         assert len(dashboard.evaluate_state(root)["pending"]) == 1
