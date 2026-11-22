@@ -593,8 +593,19 @@ def standings(teams: list[dict]) -> None:
                        "final": None if e is None else scoring.final(x["quality"], x["artifacts"], e)}
 
 
-PAGE = pathlib.Path(__file__).with_name("dashboard.html").read_text().replace(
-    "<!--LOGOS-->", pathlib.Path(__file__).with_name("logos.svg").read_text())
+WEB = pathlib.Path(__file__).with_name("web")
+# One classic script sharing its globals, in this order: a top-level const or statement runs before its first use.
+SCRIPTS = ("core", "charts", "overview", "teams", "analysis", "jury", "markdown", "reports", "main")
+
+
+def page() -> str:
+    """The dashboard as one page: web/page.html with its style, the logos and the scripts of SCRIPTS inlined."""
+    js = "".join((WEB / f"{n}.js").read_text() for n in SCRIPTS)
+    return ((WEB / "page.html").read_text().replace("<!--STYLE-->\n", (WEB / "style.css").read_text())
+            .replace("<!--LOGOS-->", pathlib.Path(__file__).with_name("logos.svg").read_text()).replace("<!--SCRIPT-->\n", js))
+
+
+PAGE = page()
 # The page runs its own inline script and style only, talks to its own origin only, and is never framed.
 DIAGRAMS = ROOT / "docs" / "diagrams"  # the Archify diagrams the How it works tab shows, under /diagrams/<name>
 DIAGRAM = re.compile(r"/diagrams/([a-z0-9-]+\.(png|html))")

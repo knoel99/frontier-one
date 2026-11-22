@@ -1,0 +1,158 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Race dashboard</title>
+<style>
+<!--STYLE-->
+</style>
+<script>try{const t=localStorage.getItem('fd.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
+</head><body>
+<!--LOGOS-->
+<a class="skip" href="#main">Skip to content</a>
+<header class="top"><div class="bar-in">
+ <h1 class="brand"><i id="dot" aria-hidden="true"></i>Race dashboard</h1>
+ <span class="clock" id="clock"></span>
+ <div class="right"><details class="picker" id="picker"><summary><span>Teams</span> <b id="pk-n"></b> <span class="faces" id="pk-faces"></span></summary>
+  <div class="pop" role="group" aria-label="Teams shown"><div class="acts"><button id="pk-all">All</button><button id="pk-none">None</button><span class="sub" style="margin:0 0 0 auto">"only" keeps one</span></div><div id="pk-list"></div></div></details><button id="theme" title="Follow the device, or always light, or always dark"></button><button id="pause" aria-pressed="false" title="Stop or resume the refresh every 5 seconds">Pause</button></div>
+ <div role="tablist" aria-label="Views" id="tabs">
+  <button role="tab" id="tab-overview" data-group="overview" aria-controls="p-overview" aria-selected="true">Race overview</button>
+  <button role="tab" id="tab-competitors" data-group="competitors" aria-controls="p-teams" aria-selected="false" tabindex="-1">Competitors</button>
+  <button role="tab" id="tab-results" data-group="results" aria-controls="p-reports" aria-selected="false" tabindex="-1">Results</button>
+  <button role="tab" id="tab-evaluation" data-group="evaluation" aria-controls="p-jury" aria-selected="false" tabindex="-1">Evaluation</button>
+  <button role="tab" id="tab-analysis" data-group="analysis" aria-controls="p-activity" aria-selected="false" tabindex="-1">Race analysis</button>
+  <button role="tab" id="tab-about" data-group="about" aria-controls="p-about" aria-selected="false" tabindex="-1">How it works</button>
+ </div>
+ <div role="tablist" class="subtabs" id="subtabs" hidden></div>
+ </div>
+ <span class="sr" aria-live="polite" id="live"></span>
+</div></header>
+<main id="main">
+
+<section role="tabpanel" id="p-overview" aria-labelledby="tab-overview">
+ <div class="home">
+  <div class="card lb"><div class="chart-head"><div><h2>Live leaderboard</h2><p class="sub">Global score out of 100, from the latest graded snapshot. Budget: spent of all the caps together.</p></div></div>
+   <div class="scroll"><table id="board"></table></div>
+   <div class="legend"><span><i class="sw" style="background:var(--c-llm)"></i>model calls</span><span><i class="sw" style="background:var(--c-sim)"></i>simulations</span><span><i class="sw" style="background:var(--line)"></i>left</span></div>
+   <p class="sub" id="jline" style="margin:12px 0 0"></p></div>
+  <div class="stack">
+   <div class="card" data-chart="qt"><div class="chart-head"><div><h2 id="h-qt">Score over time</h2><p class="sub">Out of 100, a point per graded snapshot (milestones or on demand); each line ends on the live score. <span class="why" tabindex="0" data-tip="Why so few points?
+The jury grades a snapshot of the work taken at milestones only: 5, 15, 30 min, then 1, 2, 4, 8 h… of race, and 5, 10, 20, 50 USD… of spend, 5 min after each; or on demand (Evaluate now). Between two grades nothing is measured: the line joins them.">Why so few points?</span></p></div>
+    <div class="ctrls"><label>Score <select id="metric"><option value="final">global</option><option value="science">scientific quality</option><option value="artifacts">code and data</option><option value="efficiency">efficiency</option></select></label>
+    <div class="seg" role="group" aria-label="Time axis scale"><button data-ax="qt" data-v="lin" aria-pressed="true">Linear</button><button data-ax="qt" data-v="log" aria-pressed="false">Log</button></div><button class="feat" data-feat="qt" aria-pressed="false" aria-label="Show score over time large">⤢ Enlarge</button></div></div>
+    <div class="chart" id="c-qt"></div><details class="tv" id="tv-qt"><summary>Table view</summary><div class="scroll" id="t-qt" tabindex="0" role="region" aria-label="Score over time, as a table"></div></details></div>
+   <div class="card" data-chart="qc"><div class="chart-head"><div><h2 id="h-qc">Score against cost</h2><p class="sub">The same graded snapshots, against what the team had spent then. <span class="why" tabindex="0" data-tip="Why so few points?
+The jury grades a snapshot of the work taken at milestones only: 5, 15, 30 min, then 1, 2, 4, 8 h… of race, and 5, 10, 20, 50 USD… of spend, 5 min after each; or on demand (Evaluate now). Between two grades nothing is measured: the line joins them.">Why so few points?</span></p></div>
+    <div class="ctrls"><label>Cost <select data-cost="qc"><option value="all">model calls + simulations</option><option value="llm">model calls</option><option value="sim">simulations</option></select></label>
+    <div class="seg" role="group" aria-label="Cost axis scale"><button data-ax="qc" data-v="lin" aria-pressed="false">Linear</button><button data-ax="qc" data-v="log" aria-pressed="true">Log</button></div><button class="feat" data-feat="qc" aria-pressed="false" aria-label="Show score against cost large">⤢ Enlarge</button></div></div>
+    <div class="chart" id="c-qc"></div><details class="tv" id="tv-qc"><summary>Table view</summary><div class="scroll" id="t-qc" tabindex="0" role="region" aria-label="Score against cost, as a table"></div></details></div>
+   <div class="card" data-chart="sp"><div class="chart-head"><div><h2>Spend over time</h2><p class="sub">Cumulative USD, on the time axis of the score over time; hover for every team.</p></div>
+    <div class="ctrls"><label>Cost <select data-cost="sp"><option value="all">model calls + simulations</option><option value="llm">model calls</option><option value="sim">simulations</option></select></label><button class="feat" data-feat="sp" aria-pressed="false" aria-label="Show spend over time large">⤢ Enlarge</button></div></div>
+    <div class="chart" id="c-sp"></div></div>
+  </div></div>
+</section>
+
+<section role="tabpanel" id="p-teams" aria-labelledby="tab-competitors" hidden>
+ <div class="card" style="margin-bottom:16px"><h2>Detailed leaderboard</h2><p class="sub">Global = 50 % scientific quality + 25 % code and data + 25 % efficiency (see How it works). Select a column to sort.</p><div class="scroll"><table id="board2"></table></div></div>
+ <div class="chart-head"><div><h2>Competitors</h2><p class="sub">Scores, budgets, tokens, machines and the latest actions of each team.</p></div>
+ <div class="ctrls"><label>Sort by <select id="tsort"><option value="final">global standing</option><option value="science">scientific quality</option><option value="artifacts">code and data</option><option value="efficiency">efficiency</option><option value="llm">model-call spend</option><option value="sim">simulation spend</option><option value="model">name</option></select></label></div></div>
+ <div class="teams" id="tcards"></div>
+</section>
+
+<section role="tabpanel" id="p-activity" aria-labelledby="sub-activity" hidden>
+ <div class="card" style="margin-bottom:16px"><div class="chart-head"><div><h2>Activity timeline</h2><p class="sub">Harness sessions, sub-agents and cloud machines. Hatched: still running.</p></div>
+ <div class="ctrls"><label>Group by <select id="gby"><option value="team">team</option><option value="provider">provider</option><option value="kind">kind</option></select></label>
+ <label>Show <select id="gkind"><option value="">everything</option><option value="session">sessions</option><option value="sub-agent">sub-agents</option><option value="machine">machines</option></select></label>
+ <label>Window <select id="gwin"><option value="0">whole race</option><option value="21600">last 6 h</option><option value="3600">last hour</option><option value="900">last 15 min</option></select></label></div></div>
+ <div class="chart scroll" id="c-gantt"></div></div>
+ <div class="card"><div class="chart-head"><div><h2>Model calls</h2><p class="sub">One row per team and model, one tick per call. Tall red ticks: fast modes. Grey: flex.</p></div>
+ <div class="ctrls"><label>Caller <select id="msrc"><option value="">all</option><option value="gateway">harness</option><option value="spawn_agent">sub-agents</option></select></label>
+ <label>Mode <select id="mmode"><option value="">all</option><option value="standard">standard</option><option value="fast">fast modes</option><option value="flex">flex</option></select></label>
+ <label>Window <select id="mwin"><option value="0">whole race</option><option value="21600">last 6 h</option><option value="3600">last hour</option></select></label></div></div>
+ <div class="chart scroll" id="c-models"></div></div>
+</section>
+
+<section role="tabpanel" id="p-subagents" aria-labelledby="sub-subagents" hidden><div class="card"><div class="chart-head"><div><h2>Sub-agents</h2><p class="sub" id="subsum"></p></div>
+ <div class="ctrls"><label>Team <select id="steam"><option value="">all teams</option></select></label><label>Role <select id="srole"><option value="">all roles</option></select></label></div></div>
+ <div id="sdetail"></div><div class="scroll"><table id="subs"></table></div><div class="pager" id="spager"></div></div></section>
+
+<section role="tabpanel" id="p-jury" aria-labelledby="tab-evaluation" hidden>
+ <div class="evgrid">
+ <div class="card"><h2>How the jury judges</h2>
+  <ol class="steps"><li><b>Snapshot.</b> At each milestone (5, 15, 30 min, 1, 2, 4, 8 h…; 5, 10, 20, 50 USD… of spend), or when you ask, the watchdog copies each team's workspace: its report, code and data.</li>
+  <li><b>Blind.</b> Names of providers, models and harnesses are redacted: a judge sees a pseudonym.</li>
+  <li><b>Independent.</b> Each judge reads the snapshot alone, in parallel, and grades scientific quality and code and data out of 100. A judge never grades its own provider's team.</li>
+  <li><b>Median.</b> A criterion's grade is the median of the judges; efficiency comes from spend and time, and global = 50 % science + 25 % code and data + 25 % efficiency.</li></ol></div>
+ <div class="card"><h2>Evaluate now</h2>
+  <p class="sub" id="evhelp"></p>
+  <div class="ctrls"><button id="evaluate">Evaluate now</button><span class="sub" id="evline" role="status"></span></div></div>
+ <div class="card wide"><div class="chart-head"><div><h2>Judges</h2><p class="sub">The panel that grades the next snapshots. Pick the providers whose frontier model judges; an odd number keeps the median a judge's own grade.</p></div>
+  <div class="ctrls"><button id="panelsave" disabled>Apply this panel</button><button id="panelreset" disabled>Undo</button></div></div>
+  <div class="tpick" id="jpick" role="group" aria-label="Judges"></div>
+  <p class="sub warn" id="jwarn"></p><p class="sub" id="jhist"></p></div>
+ <div class="card wide"><div class="chart-head"><div><h2>Archive</h2><p class="sub">At each evaluation the race's analysis data (ledgers, logs, jury, reports and milestone snapshots) is archived; once the new archive is read back and checked, the previous one is deleted. <code>tools/race_vm.py collect</code> fetches it, and <code>down</code> does before deleting the machine.</p></div>
+  <a id="archdl" href="api/archive" download hidden>Download the archive</a></div><p class="sub" id="archline"></p></div>
+ </div>
+ <div class="card" style="margin-bottom:16px"><h2>Jury activity</h2><p class="sub">The judges grade each snapshot blind; a judge never grades the team of its own provider. Each grade is the median of the judges.</p>
+ <div class="facts" id="jfacts"></div><div class="scroll"><table id="jjudges"></table></div></div>
+ <div class="card" style="margin-bottom:16px"><div class="chart-head"><div><h2>Verdicts over time</h2><p class="sub">One bar per verdict, from the judge's first call to its answer. Hover for the grade.</p></div>
+ <label>Window <select id="jwin"><option value="0">whole race</option><option value="21600">last 6 h</option><option value="3600">last hour</option></select></label></div>
+ <div class="chart scroll" id="c-jury"></div></div>
+ <div class="card"><h2>Latest verdicts</h2><p class="sub" id="jsum"></p><div class="scroll"><table id="jtable"></table></div><div class="pager" id="jpager"></div></div>
+</section>
+
+<section role="tabpanel" id="p-feed" aria-labelledby="sub-feed" hidden><div class="card"><div class="chart-head"><div><h2>Event log</h2><p class="sub">Every action of the teams, as logged, latest first.</p></div>
+ <label>Kind <select id="fkind"><option value="">all</option></select></label></div>
+ <div class="scroll feed" tabindex="0" role="region" aria-label="All actions, scrollable"><table id="feedt"></table></div></div></section>
+
+<section role="tabpanel" id="p-reports" aria-labelledby="tab-results" hidden><div class="card"><div class="chart-head"><div><h2>Results</h2><p class="sub">Each team's report as its agent writes it (report* and report/ in its workspace), refreshed live.</p></div></div>
+ <div class="tpick" id="rteam" role="group" aria-label="Team"></div>
+ <div role="tablist" class="rtabs" aria-label="Report format"><button role="tab" id="rv-md" data-rv="md" aria-controls="rbody" aria-selected="true">Markdown</button><button role="tab" id="rv-tex" data-rv="tex" aria-controls="rbody" aria-selected="false" tabindex="-1">LaTeX</button><button role="tab" id="rv-pdf" data-rv="pdf" aria-controls="rbody" aria-selected="false" tabindex="-1">PDF</button></div>
+ <div class="ctrls rbar"><label id="rfilel">File <select id="rfile"></select></label><span class="sub" id="rmeta"></span><span id="rpdf"></span><span class="sub" id="rerr" role="status"></span></div>
+ <div class="scroll report" id="rbody" tabindex="0" role="tabpanel" aria-labelledby="rv-md"></div></div></section>
+<section role="tabpanel" id="p-about" aria-labelledby="tab-about" hidden><div class="doc">
+<div class="card"><h2>A race</h2>
+<p>Each team is one AI provider, in its own harness (Claude Code, Codex CLI, Grok Build…), on the same research subject, with the same deadline and the same budgets: model calls in USD, Scaleway in EUR, Runpod in USD. The AI decides its own strategy: models, reasoning levels, sub-agents, machines and scope. Frontier gives it its tools, meters every cost, keeps the ledgers and checks the deliverables.</p>
+<figure class="arch"><a href="diagrams/race.html" target="_blank" rel="noopener"><img src="diagrams/race.png" loading="lazy" width="2880" height="2932" alt="A race: one mission per provider and harness, in parallel, on the same subject with the same caps, then the jury"></a>
+<figcaption>A race: N missions in parallel. Select the picture for the interactive diagram, every box linked to its code.</figcaption></figure>
+<figure class="arch"><a href="diagrams/launch-1-campaign.html" target="_blank" rel="noopener"><img src="diagrams/launch-1-campaign.png" loading="lazy" width="3960" height="3300" alt="One campaign, stage by stage: the mission file, mission start, prepare, the guards, the session loop, deliver, the stop check, finish, then status, dashboard and jury"></a>
+<figcaption>One team's campaign, stage by stage, with the times of a traced launch.</figcaption></figure>
+<p>Snapshots: at 5, 15 and 30 minutes, then 1, 2, 4, 8 h and doubling, and at 5, 10, 20, 50, 100… USD of total spend, the workspace is committed and tagged. Graded blind by the jury (its activity is in the Jury tab), they draw each team's score against time and money, the charts of the Overview.</p></div>
+<div class="card"><h2>The score, out of 100</h2>
+<div class="fig"><svg viewBox="0 0 940 250" role="img" aria-label="Scoring tree: the global score is 50 percent scientific quality, 25 percent code and data, 25 percent efficiency, minus penalties">
+<rect class="hot" x="370" y="10" width="200" height="54" rx="10"/><text x="470" y="34" text-anchor="middle">Global score</text><text class="m" x="470" y="52" text-anchor="middle">minus the stewards' penalties</text>
+<rect class="box" x="20" y="110" width="270" height="130" rx="10"/><text x="155" y="134" text-anchor="middle">Scientific quality · 50 %</text>
+<text class="m" x="40" y="160">soundness 20 · significance 15</text><text class="m" x="40" y="180">positioning 5 · clarity 10</text><text class="m" x="40" y="204">× adequacy to the subject</text><text class="m" x="40" y="224">1 on it · 0.5 partly · 0 off it</text>
+<rect class="box" x="335" y="110" width="270" height="130" rx="10"/><text x="470" y="134" text-anchor="middle">Code and data · 25 %</text>
+<text class="m" x="355" y="160">reproducibility 10 · code 7</text><text class="m" x="355" y="180">data and models 5 · traceability 3</text><text class="m" x="355" y="204">after the ACM artifact badges</text><text class="m" x="355" y="224">and the FAIR principles</text>
+<rect class="box" x="650" y="110" width="270" height="130" rx="10"/><text x="785" y="134" text-anchor="middle">Efficiency · 25 %</text>
+<text class="m" x="670" y="160">half absolute: spend and time,</text><text class="m" x="670" y="180">−10 points per doubling past 5 $, 5 min</text><text class="m" x="670" y="204">half relative to comparable teams</text><text class="m" x="670" y="224">× min(1, science / 10)</text>
+<path class="arr" d="M470,64V86H155V108" marker-end="url(#ar)"/><path class="arr" d="M470,86V108" marker-end="url(#ar)"/><path class="arr" d="M470,86H785V108" marker-end="url(#ar)"/>
+</svg></div>
+<ul>
+<li><b>Scientific quality</b>: the jury grades each rubric from 0 to 100; the weighted mean is multiplied by the adequacy to the subject. Each grade is the median of the judges.</li>
+<li><b>Code and data</b>: graded the same way, on what another team could rerun and reuse.</li>
+<li><b>Efficiency, absolute</b>: the total spend (model calls + simulations) and the time, each 100 up to 5 USD or 5 minutes, then 10 points less per doubling. 40 USD is 3 doublings past 5: 70.</li>
+<li><b>Efficiency, relative</b>: against the teams whose science is within a factor 2: 50 at par, 25 points per doubling of advance, so 100 for 4 times cheaper or faster.</li>
+<li><b>Guard</b>: efficiency counts in full from a scientific quality of 10; below, it is scaled down, so that spending nothing on nothing does not win.</li>
+<li><b>Penalties</b>: the stewards take points off for infractions found in the ledgers; a broken ledger disqualifies.</li>
+</ul>
+<p>Live, this dashboard applies the same formula (frontier/scoring.py) to each team's latest graded snapshot with its spend and time so far, and to every snapshot against the other teams at the same milestone.</p></div>
+<div class="card"><h2>How the jury grades</h2>
+<p>Each judge is a frontier model of another provider: a judge never grades the team of its own provider. The judges work <b>independently and in parallel</b>: each one gets the grading brief, the subject, the race context, the calibration example if any and the anonymised file of one team, never another judge's verdict. Names are redacted and a file that still names its team is not sent. Only then are the verdicts combined: the median of the judges for each rubric, the strictest judge for the adequacy to the subject, then efficiency, the stewards' penalties and the final score.</p>
+<figure class="arch"><a href="diagrams/launch-5-jury.html" target="_blank" rel="noopener"><img src="diagrams/launch-5-jury.png" loading="lazy" alt="The jury's workflow: the teams' files anonymised, the judges in parallel and independent, the median of their verdicts, the scores and the ranking"></a>
+<figcaption>The jury's workflow (frontier/jury.py).</figcaption></figure></div>
+<div class="card"><h2>More diagrams</h2><p>Interactive, every box linked to its code:
+<a href="diagrams/launch-2-timeline.html" target="_blank" rel="noopener">a launch on one clock</a> ·
+<a href="diagrams/launch-3-prompts.html" target="_blank" rel="noopener">the prompts, skills and files the AI reads</a> ·
+<a href="diagrams/launch-4-session.html" target="_blank" rel="noopener">one session, function by function</a> ·
+<a href="diagrams/processes.html" target="_blank" rel="noopener">the processes of a race</a>.</p></div>
+<div class="card"><h2>Team status</h2><div class="scroll"><table><tbody>
+<tr><td><span class="si si-prep" data-icon="prep"></span> Preparing</td><td>The workspace is ready; no session has started yet.</td></tr>
+<tr><td><span class="si si-run" data-icon="run"></span> Session n running</td><td>The harness is working, in its n-th session.</td></tr>
+<tr><td><span class="si si-wait" data-icon="wait"></span> Between sessions</td><td>A session ended; the launcher starts the next one, up to max_sessions.</td></tr>
+<tr><td><span class="si si-done" data-icon="done"></span> Delivered</td><td>The AI called deliver: the clock and the spend are frozen.</td></tr>
+<tr><td><span class="si si-budget" data-icon="budget"></span> LLM budget spent</td><td>No model call fits in what is left: the launcher stops.</td></tr>
+<tr><td><span class="si si-deadline" data-icon="deadline"></span> Deadline passed</td><td>The time is up; the repository is graded as it stands.</td></tr>
+</tbody></table></div></div></div></section>
+</main><div id="tip" role="tooltip"></div>
+<script>
+<!--SCRIPT-->
+</script></body></html>

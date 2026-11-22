@@ -459,6 +459,17 @@ def test_dashboard_joins_each_snapshot_with_its_grade_and_shows_an_ungraded_one_
     assert t["model"] and t["brand"]["color"] and t["harness_title"]
 
 
+def test_dashboard_page_inlines_every_web_file_into_one_script():
+    from frontier import dashboard
+
+    for f in sorted(dashboard.WEB.iterdir()):
+        assert f.suffix != ".js" or f.stem in dashboard.SCRIPTS, f"web/{f.name} is not in dashboard.SCRIPTS: add it in its place"
+        if f.name != "page.html":
+            assert f.read_text() in dashboard.PAGE, f.name
+    assert not any(m in dashboard.PAGE for m in ("<!--STYLE-->", "<!--LOGOS-->", "<!--SCRIPT-->"))
+    assert dashboard.PAGE.count("<script>") == 2 and dashboard.PAGE.count("</script>") == 2  # the theme pre-script and the page's
+
+
 def test_dashboard_simulation_spend_grows_with_each_machine_alive():
     import datetime as dt
 
