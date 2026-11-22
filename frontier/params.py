@@ -6,14 +6,16 @@
 from __future__ import annotations
 
 import difflib
+import math
 import re
+import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 from . import llm, scoring, snapshots
 from .budget import parse_time
-from .config import load_config
+from .config import ROOT, load_config
 from .credentials import SOURCE_KINDS
 from .harnesses import HARNESSES
 
@@ -41,7 +43,9 @@ class Param:
 
 
 def _harnesses() -> list[str]:
-    return [*HARNESSES, "auto"]
+    # the names with a launch recipe: frontier/harnesses.py also writes files for harnesses nobody can launch yet
+    recipes = tomllib.loads((ROOT / "config" / "harnesses.toml").read_text())
+    return [*(h for h in HARNESSES if h in recipes), "auto"]
 
 
 def _providers() -> list[str]:
@@ -105,7 +109,7 @@ PARAMS: tuple[Param, ...] = (
           minimum=0),
     Param("snapshots.notice_from_minutes", "float", _SNAP["notice_from_minutes"], "race",
           "milestones before this are snapshotted silently", minimum=0),
-    Param("snapshots.notice_calls", "int", _SNAP["notice_calls"], "race", "model calls that carry each notice", minimum=0),
+    Param("snapshots.notice_calls", "int", _SNAP["notice_calls"], "race", "model calls that carry each notice", minimum=1),
     # at least 1: the lists go on doubling past their last value, which 0 or less never would
     Param("snapshots.time_minutes", "numbers", _SNAP["time_minutes"], "race", "time milestones in minutes", minimum=1),
     Param("snapshots.spend_usd", "numbers", _SNAP["spend_usd"], "race", "total spend milestones in USD", minimum=1),
@@ -134,6 +138,8 @@ def _check(p: Param, v: Any) -> list[str]:
         return [f"{p.key} = {v!r} is not {what}: {how}."]
     out = []
     items = v if isinstance(v, list) else [v]
+    if bad := [x for x in items if isinstance(x, float) and not math.isfinite(x)]:
+        return [f"{p.key} = {v!r} holds {bad[0]!r}, which is not a finite number: give a real value, or remove the key."]
     if p.minimum is not None and (low := [x for x in items if x < p.minimum]):
         out.append(f"{p.key} = {v!r} is below its minimum {p.minimum:g} ({low[0]!r}): give a value of at least {p.minimum:g}.")
     if p.choices and (bad := [x for x in items if x not in p.choices()]):

@@ -39,12 +39,19 @@ NATIVE_HARNESS = {"anthropic": "claude", "openai": "codex", "google": "antigravi
 FALLBACK_HARNESS = "opencode"
 
 
+class MissionFileError(ValueError):
+    """A mission file the framework refuses: the message names the file and each problem with its fix."""
+
+
 def load(path: str | os.PathLike) -> dict:
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as f:
-        m = tomllib.load(f)
+        try:
+            m = tomllib.load(f)
+        except tomllib.TOMLDecodeError as e:
+            raise MissionFileError(f"{path}: not valid TOML: {e}") from e
     if errors := params.problems(m):
-        raise ValueError("\n".join([f"{path}:", *errors]))
+        raise MissionFileError("\n".join([f"{path}:", *errors]))
     m["_file"] = str(path)
     m.setdefault("mission", {})
     ws = pathlib.Path(m["mission"].get("workspace", "workspace"))
@@ -261,11 +268,12 @@ def mission_brief(m: dict, caps: dict, subject: str) -> str:
 def _snapshot_sentence(s: dict) -> str:
     if not s["enabled"]:
         return ""
-    minutes = [f"{v:g}" for v in s["time_minutes"][:7] if v < 60]
-    hours = [f"{v / 60:g}" for v in s["time_minutes"][:7] if v >= 60]
-    times = ", then ".join(([prompts.and_list(minutes) + " minutes"] if minutes else [])
-                           + ([", ".join(hours) + " hours"] if hours else []))
-    spends = ", ".join(f"{v:g}" for v in s["spend_usd"][:5])
+    first = sorted(s["time_minutes"])[:7]
+    minutes = [f"{v:g}" for v in first if v < 60]
+    hours = [f"{v / 60:g}" for v in first if v >= 60]
+    times = ", then ".join(([prompts.and_list(minutes) + (" minute" if minutes == ["1"] else " minutes")] if minutes else [])
+                           + ([", ".join(hours) + (" hour" if hours == ["1"] else " hours")] if hours else []))
+    spends = ", ".join(f"{v:g}" for v in sorted(s["spend_usd"])[:5])
     at = " and ".join(([f"times ({times} and so on)"] if times else []) + ([f"spends ({spends} USD and so on)"] if spends else []))
     if not at:
         return ""

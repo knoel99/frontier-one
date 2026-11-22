@@ -28,6 +28,10 @@ def test_the_example_files_load_and_every_key_they_set_is_a_row():
     ({"scaleway": {"budget_eur": "30"}}, ["scaleway.budget_eur", "not a number"]),
     ({"harness": {"max_sessions": True}}, ["harness.max_sessions", "not a whole number"]),
     ({"harness": {"name": "nosuch"}}, ["harness.name = 'nosuch'", "opencode"]),
+    ({"harness": {"name": "aider"}}, ["harness.name = 'aider'", "opencode"]),  # files are written for it, no launch recipe
+    ({"llm": {"provider": "openai", "budget_usd": float("nan")}}, ["llm.budget_usd", "not a finite number"]),
+    ({"mission": {"subject": "s", "duration_hours": float("inf")}}, ["mission.duration_hours", "not a finite number"]),
+    ({"snapshots": {"notice_calls": 0}}, ["snapshots.notice_calls", "minimum 1"]),
     ({"llm": {"provider": "nosuch"}}, ["llm.provider = 'nosuch'", "openai"]),
     ({"llm": {"provider": "openai", "other_providers": ["nosuch"]}}, ["llm.other_providers = 'nosuch'", "anthropic"]),
     ({"mission": {"name": "x"}}, ["mission.subject is missing", "add subject to [mission]"]),
@@ -60,3 +64,17 @@ def test_the_defaults_of_the_table_are_those_of_the_code():
     bare = {"mission": {}, "llm": {"provider": "openai"}}
     assert mission.sandbox_kind(bare) == params.DEFAULTS["sandbox.kind"]
     assert all(c in mission.mission_brief(bare, {}, "s") for c in params.DEFAULTS["grading.criteria"])
+
+
+def test_every_mission_command_prints_a_refused_file_without_a_traceback(tmp_path, capsys):
+    from frontier.__main__ import main
+
+    bad = tmp_path / "bad.toml"
+    bad.write_text('[llm]\nbudget_uds = 5\n')
+    twice = tmp_path / "twice.toml"
+    twice.write_text('[harness]\ntier = "light"\n[harness]\ntier = "light"\n')
+    for action in ("start", "status"):
+        assert main(["mission", action, str(bad)]) == 2
+        assert "did you mean llm.budget_usd" in capsys.readouterr().err
+    assert main(["mission", "status", str(twice)]) == 2
+    assert f"{twice}: not valid TOML" in capsys.readouterr().err

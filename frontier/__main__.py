@@ -106,20 +106,20 @@ def cmd_call(a, cfg) -> int:
 
 
 def cmd_mission(a, cfg) -> int:
-    from . import launcher
+    from . import launcher, mission
 
-    if a.action == "start":
-        try:
+    try:
+        if a.action == "start":
             return launcher.start(a.target, prepare_only=a.prepare_only, keep_resources=a.keep_resources,
                                   max_sessions=a.max_sessions, ping=not a.no_ping, dry_run=a.dry_run)
-        except ValueError as e:  # a mission file the framework refuses: its problems, without a traceback
-            print(e, file=sys.stderr)
-            return 2
-    if a.action == "session":
-        return launcher.session(a.target, a.n)
-    if a.action == "red-flag":
-        return red_flag(pathlib.Path(a.target), a.minutes, a.reason)
-    return launcher.status(a.target)
+        if a.action == "session":
+            return launcher.session(a.target, a.n)
+        if a.action == "red-flag":
+            return red_flag(pathlib.Path(a.target), a.minutes, a.reason)
+        return launcher.status(a.target)
+    except mission.MissionFileError as e:
+        print(e, file=sys.stderr)
+        return 2
 
 
 def red_flag(state: pathlib.Path, minutes: float | None, reason: str | None) -> int:

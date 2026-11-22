@@ -44,6 +44,7 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from frontier import params
 from frontier.budget import parse_time
 from frontier.dashboard import LINK_MINUTES, _session, login_link
 from frontier.http import scw, scw_defaults, scw_raw
@@ -145,6 +146,8 @@ def up(a) -> int:
         path = pathlib.Path(a.mission).resolve()
         text = path.read_text()
         m = tomllib.loads(text)
+        if errors := params.problems(m):  # before anything is created: the VM would refuse the file at its first boot
+            sys.exit("\n".join([f"{path}:", *errors]))
         subject_name, subject = subject_file(path, m)
         perms = ["SecretManagerReadOnly", "SecretManagerSecretAccess"]
         if "scaleway" in m:

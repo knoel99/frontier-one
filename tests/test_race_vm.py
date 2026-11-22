@@ -37,3 +37,14 @@ def test_the_fake_race_vm_gets_no_key():
     script = race_vm.fill(race_vm.FAKE_INIT.read_text(), {"BRANCH": "b", "TOKEN": "t0k", "HOST": "h", "FAKEARGS": "--replay --speed 10"})
     assert "__" not in script and "SCW_SECRET_KEY" not in script and "secret-manager" not in script
     assert "fake_race.py" in script and "FRONTIER_DASHBOARD_TOKEN=t0k" in script
+
+
+def test_up_refuses_a_bad_mission_before_it_creates_anything(tmp_path, monkeypatch):
+    import argparse
+
+    f = tmp_path / "m.toml"
+    f.write_text('[mission]\nsubject = "s.md"\nteam = "blue"\n[llm]\nprovider = "openai"\n')
+    monkeypatch.setattr(race_vm, "scw_defaults", lambda: {"project_id": "p", "region": "fr-par"})
+    monkeypatch.setattr(race_vm, "scw", lambda *a, **k: pytest.fail(f"Scaleway was called: {a}"))
+    with pytest.raises(SystemExit, match="mission.team is not a key"):
+        race_vm.up(argparse.Namespace(fake=False, mission=str(f), zone="nl-ams-1"))
