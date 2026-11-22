@@ -25,7 +25,7 @@ import tempfile
 import time
 
 from .budget import locked, now, read_json, read_jsonl, verify_chain, write_json
-from .mission import STATE_ROOT, report_files
+from .mission import STATE_ROOT, report_files, states, workspace_of
 
 FILE_MAX = 50_000_000  # bytes: a larger file stays out of the archive, named in the manifest
 SKIP = (".lock", ".tmp")
@@ -63,10 +63,10 @@ def _capture(root: pathlib.Path) -> dict[str, bytes | None]:
         elif path.name not in {f".{c}.head" for c in CHAINED}:  # a head is taken with its log
             out[name] = path.read_bytes()
 
-    for d in sorted(p.parent for p in root.glob("*/mission.json")):
+    for d in states(root):
         for f in sorted(d.rglob("*")):
             add(f, f.relative_to(root).as_posix())
-        ws = pathlib.Path(read_json(d / "mission.json", {}).get("workspace") or d / "ws")
+        ws = workspace_of(d)
         if ws.is_dir() and not ws.is_relative_to(d):  # a workspace inside the state directory is in it already
             for f in sorted({*report_files(ws), *ws.glob("*.md"), *(ws / "snapshots").glob("*"), *ws.glob("report*.pdf")}):
                 add(f, f"{d.name}/workspace/{f.relative_to(ws).as_posix()}")

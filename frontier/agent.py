@@ -12,12 +12,11 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from . import llm
+from . import llm, prompts
 from .budget import Budget, append_chained, now, update_json
 from .config import ROOT
 from .tools import GROUPS, INFRA_TOOLS, REGISTRY, Tool, _obj, _truncate, all_tools
 
-PROMPTS = ROOT / "prompts"
 ROLES = ROOT / "roles"
 
 
@@ -150,12 +149,6 @@ def expand_tools(names) -> list[str]:
     return out
 
 
-def _fill(template: str, **kw) -> str:
-    for k, v in kw.items():
-        template = template.replace("{{" + k + "}}", str(v))
-    return template
-
-
 class Agent:
     def __init__(self, run: Run, provider: str, tier: str, reasoning: str, tools: list[str] | None = None,
                  instructions: str = "", depth: int = 0, parent: str | None = None, max_turns: int | None = None,
@@ -175,16 +168,15 @@ class Agent:
         self.usage = {"input": 0, "output": 0, "reasoning": 0, "calls": 0, "usd": 0.0}
 
     def _system(self, instructions: str) -> str:
-        base = (PROMPTS / "system.md").read_text()
-        parts = [_fill(base,
+        parts = [prompts.render("system",
             model=self.spec.label(), tier=self.spec.tier, depth=self.depth,
             max_depth=self.run.limits.get("max_depth", 2), workspace=self.run.workspace,
             tools=", ".join(self.tools), date=dt.date.today().isoformat())]
         if any(t in INFRA_TOOLS for t in self.tools):
-            parts.append(_fill((PROMPTS / "cloud.md").read_text(),
-                               spend="allowed" if self.run.allow_spend else "NOT allowed in this run (read-only calls only)"))
+            parts.append(prompts.render("cloud",
+                                        spend="allowed" if self.run.allow_spend else "NOT allowed in this run (read-only calls only)"))
         if "spawn_agent" in self.tools:
-            parts.append(_fill((PROMPTS / "subagents.md").read_text(),
+            parts.append(prompts.render("subagents",
                 providers=", ".join(self.run.cfg["providers"]), provider=self.spec.provider, roles=roles_summary()))
         if instructions:
             parts.append("# Your role\n\n" + instructions)

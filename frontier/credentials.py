@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 
 PLACEHOLDER = "proxy-injected"  # sent when the value is not here: a proxy replaces it
 CMD_TIMEOUT_S = 60
+SOURCE_KINDS = ("env", "file", "cmd", "proxy")  # what a [secrets] source may start with: resolve reads each
 # The header a model API reads its key from, by wire style (config/providers.toml `style`).
 STYLE_AUTH = {"anthropic": ("x-api-key", ""), "gemini": ("x-goog-api-key", "")}
 

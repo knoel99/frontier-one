@@ -22,7 +22,7 @@ frontier-mcp = "frontier.mcp:main"
 packages = ["frontier"]
 
 [tool.setuptools.package-data]
-frontier = ["dashboard.html"]
+frontier = ["web/*", "logos.svg"]
 
 [tool.ruff]
 line-length = 140

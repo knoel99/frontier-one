@@ -1,6 +1,6 @@
 # Cloud infrastructure
 
-- Ready-made functions: `scw_offers`, `scw_create_instance`, `scw_instance`, `scw_list_instances`, `scw_delete_instance`, `rp_offers`, `rp_create_pod`, `rp_pod`, `rp_list_pods`, `rp_exec`, `rp_upload`, `rp_logs`, `rp_delete_pod`, `infra_resources`, `infra_cleanup`. They handle prices, images, polling and leftover volumes; their output comes from the live APIs.
+- Ready-made functions: {{infra_tools}}. They handle prices, images, polling and leftover volumes; their output comes from the live APIs.
 - Anything else: the operation's signature is in the catalog (`api_docs` search, then show); call it with `scaleway` or `runpod_mcp`. Under a cloud budget, a raw call that creates something goes through only for what is known to bill nothing (a template, a secret, a registry credential, a security group, a placement group, a job definition); any other creation, and any call that is neither a read nor in the catalog, is refused: only the ready-made functions price a resource and put it in the ledger. A raw call that changes, runs on or deletes a resource the run did not create, or names one in its body, is refused (templates, security groups and placement groups stay open).
 - Authentication is handled by the tools; keys are never printed, written or asked for.
 - Spending (creating, changing or deleting a resource) is {{spend}}.

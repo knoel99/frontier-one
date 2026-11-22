@@ -85,6 +85,11 @@ def write_json(path: pathlib.Path, obj, indent: int | None = 1) -> None:
     tmp.replace(path)
 
 
+def price_per_hour(resource: dict):
+    """A ledger resource's hourly price, in its provider's currency (None when it has none)."""
+    return resource.get("eur_per_hour") or resource.get("usd_per_hour")
+
+
 def read_json(path: pathlib.Path, default=None):
     return json.loads(path.read_text()) if path.exists() else default
 

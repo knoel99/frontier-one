@@ -26,7 +26,7 @@ import tomllib
 import urllib.request
 
 from . import budget as budget_mod
-from . import credentials, llm
+from . import credentials, llm, params, prompts, scoring, snapshots
 from .config import ROOT, load_config
 from .gateway import base_url_for
 from .harnesses import HARNESSES, McpCommand, artifacts
@@ -39,10 +39,19 @@ NATIVE_HARNESS = {"anthropic": "claude", "openai": "codex", "google": "antigravi
 FALLBACK_HARNESS = "opencode"
 
 
+class MissionFileError(ValueError):
+    """A mission file the framework refuses: the message names the file and each problem with its fix."""
+
+
 def load(path: str | os.PathLike) -> dict:
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as f:
-        m = tomllib.load(f)
+        try:
+            m = tomllib.load(f)
+        except tomllib.TOMLDecodeError as e:
+            raise MissionFileError(f"{path}: not valid TOML: {e}") from e
+    if errors := params.problems(m):
+        raise MissionFileError("\n".join([f"{path}:", *errors]))
     m["_file"] = str(path)
     m.setdefault("mission", {})
     ws = pathlib.Path(m["mission"].get("workspace", "workspace"))
@@ -50,13 +59,23 @@ def load(path: str | os.PathLike) -> dict:
     st = pathlib.Path(m["mission"].get("state") or STATE_ROOT / m["mission"].get("name", "mission"))
     m["mission"]["state"] = str((path.parent / st).resolve() if not st.is_absolute() else st)
     h = m.setdefault("harness", {})
-    if h.get("name", "auto") == "auto":
+    if h.get("name", params.DEFAULTS["harness.name"]) == "auto":
         h["name"] = NATIVE_HARNESS.get(m.get("llm", {}).get("provider", ""), FALLBACK_HARNESS)
     if h["name"] not in HARNESSES:
         raise ValueError(f"unknown harness {h['name']!r}; known: {', '.join(HARNESSES)}")
     net = m.setdefault("network", {})  # the organizer's deny list (config/providers.toml [network]) holds for every mission
     net["deny"] = list(dict.fromkeys([*net.get("deny", []), *load_config().get("network", {}).get("deny", [])]))
     return m
+
+
+def states(root: pathlib.Path) -> list[pathlib.Path]:
+    """The state directories of the missions under `root`: a race is the missions that share one."""
+    return sorted(p.parent for p in root.glob("*/mission.json"))
+
+
+def workspace_of(state: pathlib.Path) -> pathlib.Path:
+    """A mission's workspace: the one its mission.json names, else ws/ in its state directory."""
+    return pathlib.Path(budget_mod.read_json(state / "mission.json", {}).get("workspace") or state / "ws")
 
 
 def _deadline(m: dict, start: dt.datetime) -> str | None:
@@ -68,9 +87,9 @@ def _deadline(m: dict, start: dt.datetime) -> str | None:
 
 
 def sandbox_kind(m: dict) -> str:
-    kind = m.get("sandbox", {}).get("kind", "none")
-    if kind not in ("none", "openshell"):
-        raise ValueError(f"[sandbox] kind must be none or openshell, not {kind!r}")
+    kind = m.get("sandbox", {}).get("kind", params.DEFAULTS["sandbox.kind"])
+    if kind not in params.SANDBOX_KINDS:
+        raise ValueError(f"[sandbox] kind must be one of {', '.join(params.SANDBOX_KINDS)}, not {kind!r}")
     return kind
 
 
@@ -153,8 +172,8 @@ def _offers_section(ctx) -> str:
 
 def _main_spec(cfg: dict, m: dict):
     try:
-        return llm.resolve(cfg, m["llm"]["provider"], m["harness"].get("tier", "frontier"),
-                           m["harness"].get("reasoning", "high"))
+        return llm.resolve(cfg, m["llm"]["provider"], m["harness"].get("tier", params.DEFAULTS["harness.tier"]),
+                           m["harness"].get("reasoning", params.DEFAULTS["harness.reasoning"]))
     except (KeyError, llm.LLMError):
         return None
 
@@ -193,7 +212,8 @@ def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict]
         f"Generated at {when} by the Frontier launcher. Prices and stock change: the tools give the live values.", "",
         "## Your harness", "",
         f"{h.title} on `{getattr(_main_spec(cfg, m), 'model', '?')}` (provider `{m.get('llm', {}).get('provider')}`, tier "
-        f"`{m['harness'].get('tier', 'frontier')}`, reasoning `{m['harness'].get('reasoning', 'high')}`); its LLM calls "
+        f"`{m['harness'].get('tier', params.DEFAULTS['harness.tier'])}`, reasoning "
+        f"`{m['harness'].get('reasoning', params.DEFAULTS['harness.reasoning'])}`); its LLM calls "
         "are charged to the LLM budget like those of the sub-agents. Its own tools (shell, files, web, native "
         "sub-agents, skills) are yours as well. The speed modes of its provider (under Models below) apply to its "
         "own calls too when it sends the mode's request field; the metering gateway bills the tier each response says "
@@ -225,7 +245,7 @@ def tools_inventory(ctx, m: dict, cfg: dict, pings: dict, tool_specs: list[dict]
         f"- Start: {caps.get('start')}. Deadline: {caps.get('deadline') or 'none'}.", "",
         "## Hugging Face", "",
         (f"`hf_publish` publishes to `{hf.get('namespace') or 'the token user'}` with visibility "
-         f"`{hf.get('visibility', 'private')}`." if ctx.run.settings.get("allow_publish") else
+         f"`{hf.get('visibility', params.DEFAULTS['huggingface.visibility'])}`." if ctx.run.settings.get("allow_publish") else
          "No Hugging Face token was given: publishing is not available."), "",
     ]
     return "\n".join(parts)
@@ -241,9 +261,8 @@ def _blocked(m: dict) -> list[str]:
 
 def mission_brief(m: dict, caps: dict, subject: str) -> str:
     g = m.get("grading", {})
-    crit = g.get("criteria") or ["scientific quality", "code and data",
-                                 "efficiency: total spend and time, absolute and against the other teams"]
-    w = g.get("weights") or ([] if g.get("criteria") else [50, 25, 25])
+    crit = g.get("criteria") or params.DEFAULTS["grading.criteria"]
+    w = g.get("weights") or ([] if g.get("criteria") else [f"{v:g}" for v in scoring.WEIGHTS.values()])
     criteria = "\n".join(f"{i + 1}. {c}" + (f" (weight {w[i]})" if i < len(w) else "") for i, c in enumerate(crit))
     budgets = "\n".join([
         f"- LLM: {caps.get('llm_usd', 'no cap')} USD on {', '.join(providers_of(m))}.",
@@ -251,11 +270,26 @@ def mission_brief(m: dict, caps: dict, subject: str) -> str:
         f"- Start: {caps.get('start')}. Deadline: {caps.get('deadline') or 'none'}."]
         + ([f"- Network: requests to {', '.join(_blocked(m))} are refused and recorded; the stewards take points off "
             "for each blocked host a team tries."] if _blocked(m) else []))
-    text = (ROOT / "prompts" / "mission.md").read_text()
-    for k, v in {"name": m["mission"].get("name", "mission"), "subject": subject, "criteria": criteria,
-                 "budgets": budgets}.items():
-        text = text.replace("{{" + k + "}}", v)
-    return text
+    return prompts.render("mission", name=m["mission"].get("name", "mission"), subject=subject, criteria=criteria,
+                          budgets=budgets, required=prompts.and_list(REQUIRED),
+                          snapshots=_snapshot_sentence({**snapshots.DEFAULTS, **m.get("snapshots", {})}))
+
+
+def _snapshot_sentence(s: dict) -> str:
+    if not s["enabled"]:
+        return ""
+    first = sorted(s["time_minutes"])[:7]
+    minutes = [f"{v:g}" for v in first if v < 60]
+    hours = [f"{v / 60:g}" for v in first if v >= 60]
+    times = ", then ".join(([prompts.and_list(minutes) + (" minute" if minutes == ["1"] else " minutes")] if minutes else [])
+                           + ([", ".join(hours) + (" hour" if hours == ["1"] else " hours")] if hours else []))
+    spends = ", ".join(f"{v:g}" for v in sorted(s["spend_usd"])[:5])
+    at = " and ".join(([f"times ({times} and so on)"] if times else []) + ([f"spends ({spends} USD and so on)"] if spends else []))
+    if not at:
+        return ""
+    return (f" At fixed {at}, the framework takes a snapshot of the repository, which the jury grades to draw your "
+            f"quality against time and against spend; from {s['notice_from_minutes']:g} minutes on, a notice first asks "
+            "you to bring the report up to date with what you have.")
 
 
 AGENTS_MD = """# AGENTS.md
@@ -336,9 +370,11 @@ def prepare(mission_file: str | os.PathLike, ping: bool = True, offers: bool = T
     settings = {"gateway_port": old_settings.get("gateway_port") or _free_port(own), "name": m["mission"].get("name", "mission"),
                 "workspace": str(ws), "harness": m["harness"]["name"],
                 "provider": m.get("llm", {}).get("provider"), "providers": providers_of(m),
-                "tier": m["harness"].get("tier", "frontier"), "reasoning": m["harness"].get("reasoning", "high"),
+                "tier": m["harness"].get("tier", params.DEFAULTS["harness.tier"]),
+                "reasoning": m["harness"].get("reasoning", params.DEFAULTS["harness.reasoning"]),
                 "allow_spend": True, "allow_publish": "huggingface" in m and credentials.available(origin, hf_env),
-                "publish_visibility": hf.get("visibility", "private"), "hf_namespace": hf.get("namespace", ""),
+                "publish_visibility": hf.get("visibility", params.DEFAULTS["huggingface.visibility"]),
+                "hf_namespace": hf.get("namespace", ""),
                 "hf_prefix": hf.get("prefix", ""), "hf_collection": hf.get("collection", ""),
                 "mission_file": m["_file"], "subject": subject, "state": str(state),
                 "sandbox": "" if sandbox_kind(m) == "none" else sandbox_kind(m),
@@ -546,7 +582,7 @@ def costs_markdown(st: dict, resources: list[dict], pubs: list[dict]) -> str:
                      f"{c['currency']}.")
     lines += ["", "| provider | resource | id | type | price/h | max h | created | deleted |", "|---|---|---|---|---:|---:|---|---|"]
     for r in resources:
-        price = r.get("eur_per_hour") or r.get("usd_per_hour")
+        price = budget_mod.price_per_hour(r)
         lines.append(f"| {r['provider']} | {r.get('kind')} | {r['id']} | {r.get('type')} | {price} | {r.get('max_hours')} | "
                      f"{r.get('created')} | {r.get('deleted_at', '-')} |")
     lines += ["", "## Time", "", f"Elapsed: {st.get('elapsed_hours')} h. Deadline: {st.get('deadline') or 'none'}.", ""]
